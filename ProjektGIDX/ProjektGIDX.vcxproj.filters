@@ -1,0 +1,147 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="app">
+      <UniqueIdentifier>{07eb4c62-d1e5-4d39-b6fa-dac48aff969b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="engine">
+      <UniqueIdentifier>{ebec8464-7600-4367-a8ab-31ea673946ad}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="platform">
+      <UniqueIdentifier>{3350e22c-68bc-4730-ad8a-023454723ec4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="renderer">
+      <UniqueIdentifier>{3f383499-72fc-4f87-9e41-6cbfa5e509e0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="util">
+      <UniqueIdentifier>{90464515-0a60-4d47-8e5a-60969e5f1c35}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="engine\core">
+      <UniqueIdentifier>{e1ce0925-f4f2-4772-89c7-497a4c1ccc9d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="engine\platform">
+      <UniqueIdentifier>{19afa6f9-fe29-47b7-8b42-93c829b7845f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="engine\renderer">
+      <UniqueIdentifier>{4ad48df7-4d30-4004-8bb7-6068c0fb9562}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="renderer\dx11">
+      <UniqueIdentifier>{e0dd5aec-c3e2-4488-9e8c-5e19e8845195}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="renderer\null">
+      <UniqueIdentifier>{f9b5ad7f-53db-44bf-8815-83b75f242181}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="renderer\opengl">
+      <UniqueIdentifier>{1b46a7a7-d0fb-4ac0-869f-1caa8a4f9fea}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="platform\windows">
+      <UniqueIdentifier>{753e534a-1b0d-42cb-8ce4-fcbb576e8035}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ecs">
+      <UniqueIdentifier>{e3f763e3-d1ce-4b09-ba58-13a40277cec7}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\app\main.cpp">
+      <Filter>app</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXEngine.cpp">
+      <Filter>engine\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXWin32DX11ContextFactory.cpp">
+      <Filter>platform\windows</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXWin32OpenGLContextFactory.cpp">
+      <Filter>platform\windows</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXWin32Platform.cpp">
+      <Filter>platform\windows</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXWin32Window.cpp">
+      <Filter>platform\windows</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXDX11Renderer.cpp">
+      <Filter>renderer\dx11</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXOpenGLRenderer.cpp">
+      <Filter>renderer\opengl</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\AdapterEnum.cpp">
+      <Filter>app</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\test_step1.cpp">
+      <Filter>app</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\include\Events.h">
+      <Filter>engine\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXEngine.h">
+      <Filter>engine\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXEventQueue.h">
+      <Filter>engine\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXDXGIContext.h">
+      <Filter>engine\platform</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXOpenGLContext.h">
+      <Filter>engine\platform</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXRenderer.h">
+      <Filter>engine\platform</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXPlatform.h">
+      <Filter>engine\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXWindow.h">
+      <Filter>engine\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\WindowDesc.h">
+      <Filter>engine\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXWin32DX11ContextFactory.h">
+      <Filter>platform\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXWin32NativeHandles.h">
+      <Filter>platform\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXWin32OpenGLContextFactory.h">
+      <Filter>platform\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXWin32Platform.h">
+      <Filter>platform\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXWin32Window.h">
+      <Filter>platform\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXWin32NativeAccess.h">
+      <Filter>platform\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXDX11Renderer.h">
+      <Filter>renderer\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXNullRenderer.h">
+      <Filter>renderer\null</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXOpenGLRenderer.h">
+      <Filter>renderer\opengl</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Debug.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\ComponentPool.h">
+      <Filter>ecs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Components.h">
+      <Filter>ecs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\ECSTypes.h">
+      <Filter>ecs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Registry.h">
+      <Filter>ecs</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
