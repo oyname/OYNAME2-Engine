@@ -49,6 +49,9 @@
     <Filter Include="engine\assets">
       <UniqueIdentifier>{906cd366-d799-4062-b7ab-a64f6c52bb57}</UniqueIdentifier>
     </Filter>
+    <Filter Include="third_party">
+      <UniqueIdentifier>{4132ef45-9b48-487e-91c6-6c80e2b19e23}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\app\main.cpp">
@@ -92,6 +95,18 @@
     </ClCompile>
     <ClCompile Include="..\app\AdapterEnum.cpp">
       <Filter>samples</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXLightSystem.cpp">
+      <Filter>ecs</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXTextureLoader.cpp">
+      <Filter>engine\assets</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXSamplerCache.cpp">
+      <Filter>renderer\dx11</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXShadowMap.cpp">
+      <Filter>renderer\dx11</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -206,8 +221,20 @@
     <ClInclude Include="..\include\GDXShaderResource.h">
       <Filter>engine\renderer</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\GDXLightSystem.h">
+      <Filter>ecs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXTextureResource.h">
+      <Filter>engine\assets</Filter>
+    </ClInclude>
     <ClInclude Include="..\include\GDXVertexFlags.h">
-      <Filter>engine\renderer</Filter>
+      <Filter>engine\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXShadowMap.h">
+      <Filter>renderer\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="..\third_party\stb_image.h">
+      <Filter>third_party</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

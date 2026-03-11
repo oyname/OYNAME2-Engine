@@ -122,9 +122,16 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="..\app\main.cpp" />
+    <ClCompile Include="..\app\main.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="..\app\ECSGame.cpp" />
     <ClCompile Include="..\src\CameraSystem.cpp" />
+    <ClCompile Include="..\src\GDXLightSystem.cpp" />
+    <ClCompile Include="..\src\GDXSamplerCache.cpp" />
+    <ClCompile Include="..\src\GDXShadowMap.cpp" />
+    <ClCompile Include="..\src\GDXTextureLoader.cpp" />
     <ClCompile Include="..\src\TransformSystem.cpp" />
     <ClCompile Include="..\src\RenderGatherSystem.cpp" />
     <ClCompile Include="..\src\GDXECSRenderer.cpp" />
@@ -149,9 +156,12 @@
     <ClInclude Include="..\include\GDXECSRenderer.h" />
     <ClInclude Include="..\include\GDXEngine.h" />
     <ClInclude Include="..\include\GDXEventQueue.h" />
+    <ClInclude Include="..\include\GDXLightSystem.h" />
     <ClInclude Include="..\include\GDXNullRenderer.h" />
     <ClInclude Include="..\include\GDXOpenGLRenderer.h" />
     <ClInclude Include="..\include\GDXShaderResource.h" />
+    <ClInclude Include="..\include\GDXShadowMap.h" />
+    <ClInclude Include="..\include\GDXTextureResource.h" />
     <ClInclude Include="..\include\GDXVertexFlags.h" />
     <ClInclude Include="..\include\GDXWin32DX11ContextFactory.h" />
     <ClInclude Include="..\include\GDXWin32NativeHandles.h" />
@@ -175,6 +185,7 @@
     <ClInclude Include="..\include\SubmeshData.h" />
     <ClInclude Include="..\include\TransformSystem.h" />
     <ClInclude Include="..\include\WindowDesc.h" />
+    <ClInclude Include="..\third_party\stb_image.h" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="..\shader\ECSPixelShader.hlsl">

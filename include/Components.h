@@ -180,11 +180,14 @@ struct MaterialRefComponent
 // ===========================================================================
 struct VisibilityComponent
 {
-    bool     visible = true;
-    bool     active = true;
+    bool     visible   = true;
+    bool     active    = true;
     uint32_t layerMask = 0x00000001u;  // LAYER_DEFAULT
-    bool     castShadows = true;
-    bool     receiveShadows = true;
+
+    // Schatten werfen: RenderGatherSystem liest dieses Flag um ShadowCasterTag zu ersetzen.
+    // Schatten empfangen: liegt in MaterialData.receiveShadows (float, direkt im Shader).
+    // → kein receiveShadows hier, verhindert die doppelte inkonsistente Logik.
+    bool castShadows = true;
 
     VisibilityComponent() = default;
 };
@@ -225,8 +228,8 @@ struct ActiveCameraTag {};
 enum class LightKind : uint8_t
 {
     Directional = 0,
-    Point = 1,
-    Spot = 2,
+    Point       = 1,
+    Spot        = 2,   // Kegel-Licht: Position + Richtung + inner/outer cone
 };
 
 // ===========================================================================
@@ -237,16 +240,19 @@ struct LightComponent
     LightKind kind = LightKind::Directional;
 
     DirectX::XMFLOAT4 diffuseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-    DirectX::XMFLOAT4 ambientColor = { 0.1f, 0.1f, 0.1f, 1.0f };
 
-    float radius = 10.0f;   // nur Point/Spot
-    float intensity = 1.0f;
+    float radius         = 10.0f;   // Point/Spot: Reichweite in Welteinheiten
+    float intensity      = 1.0f;
 
-    // Shadow-Einstellungen (Directional)
-    bool  castShadows = false;
+    // Spot-Light Kegel (in Grad)
+    float innerConeAngle = 15.0f;
+    float outerConeAngle = 30.0f;
+
+    // Shadow (nur Directional)
+    bool  castShadows     = false;
     float shadowOrthoSize = 50.0f;
-    float shadowNear = 0.1f;
-    float shadowFar = 1000.0f;
+    float shadowNear      = 0.1f;
+    float shadowFar       = 1000.0f;
 
     LightComponent() = default;
 };

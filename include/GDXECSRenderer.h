@@ -7,6 +7,7 @@
 #include "MeshAssetResource.h"
 #include "MaterialResource.h"
 #include "GDXShaderResource.h"
+#include "GDXTextureResource.h"
 #include "GDXVertexFlags.h"
 #include "FrameData.h"
 #include "RenderQueue.h"
@@ -14,6 +15,9 @@
 #include "CameraSystem.h"
 #include "RenderGatherSystem.h"
 #include "GDXDX11RenderExecutor.h"
+#include "GDXLightSystem.h"
+#include "GDXSamplerCache.h"
+#include "GDXShadowMap.h"
 #include "IGDXDXGIContext.h"
 
 #include <memory>
@@ -30,22 +34,29 @@ struct ID3D11BlendState;
 // ---------------------------------------------------------------------------
 // GDXECSRenderer — DX11-Renderer mit ECS-Integration.
 //
-// Shader-Workflow (wie OYNAME):
+// Anwender-API (Kurzübersicht):
 //
-//   // Engine-Start: Standard-Shader wird automatisch geladen.
-//   // Kein Code nötig — m_defaultShader ist danach gültig.
-//
-//   // Eigener Shader (ein Aufruf, fertig):
+//   // Shader laden (ein Aufruf, InputLayout automatisch):
 //   ShaderHandle hShader = renderer.CreateShader(
-//       L"MyVS.hlsl", L"MyPS.hlsl",
-//       GDX_VERTEX_POSITION | GDX_VERTEX_NORMAL | GDX_VERTEX_TEX1);
+//       L"MyVS.hlsl", L"MyPS.hlsl", GDX_VERTEX_POSITION | GDX_VERTEX_NORMAL | GDX_VERTEX_TEX1);
 //
-//   // Shader einem Material zuweisen:
-//   MaterialResource mat = MaterialResource::FlatColor(1,0,0);
-//   mat.shader = hShader;
+//   // Textur laden:
+//   TextureHandle hTex = renderer.LoadTexture(L"textures/brick.png");
+//
+//   // Material:
+//   MaterialResource mat;
+//   mat.albedoTex = hTex;
+//   mat.data.metallic = 0.0f; mat.data.roughness = 0.8f;
+//   mat.data.flags |= MF_USE_NORMAL_MAP | MF_SHADING_PBR;
 //   MaterialHandle hMat = renderer.CreateMaterial(mat);
 //
-//   // Material ohne Shader → Standard-Shader wird automatisch verwendet.
+//   // Licht (ECS):
+//   EntityID light = registry.Create();
+//   registry.Add<LightComponent>(light, { LightKind::Directional, ..., castShadows=true });
+//   registry.Add<WorldTransformComponent>(light);
+//
+//   // Shadow-Map-Größe vor Initialize (optional, Standard 2048):
+//   renderer.SetShadowMapSize(4096);
 // ---------------------------------------------------------------------------
 class GDXECSRenderer final : public IGDXRenderer
 {
@@ -66,47 +77,57 @@ public:
 
     // --- Ressourcen-API ---------------------------------------------------
 
+    // Shader laden + InputLayout automatisch aus flags bauen.
+    ShaderHandle   CreateShader(const std::wstring& vsFile,
+                                const std::wstring& psFile,
+                                uint32_t vertexFlags = GDX_VERTEX_DEFAULT);
+
+    // Textur von Datei laden (gecacht — gleicher Pfad → gleicher Handle).
+    // isSRGB=true  → Albedo, Emissive (gamma-korrigiert, Standard)
+    // isSRGB=false → Normal, ORM, Roughness (lineare Daten)
+    TextureHandle  LoadTexture(const std::wstring& filePath, bool isSRGB = true);
+
     MeshHandle     UploadMesh(MeshAssetResource mesh);
     MaterialHandle CreateMaterial(MaterialResource mat);
 
-    // Shader laden + InputLayout automatisch aus flags bauen (wie OYNAME).
-    // vertexFlags steuert:
-    //   - InputLayout-Bau         (D3D11_INPUT_ELEMENT_DESC[] dynamisch erzeugt)
-    //   - Upload (welche Streams)  (beim UploadMesh)
-    //   - Draw   (welche Slots)    (im ExecuteQueue)
-    ShaderHandle CreateShader(
-        const std::wstring& vsFile,
-        const std::wstring& psFile,
-        uint32_t            vertexFlags = GDX_VERTEX_DEFAULT);
+    // Standard-Shader-Handle (gültig nach Initialize).
+    ShaderHandle   GetDefaultShader() const { return m_defaultShader; }
 
-    // Standard-Shader-Handle (gültig nach Initialize()).
-    ShaderHandle GetDefaultShader() const { return m_defaultShader; }
+    // Shadow-Map-Größe konfigurieren (vor Initialize aufrufen, Standard: 2048).
+    void SetShadowMapSize(uint32_t size) { m_shadowMapSize = size; }
 
-    // --- Stores (für externe Systeme) -------------------------------------
+    // Szenen-Ambient: globale Grundhelligkeit (kein Licht-spezifisch).
+    // Setzt FrameData.sceneAmbient — wirkt ab dem nächsten Frame.
+    void SetSceneAmbient(float r, float g, float b)
+    {
+        m_frameData.sceneAmbient = { r, g, b };
+    }
+
+    // --- Stores -----------------------------------------------------------
     ResourceStore<MeshAssetResource,  MeshTag>&    GetMeshStore()    { return m_meshStore; }
     ResourceStore<MaterialResource,   MaterialTag>& GetMatStore()     { return m_matStore; }
     ResourceStore<GDXShaderResource,  ShaderTag>&  GetShaderStore()  { return m_shaderStore; }
+    ResourceStore<GDXTextureResource, TextureTag>& GetTextureStore() { return m_texStore; }
 
     // --- Diagnostics -------------------------------------------------------
     struct FrameStats
     {
         uint32_t drawCalls      = 0u;
         uint32_t renderCommands = 0u;
+        uint32_t lightCount     = 0u;
     };
     const FrameStats& GetFrameStats() const { return m_stats; }
     void SetClearColor(float r, float g, float b, float a = 1.0f);
 
 private:
-    // Interner Shader-Lade-Helfer (verwendet von CreateShader + Standard-Shader-Init).
-    // Baut InputLayout dynamisch aus vertexFlags — analog zu OYNAME InputLayoutManager.
-    ShaderHandle LoadShaderInternal(
-        const std::wstring& vsFile,
-        const std::wstring& psFile,
-        uint32_t            vertexFlags,
-        const std::wstring& debugName);
+    ShaderHandle LoadShaderInternal(const std::wstring& vsFile,
+                                    const std::wstring& psFile,
+                                    uint32_t vertexFlags,
+                                    const std::wstring& debugName);
 
     bool LoadDefaultShaders();
     bool CreateRenderStates();
+    bool InitDefaultTextures();
     bool CreateMaterialCBuffer(MaterialResource& mat);
 
     std::unique_ptr<IGDXDXGIContext> m_context;
@@ -118,21 +139,32 @@ private:
     ResourceStore<MeshAssetResource,  MeshTag>    m_meshStore;
     ResourceStore<MaterialResource,   MaterialTag> m_matStore;
     ResourceStore<GDXShaderResource,  ShaderTag>  m_shaderStore;
+    ResourceStore<GDXTextureResource, TextureTag> m_texStore;
 
     TransformSystem    m_transformSystem;
     CameraSystem       m_cameraSystem;
     RenderGatherSystem m_gatherSystem;
+    GDXLightSystem     m_lightSystem;
 
     GDXDX11MeshUploader*  m_meshUploader = nullptr;
     GDXDX11RenderExecutor m_executor;
+
+    GDXSamplerCache m_samplerCache;
+    GDXShadowMap    m_shadowMap;
+    uint32_t        m_shadowMapSize = 2048u;
 
     RenderQueue m_opaqueQueue;
     RenderQueue m_shadowQueue;
     FrameData   m_frameData;
 
-    // Standard-Shader — wird in Initialize() geladen.
-    // Materialien ohne eigenen Shader verwenden ihn automatisch.
     ShaderHandle m_defaultShader;
+    ShaderHandle m_shadowShader;    // Depth-only Shadow Pass Shader
+
+    // Default Fallback-Texturen
+    TextureHandle m_defaultWhiteTex;
+    TextureHandle m_defaultNormalTex;
+    TextureHandle m_defaultORMTex;
+    TextureHandle m_defaultBlackTex;
 
     ID3D11RasterizerState*   m_rasterizerState   = nullptr;
     ID3D11DepthStencilState* m_depthStencilState = nullptr;

@@ -16,25 +16,32 @@ public:
 private:
     GDXECSRenderer& m_renderer;
 
-    EntityID m_triangle = NULL_ENTITY;
-    EntityID m_cube = NULL_ENTITY;
-    EntityID m_diamond = NULL_ENTITY;
-    EntityID m_camera = NULL_ENTITY;
+    // Entities
+    EntityID m_sphere = NULL_ENTITY;
+    EntityID m_cube     = NULL_ENTITY;
+    EntityID m_diamond  = NULL_ENTITY;
+    EntityID m_camera   = NULL_ENTITY;
+    EntityID m_sun       = NULL_ENTITY;   // Directional Light
+    EntityID m_spotlight = NULL_ENTITY;   // Spot Light
 
-    MeshHandle m_hTri;
+    // Mesh-Handles
+    MeshHandle m_hSph;
     MeshHandle m_hCube;
     MeshHandle m_hDiamond;
 
+    // Material-Handles
     MaterialHandle m_hMatRed;
     MaterialHandle m_hMatBlue;
     MaterialHandle m_hMatGreen;
+    MaterialHandle m_hMatPBR;      // PBR + Normal Map + ORM (wenn Texturen vorhanden)
 
-    float m_triYaw = 0.0f;
-    float m_cubeYaw = 0.0f;
-    float m_cubePitch = 0.0f;
-    float m_diamPitch = 0.0f;
+    // Animationsstate
+    float m_triYaw       = 0.0f;
+    float m_cubeYaw      = 0.0f;
+    float m_cubePitch    = 0.0f;
+    float m_diamPitch    = 0.0f;
     float m_camOrbitAngle = 0.0f;
-    float m_time = 0.0f;
+    float m_time         = 0.0f;
 
     bool m_orbitCamera = false;
 };

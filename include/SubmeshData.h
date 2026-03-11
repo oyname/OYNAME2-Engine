@@ -283,4 +283,149 @@ namespace BuiltinMeshes
 
         return s;
     }
+
+    // Pyramide mit quadratischer Basis und harten Kanten.
+    // Höhe = size, Basisbreite = size.
+    // Mittelpunkt liegt im Ursprung.
+    inline SubmeshData Pyramid(float size = 1.0f)
+    {
+        SubmeshData s;
+        s.positions.reserve(18);
+        s.normals.reserve(18);
+        s.uv0.reserve(18);
+        s.indices.reserve(18);
+
+        const float h = size * 0.5f;
+        const float hy = size * 0.5f;
+
+        const DirectX::XMFLOAT3 top = { 0.0f,  hy, 0.0f };
+        const DirectX::XMFLOAT3 bl = { -h, -hy, -h };
+        const DirectX::XMFLOAT3 br = { h, -hy, -h };
+        const DirectX::XMFLOAT3 fr = { h, -hy,  h };
+        const DirectX::XMFLOAT3 fl = { -h, -hy,  h };
+
+        auto normalize = [](float x, float y, float z) -> DirectX::XMFLOAT3
+            {
+                const float len = std::sqrt(x * x + y * y + z * z);
+                if (len <= 0.000001f) return { 0.0f, 1.0f, 0.0f };
+                return { x / len, y / len, z / len };
+            };
+
+        auto addFace = [&](const DirectX::XMFLOAT3& a,
+            const DirectX::XMFLOAT3& b,
+            const DirectX::XMFLOAT3& c,
+            const DirectX::XMFLOAT3& n,
+            const DirectX::XMFLOAT2& uvA,
+            const DirectX::XMFLOAT2& uvB,
+            const DirectX::XMFLOAT2& uvC)
+            {
+                const uint32_t base = static_cast<uint32_t>(s.positions.size());
+
+                s.positions.push_back(a);
+                s.positions.push_back(b);
+                s.positions.push_back(c);
+
+                s.normals.push_back(n);
+                s.normals.push_back(n);
+                s.normals.push_back(n);
+
+                s.uv0.push_back(uvA);
+                s.uv0.push_back(uvB);
+                s.uv0.push_back(uvC);
+
+                s.indices.push_back(base + 0);
+                s.indices.push_back(base + 1);
+                s.indices.push_back(base + 2);
+            };
+
+        // Seitenflächen
+        {
+            const auto n = normalize(0.0f, h, -hy);
+            addFace(top, br, bl, n, { 0.5f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f });
+        }
+        {
+            const auto n = normalize(hy, h, 0.0f);
+            addFace(top, fr, br, n, { 0.5f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f });
+        }
+        {
+            const auto n = normalize(0.0f, h, hy);
+            addFace(top, fl, fr, n, { 0.5f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f });
+        }
+        {
+            const auto n = normalize(-hy, h, 0.0f);
+            addFace(top, bl, fl, n, { 0.5f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f });
+        }
+
+        // Basis (-Y)
+        addFace(bl, br, fl, { 0.0f, -1.0f, 0.0f },
+            { 0.0f, 1.0f }, { 1.0f, 1.0f }, { 0.0f, 0.0f });
+        addFace(fl, br, fr, { 0.0f, -1.0f, 0.0f },
+            { 0.0f, 0.0f }, { 1.0f, 1.0f }, { 1.0f, 0.0f });
+
+        return s;
+    }
+
+    // UV-Sphere mit glatten Normalen und shared vertices.
+    // slices >= 3, stacks >= 2
+    inline SubmeshData Sphere(float radius = 0.5f, uint32_t slices = 24, uint32_t stacks = 16)
+    {
+        SubmeshData s;
+
+        if (slices < 3) slices = 3;
+        if (stacks < 2) stacks = 2;
+
+        const uint32_t ringVertexCount = slices + 1;
+        const uint32_t vertexCount = (stacks + 1) * ringVertexCount;
+        const uint32_t indexCount = stacks * slices * 6;
+
+        s.positions.reserve(vertexCount);
+        s.normals.reserve(vertexCount);
+        s.uv0.reserve(vertexCount);
+        s.indices.reserve(indexCount);
+
+        constexpr float PI = 3.14159265358979323846f;
+
+        for (uint32_t stack = 0; stack <= stacks; ++stack)
+        {
+            const float v = static_cast<float>(stack) / static_cast<float>(stacks);
+            const float phi = v * PI; // 0 .. PI
+
+            const float y = std::cos(phi);
+            const float r = std::sin(phi);
+
+            for (uint32_t slice = 0; slice <= slices; ++slice)
+            {
+                const float u = static_cast<float>(slice) / static_cast<float>(slices);
+                const float theta = u * (2.0f * PI); // 0 .. 2PI
+
+                const float x = r * std::cos(theta);
+                const float z = r * std::sin(theta);
+
+                s.positions.push_back({ x * radius, y * radius, z * radius });
+                s.normals.push_back({ x, y, z });
+                s.uv0.push_back({ u, v });
+            }
+        }
+
+        for (uint32_t stack = 0; stack < stacks; ++stack)
+        {
+            for (uint32_t slice = 0; slice < slices; ++slice)
+            {
+                const uint32_t i0 = stack * ringVertexCount + slice;
+                const uint32_t i1 = i0 + 1;
+                const uint32_t i2 = (stack + 1) * ringVertexCount + slice;
+                const uint32_t i3 = i2 + 1;
+
+                s.indices.push_back(i0);
+                s.indices.push_back(i2);
+                s.indices.push_back(i1);
+
+                s.indices.push_back(i1);
+                s.indices.push_back(i2);
+                s.indices.push_back(i3);
+            }
+        }
+
+        return s;
+    }
 }
