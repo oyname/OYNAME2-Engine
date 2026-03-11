@@ -2,113 +2,80 @@
 #include "GDXEventQueue.h"
 #include "WindowDesc.h"
 #include "GDXWin32Window.h"
+#include "GDXWin32DX11ContextFactory.h"
 #include "Debug.h"
 
-// ---------------------------------------------------------------------------
-// Renderer selection — uncomment exactly one.
-// ---------------------------------------------------------------------------
-#define GDX_RENDERER_DX11
-// #define GDX_RENDERER_OPENGL
-// #define GDX_RENDERER_NULL
-// ---------------------------------------------------------------------------
+#include "GDXECSRenderer.h"
+#include "ECSGame.h"
 
-#if defined(GDX_RENDERER_DX11)
-    #include "GDXWin32DX11ContextFactory.h"
-    #include "GDXDX11Renderer.h"
-#elif defined(GDX_RENDERER_OPENGL)
-    #include "GDXWin32OpenGLContextFactory.h"
-    #include "GDXOpenGLRenderer.h"
-#elif defined(GDX_RENDERER_NULL)
-    #include "GDXNullRenderer.h"
-#else
-    #error "No renderer selected — uncomment one of the GDX_RENDERER_* defines."
-#endif
-
-// ---------------------------------------------------------------------------
-// Window creation pattern
-//
-// GDXWin32Window is constructed directly (not via IGDXPlatform::CreateWindow)
-// so that we hold both interface views before transferring ownership:
-//
-//   - As IGDXWindow             -> transferred into GDXEngine via std::move
-//   - As IGDXWin32NativeAccess  -> passed to the context factory (DX11 / GL)
-//
-// windowRaw is only used before the move and never stored afterwards.
-// ---------------------------------------------------------------------------
+#include <memory>
 
 int main()
 {
     GDXEventQueue events;
 
     WindowDesc desc;
-    desc.width     = 1280;
-    desc.height    = 720;
-    desc.title     = "OYNAME2 Engine";
+    desc.width = 1280;
+    desc.height = 720;
+    desc.title = "GIDX - ECS Render Test | ESC: Beenden | C: Kamera-Orbit";
     desc.resizable = true;
 
     auto windowOwned = std::make_unique<GDXWin32Window>(desc, events);
     if (!windowOwned->Create())
     {
-        Debug::LogError("main.cpp: window creation failed");
+        Debug::LogError("main.cpp: Fenster konnte nicht erstellt werden");
         return 1;
     }
-    GDXWin32Window* windowRaw = windowOwned.get();
 
-// ---------------------------------------------------------------------------
-#if defined(GDX_RENDERER_DX11)
+    GDXWin32Window* windowRaw = windowOwned.get();
 
     auto adapters = GDXWin32DX11ContextFactory::EnumerateAdapters();
     if (adapters.empty())
     {
-        Debug::LogError("main.cpp: no suitable DX11 adapter found");
+        Debug::LogError("main.cpp: kein DX11-Adapter gefunden");
         return 2;
     }
+
     const unsigned int adapterIdx =
         GDXWin32DX11ContextFactory::FindBestAdapter(adapters);
+
     Debug::Log("main.cpp: DX11 adapter ", adapterIdx,
-               " [", adapters[adapterIdx].name, "]");
+        " [", adapters[adapterIdx].name, "]");
 
     GDXWin32DX11ContextFactory dx11Factory;
     auto dxContext = dx11Factory.Create(*windowRaw, adapterIdx);
     if (!dxContext)
     {
-        Debug::LogError("main.cpp: DX11 context creation failed");
+        Debug::LogError("main.cpp: DX11 Context konnte nicht erstellt werden");
         return 3;
     }
-    auto renderer = std::make_unique<GDXDX11Renderer>(std::move(dxContext));
 
-// ---------------------------------------------------------------------------
-#elif defined(GDX_RENDERER_OPENGL)
+    auto rendererOwned = std::make_unique<GDXECSRenderer>(std::move(dxContext));
+    GDXECSRenderer* renderer = rendererOwned.get();
 
-    // No adapter enumeration for OpenGL on Windows — the OS selects the GPU.
-    Debug::Log("main.cpp: OpenGL — adapter selected implicitly by OS");
+    renderer->SetClearColor(0.04f, 0.04f, 0.10f);
 
-    GDXWin32OpenGLContextFactory glFactory;
-    auto glContext = glFactory.Create(*windowRaw);
-    if (!glContext)
-    {
-        Debug::LogError("main.cpp: OpenGL context creation failed");
-        return 3;
-    }
-    auto renderer = std::make_unique<GDXOpenGLRenderer>(std::move(glContext));
-
-// ---------------------------------------------------------------------------
-#elif defined(GDX_RENDERER_NULL)
-
-    auto renderer = std::make_unique<GDXNullRenderer>();
-
-#endif
-// ---------------------------------------------------------------------------
-
-    GDXEngine engine(std::move(windowOwned), std::move(renderer), events);
+    GDXEngine engine(std::move(windowOwned), std::move(rendererOwned), events);
 
     if (!engine.Initialize())
     {
-        Debug::LogError("main.cpp: engine initialization failed");
+        Debug::LogError("main.cpp: Engine-Initialisierung fehlgeschlagen");
         return 4;
     }
 
+    ECSGame game(*renderer);
+    game.Init();
+
+    Debug::Log("main.cpp: Szene bereit - ",
+        renderer->GetRegistry().EntityCount(), " Entities");
+
+    renderer->SetTickCallback([&game](float dt)
+        {
+            game.Update(dt);
+        });
+
     engine.Run();
     engine.Shutdown();
+
     return 0;
 }

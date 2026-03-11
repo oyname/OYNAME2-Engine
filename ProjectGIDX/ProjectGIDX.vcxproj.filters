@@ -4,6 +4,9 @@
     <Filter Include="app">
       <UniqueIdentifier>{07eb4c62-d1e5-4d39-b6fa-dac48aff969b}</UniqueIdentifier>
     </Filter>
+    <Filter Include="samples">
+      <UniqueIdentifier>{4df7a3d5-2f8b-4f07-8eb3-5a1d4d2a7c18}</UniqueIdentifier>
+    </Filter>
     <Filter Include="engine">
       <UniqueIdentifier>{ebec8464-7600-4367-a8ab-31ea673946ad}</UniqueIdentifier>
     </Filter>
@@ -40,9 +43,18 @@
     <Filter Include="ecs">
       <UniqueIdentifier>{e3f763e3-d1ce-4b09-ba58-13a40277cec7}</UniqueIdentifier>
     </Filter>
+    <Filter Include="shader">
+      <UniqueIdentifier>{98622a1e-26c8-433e-9b06-dddf3d28eb43}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="engine\assets">
+      <UniqueIdentifier>{906cd366-d799-4062-b7ab-a64f6c52bb57}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\app\main.cpp">
+      <Filter>app</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\ECSGame.cpp">
       <Filter>app</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXEngine.cpp">
@@ -60,20 +72,32 @@
     <ClCompile Include="..\src\GDXWin32Window.cpp">
       <Filter>platform\windows</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\GDXDX11Renderer.cpp">
-      <Filter>renderer\dx11</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\GDXOpenGLRenderer.cpp">
       <Filter>renderer\opengl</Filter>
     </ClCompile>
-    <ClCompile Include="..\app\AdapterEnum.cpp">
-      <Filter>app</Filter>
+    <ClCompile Include="..\src\CameraSystem.cpp">
+      <Filter>ecs</Filter>
     </ClCompile>
-    <ClCompile Include="..\app\test_step1.cpp">
-      <Filter>app</Filter>
+    <ClCompile Include="..\src\TransformSystem.cpp">
+      <Filter>ecs</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\RenderGatherSystem.cpp">
+      <Filter>ecs</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXECSRenderer.cpp">
+      <Filter>engine\renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXDX11RenderExecutor.cpp">
+      <Filter>renderer\dx11</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\AdapterEnum.cpp">
+      <Filter>samples</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\app\ECSGame.h">
+      <Filter>app</Filter>
+    </ClInclude>
     <ClInclude Include="..\include\Events.h">
       <Filter>engine\core</Filter>
     </ClInclude>
@@ -119,9 +143,6 @@
     <ClInclude Include="..\include\IGDXWin32NativeAccess.h">
       <Filter>platform\windows</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\GDXDX11Renderer.h">
-      <Filter>renderer\dx11</Filter>
-    </ClInclude>
     <ClInclude Include="..\include\GDXNullRenderer.h">
       <Filter>renderer\null</Filter>
     </ClInclude>
@@ -143,5 +164,58 @@
     <ClInclude Include="..\include\Registry.h">
       <Filter>ecs</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\CameraSystem.h">
+      <Filter>ecs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\TransformSystem.h">
+      <Filter>ecs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\RenderGatherSystem.h">
+      <Filter>ecs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXECSRenderer.h">
+      <Filter>engine\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\RenderCommand.h">
+      <Filter>engine\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\RenderQueue.h">
+      <Filter>engine\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\FrameData.h">
+      <Filter>engine\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\MaterialResource.h">
+      <Filter>engine\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\MeshAssetResource.h">
+      <Filter>engine\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Handle.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\SubmeshData.h">
+      <Filter>engine\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\ResourceStore.h">
+      <Filter>engine\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXDX11RenderExecutor.h">
+      <Filter>renderer\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXShaderResource.h">
+      <Filter>engine\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXVertexFlags.h">
+      <Filter>engine\renderer</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="..\shader\ECSPixelShader.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\ECSVertexShader.hlsl">
+      <Filter>shader</Filter>
+    </Text>
   </ItemGroup>
 </Project>

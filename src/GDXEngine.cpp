@@ -32,6 +32,8 @@ bool GDXEngine::Initialize()
         return false;
     }
 
+    m_renderer->Resize(m_window->GetWidth(), m_window->GetHeight());
+
     DBLOG(GDX_SRC_LOC, "initialized successfully");
     m_running = true;
     return true;
