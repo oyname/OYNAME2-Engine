@@ -1,8 +1,8 @@
 #include "GDXEngine.h"
 #include "Debug.h"
+#include "GDXInput.h"
 
 #include <variant>
-#include <chrono>
 
 template<class... Ts>
 struct Overloaded : Ts... { using Ts::operator()...; };
@@ -34,6 +34,9 @@ bool GDXEngine::Initialize()
 
     m_renderer->Resize(m_window->GetWidth(), m_window->GetHeight());
 
+    m_frameTimer.Reset();
+    m_deltaTime = 0.0f;
+
     DBLOG(GDX_SRC_LOC, "initialized successfully");
     m_running = true;
     return true;
@@ -41,57 +44,32 @@ bool GDXEngine::Initialize()
 
 void GDXEngine::Run()
 {
-    using Clock = std::chrono::steady_clock;
-    using Duration = std::chrono::duration<float>;  // seconds as float
+    while (Step()) {}
+}
 
-    auto lastTime = Clock::now();
+bool GDXEngine::Step()
+{
+    if (!m_running || m_window->ShouldClose() || m_quitRequested)
+        return false;
 
-    while (m_running && !m_window->ShouldClose())
-    {
-        // -----------------------------------------------------------------
-        // Pump the OS message queue so Win32 dispatches WM_SIZE, WM_CLOSE,
-        // WM_KEYDOWN etc. into GDXEventQueue via WndProc.  Without this call
-        // the window becomes unresponsive and no events ever arrive.
-        // -----------------------------------------------------------------
-        m_window->PollEvents();
+    GDXInput::BeginFrame();
+    m_window->PollEvents();
 
-        // -----------------------------------------------------------------
-        // Delta-time
-        // -----------------------------------------------------------------
-        const auto  now = Clock::now();
-        const float deltaTime = std::chrono::duration_cast<Duration>(now - lastTime).count();
-        lastTime = now;
+    m_deltaTime = m_frameTimer.Tick();
 
-        // -----------------------------------------------------------------
-        // Events — atomically move all queued events out of the queue and
-        // process them.  SnapshotAndClear() holds the mutex for the entire
-        // swap so a Push() from WndProc cannot slip in between the read and
-        // the clear and silently lose an event (the old Snapshot()+Clear()
-        // two-step had exactly that race).
-        // -----------------------------------------------------------------
-        ProcessEvents(m_events.SnapshotAndClear());
+    ProcessEvents(m_events.SnapshotAndClear());
+    if (!m_running) return false;
 
-        if (!m_running) break;   // QuitEvent may have set this during ProcessEvents
+    const int w = m_window->GetWidth();
+    const int h = m_window->GetHeight();
+    if (w <= 0 || h <= 0)
+        return true;   // minimiert — überspringen, aber weiterlaufen
 
-        // -----------------------------------------------------------------
-        // Skip rendering when the window is minimized (0 x 0).
-        // Issuing GL/DX calls with zero-size render targets is undefined
-        // behaviour on most drivers and wastes CPU on invisible frames.
-        // -----------------------------------------------------------------
-        const int w = m_window->GetWidth();
-        const int h = m_window->GetHeight();
+    m_renderer->BeginFrame();
+    m_renderer->Tick(m_deltaTime);
+    m_renderer->EndFrame();
 
-        if (w <= 0 || h <= 0)
-            continue;
-
-        // -----------------------------------------------------------------
-        // Render
-        // -----------------------------------------------------------------
-        m_renderer->BeginFrame();
-        // TODO: dispatch scene/game tick here with deltaTime
-        (void)deltaTime;
-        m_renderer->EndFrame();
-    }
+    return true;
 }
 
 void GDXEngine::Shutdown()
@@ -108,10 +86,13 @@ void GDXEngine::Shutdown()
     // Calling Shutdown() again after the first time is a no-op (idempotent).
 }
 
+
 void GDXEngine::ProcessEvents(const std::vector<Event>& events)
 {
     for (const Event& e : events)
     {
+        GDXInput::OnEvent(e);
+
         std::visit(
             Overloaded{
                 [this](const QuitEvent&)
@@ -130,14 +111,20 @@ void GDXEngine::ProcessEvents(const std::vector<Event>& events)
                 DBLOG(GDX_SRC_LOC, "resize ", ev.width, "x", ev.height);
                 m_renderer->Resize(ev.width, ev.height);
             },
-            [](const KeyPressedEvent& ev)
+            [this](const KeyPressedEvent& ev)
             {
                 if (ev.key == Key::Escape)
-                    DBLOG(GDX_SRC_LOC, "Escape pressed");
+                {
+                    DBLOG(GDX_SRC_LOC, "Escape pressed — quitting");
+                    m_running = false;
+                }
             },
             [](const KeyReleasedEvent&) {}
             },
             e
         );
+
+        if (m_eventCallback)
+            m_eventCallback(e);
     }
 }

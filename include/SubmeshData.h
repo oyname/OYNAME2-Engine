@@ -417,12 +417,12 @@ namespace BuiltinMeshes
                 const uint32_t i3 = i2 + 1;
 
                 s.indices.push_back(i0);
-                s.indices.push_back(i2);
                 s.indices.push_back(i1);
+                s.indices.push_back(i2);
 
                 s.indices.push_back(i1);
-                s.indices.push_back(i2);
                 s.indices.push_back(i3);
+                s.indices.push_back(i2);
             }
         }
 

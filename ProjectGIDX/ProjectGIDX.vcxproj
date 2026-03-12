@@ -123,12 +123,19 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\app\main.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\app\main_lowlevel.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\app\ECSGame.cpp" />
+    <ClCompile Include="..\app\SnakeGame.cpp" />
     <ClCompile Include="..\src\CameraSystem.cpp" />
-    <ClCompile Include="..\src\GDXLightSystem.cpp" />
+    <ClCompile Include="..\src\GDXDX11LightSystem.cpp" />
+    <ClCompile Include="..\src\GDXDX11RenderBackend.cpp" />
+    <ClCompile Include="..\src\GDXInput.cpp" />
     <ClCompile Include="..\src\GDXSamplerCache.cpp" />
     <ClCompile Include="..\src\GDXShadowMap.cpp" />
     <ClCompile Include="..\src\GDXTextureLoader.cpp" />
@@ -145,6 +152,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\app\ECSGame.h" />
+    <ClInclude Include="..\app\SnakeGame.h" />
     <ClInclude Include="..\include\CameraSystem.h" />
     <ClInclude Include="..\include\ComponentPool.h" />
     <ClInclude Include="..\include\Components.h" />
@@ -152,11 +160,13 @@
     <ClInclude Include="..\include\ECSTypes.h" />
     <ClInclude Include="..\include\Events.h" />
     <ClInclude Include="..\include\FrameData.h" />
+    <ClInclude Include="..\include\GDXDX11LightSystem.h" />
     <ClInclude Include="..\include\GDXDX11RenderExecutor.h" />
     <ClInclude Include="..\include\GDXECSRenderer.h" />
     <ClInclude Include="..\include\GDXEngine.h" />
     <ClInclude Include="..\include\GDXEventQueue.h" />
-    <ClInclude Include="..\include\GDXLightSystem.h" />
+    <ClInclude Include="..\include\GDXFrameTimer.h" />
+    <ClInclude Include="..\include\GDXInput.h" />
     <ClInclude Include="..\include\GDXNullRenderer.h" />
     <ClInclude Include="..\include\GDXOpenGLRenderer.h" />
     <ClInclude Include="..\include\GDXShaderResource.h" />
@@ -168,10 +178,13 @@
     <ClInclude Include="..\include\GDXWin32OpenGLContextFactory.h" />
     <ClInclude Include="..\include\GDXWin32Platform.h" />
     <ClInclude Include="..\include\GDXWin32Window.h" />
+    <ClInclude Include="..\include\gidx.h" />
     <ClInclude Include="..\include\Handle.h" />
     <ClInclude Include="..\include\IGDXDXGIContext.h" />
+    <ClInclude Include="..\include\IGDXLightSystem.h" />
     <ClInclude Include="..\include\IGDXOpenGLContext.h" />
     <ClInclude Include="..\include\IGDXPlatform.h" />
+    <ClInclude Include="..\include\IGDXRenderBackend.h" />
     <ClInclude Include="..\include\IGDXRenderer.h" />
     <ClInclude Include="..\include\IGDXWin32NativeAccess.h" />
     <ClInclude Include="..\include\IGDXWindow.h" />

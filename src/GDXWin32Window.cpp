@@ -16,15 +16,15 @@ namespace
         {
         case VK_ESCAPE: return Key::Escape;
         case VK_SPACE:  return Key::Space;
-        case 'A':       return Key::A;
-        case 'D':       return Key::D;
-        case 'S':       return Key::S;
-        case 'W':       return Key::W;
         case VK_LEFT:   return Key::Left;
         case VK_RIGHT:  return Key::Right;
         case VK_UP:     return Key::Up;
         case VK_DOWN:   return Key::Down;
-        default:        return Key::Unknown;
+        default:
+            // A-Z: Win32 VK-Codes für Buchstaben sind identisch mit ASCII 'A'-'Z'
+            if (wp >= 'A' && wp <= 'Z')
+                return static_cast<Key>(static_cast<int>(Key::A) + (wp - 'A'));
+            return Key::Unknown;
         }
     }
 
@@ -45,32 +45,32 @@ bool GDXWin32Window::RegisterClassOnce()
     static bool           s_registered = false;
 
     std::call_once(s_flag, []()
-    {
-        WNDCLASSEXW wc    = {};
-        wc.cbSize         = sizeof(wc);
-        wc.style          = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
-        wc.lpfnWndProc    = reinterpret_cast<WNDPROC>(StaticWndProc);
-        wc.hInstance      = GetModuleHandleW(nullptr);
-        wc.hCursor        = LoadCursor(nullptr, IDC_ARROW);
-        wc.hbrBackground  = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
-        wc.lpszClassName  = k_className;
-
-        if (!RegisterClassExW(&wc))
         {
-            const DWORD err = GetLastError();
-            if (err == ERROR_CLASS_ALREADY_EXISTS)
+            WNDCLASSEXW wc = {};
+            wc.cbSize = sizeof(wc);
+            wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
+            wc.lpfnWndProc = reinterpret_cast<WNDPROC>(StaticWndProc);
+            wc.hInstance = GetModuleHandleW(nullptr);
+            wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+            wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+            wc.lpszClassName = k_className;
+
+            if (!RegisterClassExW(&wc))
             {
-                // Another module already registered the class — perfectly fine.
-                s_registered = true;
+                const DWORD err = GetLastError();
+                if (err == ERROR_CLASS_ALREADY_EXISTS)
+                {
+                    // Another module already registered the class — perfectly fine.
+                    s_registered = true;
+                    return;
+                }
+                // Real failure: log with context and leave s_registered = false.
+                DBERROR(GDX_SRC_LOC, "RegisterClassExW failed (err=", err, ")");
                 return;
             }
-            // Real failure: log with context and leave s_registered = false.
-            DBERROR(GDX_SRC_LOC, "RegisterClassExW failed (err=", err, ")");
-            return;
-        }
 
-        s_registered = true;
-    });
+            s_registered = true;
+        });
 
     return s_registered;
 }
@@ -112,7 +112,7 @@ bool GDXWin32Window::Create()
     RECT rc = { 0, 0, m_desc.width, m_desc.height };
     AdjustWindowRect(&rc, style, FALSE);
 
-    const int ww = rc.right  - rc.left;
+    const int ww = rc.right - rc.left;
     const int wh = rc.bottom - rc.top;
 
     // ---------------------------------------------------------------------------
@@ -146,8 +146,8 @@ bool GDXWin32Window::Create()
         return false;
     }
 
-    m_handles.hwnd       = reinterpret_cast<HWND__*>(hwnd);
-    m_handles.hinstance  = reinterpret_cast<HINSTANCE__*>(GetModuleHandleW(nullptr));
+    m_handles.hwnd = reinterpret_cast<HWND__*>(hwnd);
+    m_handles.hinstance = reinterpret_cast<HINSTANCE__*>(GetModuleHandleW(nullptr));
 
     ShowWindow(hwnd, SW_SHOW);
     UpdateWindow(hwnd);
@@ -183,14 +183,14 @@ bool GDXWin32Window::QueryNativeHandles(GDXWin32NativeHandles& outHandles) const
 }
 
 long long __stdcall GDXWin32Window::StaticWndProc(
-    HWND__*            hwnd,
+    HWND__* hwnd,
     unsigned int       msg,
     unsigned long long wparam,
     long long          lparam)
 {
     if (msg == WM_NCCREATE)
     {
-        auto* cs  = reinterpret_cast<CREATESTRUCTW*>(lparam);
+        auto* cs = reinterpret_cast<CREATESTRUCTW*>(lparam);
         auto* win = static_cast<GDXWin32Window*>(cs->lpCreateParams);
         SetWindowLongPtrW(
             reinterpret_cast<HWND>(hwnd),
@@ -260,7 +260,7 @@ long long GDXWin32Window::WndProc(
 
 void GDXWin32Window::OnResize(int w, int h)
 {
-    m_width  = w;
+    m_width = w;
     m_height = h;
     m_events.Push(WindowResizedEvent{ w, h });
 }

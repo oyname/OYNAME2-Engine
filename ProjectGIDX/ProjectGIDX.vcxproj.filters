@@ -54,7 +54,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\app\main.cpp">
+    <ClCompile Include="..\app\main_lowlevel.cpp">
       <Filter>app</Filter>
     </ClCompile>
     <ClCompile Include="..\app\ECSGame.cpp">
@@ -96,9 +96,6 @@
     <ClCompile Include="..\app\AdapterEnum.cpp">
       <Filter>samples</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\GDXLightSystem.cpp">
-      <Filter>ecs</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\GDXTextureLoader.cpp">
       <Filter>engine\assets</Filter>
     </ClCompile>
@@ -107,6 +104,21 @@
     </ClCompile>
     <ClCompile Include="..\src\GDXShadowMap.cpp">
       <Filter>renderer\dx11</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\SnakeGame.cpp">
+      <Filter>app</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXDX11LightSystem.cpp">
+      <Filter>ecs</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\main.cpp">
+      <Filter>app</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXDX11RenderBackend.cpp">
+      <Filter>renderer\dx11</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXInput.cpp">
+      <Filter>engine\core</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -126,9 +138,6 @@
       <Filter>engine\platform</Filter>
     </ClInclude>
     <ClInclude Include="..\include\IGDXOpenGLContext.h">
-      <Filter>engine\platform</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\IGDXRenderer.h">
       <Filter>engine\platform</Filter>
     </ClInclude>
     <ClInclude Include="..\include\IGDXPlatform.h">
@@ -197,9 +206,6 @@
     <ClInclude Include="..\include\RenderQueue.h">
       <Filter>engine\renderer</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\FrameData.h">
-      <Filter>engine\renderer</Filter>
-    </ClInclude>
     <ClInclude Include="..\include\MaterialResource.h">
       <Filter>engine\renderer</Filter>
     </ClInclude>
@@ -221,9 +227,6 @@
     <ClInclude Include="..\include\GDXShaderResource.h">
       <Filter>engine\renderer</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\GDXLightSystem.h">
-      <Filter>ecs</Filter>
-    </ClInclude>
     <ClInclude Include="..\include\GDXTextureResource.h">
       <Filter>engine\assets</Filter>
     </ClInclude>
@@ -235,6 +238,33 @@
     </ClInclude>
     <ClInclude Include="..\third_party\stb_image.h">
       <Filter>third_party</Filter>
+    </ClInclude>
+    <ClInclude Include="..\app\SnakeGame.h">
+      <Filter>app</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXRenderBackend.h">
+      <Filter>engine\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXLightSystem.h">
+      <Filter>engine\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXDX11LightSystem.h">
+      <Filter>ecs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\gidx.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXRenderer.h">
+      <Filter>engine\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXFrameTimer.h">
+      <Filter>engine\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\FrameData.h">
+      <Filter>engine\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXInput.h">
+      <Filter>engine\core</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -1,4 +1,4 @@
-// GDXLightSystem.cpp — ECS-Lichtsystem.
+// GDXDX11LightSystem.cpp — DirectX 11 Implementierung von IGDXLightSystem.
 // Scannt LightComponent + WorldTransformComponent.
 // Befüllt FrameData.lights (Directional, Point, Spot).
 // Berechnet Shadow-ViewProj für erstes castShadows-Licht.
@@ -10,19 +10,20 @@
 #include <cstring>
 #include <cmath>
 
-#include "GDXLightSystem.h"
+#include "GDXDX11LightSystem.h"
+#include "Components.h"
 
 using namespace DirectX;
 
-// ---------------------------------------------------------------------------
 static constexpr float DEG2RAD = 3.14159265f / 180.0f;
 
-bool GDXLightSystem::Init(ID3D11Device* device)
+bool GDXDX11LightSystem::Init(void* devicePtr)
 {
+    ID3D11Device* device = static_cast<ID3D11Device*>(devicePtr);
     if (!device) return false;
 
     D3D11_BUFFER_DESC desc = {};
-    desc.ByteWidth      = sizeof(GDXLightCBuffer);
+    desc.ByteWidth      = sizeof(GDXDX11LightCBuffer);
     desc.Usage          = D3D11_USAGE_DYNAMIC;
     desc.BindFlags      = D3D11_BIND_CONSTANT_BUFFER;
     desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
@@ -30,12 +31,12 @@ bool GDXLightSystem::Init(ID3D11Device* device)
     return SUCCEEDED(device->CreateBuffer(&desc, nullptr, &m_lightBuffer));
 }
 
-void GDXLightSystem::Shutdown()
+void GDXDX11LightSystem::Shutdown()
 {
     if (m_lightBuffer) { m_lightBuffer->Release(); m_lightBuffer = nullptr; }
 }
 
-void GDXLightSystem::Update(Registry& registry, FrameData& frame, ID3D11DeviceContext* ctx)
+void GDXDX11LightSystem::Update(Registry& registry, FrameData& frame, void* ctxPtr)
 {
     frame.lightCount    = 0u;
     frame.hasShadowPass = false;
@@ -68,13 +69,12 @@ void GDXLightSystem::Update(Registry& registry, FrameData& frame, ID3D11DeviceCo
             le.diffuse.x = lc.diffuseColor.x * lc.intensity;
             le.diffuse.y = lc.diffuseColor.y * lc.intensity;
             le.diffuse.z = lc.diffuseColor.z * lc.intensity;
-            le.diffuse.w = lc.radius;   // a = Radius für Point/Spot Falloff
+            le.diffuse.w = lc.radius;
 
             le.radius    = lc.radius;
             le.intensity = lc.intensity;
 
             // --- Spot Cone: cos-Werte vorberechnen ---
-            // Shader macht nur einen dot() + Vergleich, keine trig-Funktion nötig.
             le.innerCosAngle = cosf(lc.innerConeAngle * DEG2RAD);
             le.outerCosAngle = cosf(lc.outerConeAngle * DEG2RAD);
 
@@ -106,14 +106,15 @@ void GDXLightSystem::Update(Registry& registry, FrameData& frame, ID3D11DeviceCo
             }
         });
 
+    ID3D11DeviceContext* ctx = static_cast<ID3D11DeviceContext*>(ctxPtr);
     if (ctx) UploadBuffer(ctx, frame);
 }
 
-void GDXLightSystem::UploadBuffer(ID3D11DeviceContext* ctx, const FrameData& frame)
+void GDXDX11LightSystem::UploadBuffer(ID3D11DeviceContext* ctx, const FrameData& frame)
 {
     if (!m_lightBuffer || !ctx) return;
 
-    GDXLightCBuffer cb = {};
+    GDXDX11LightCBuffer cb = {};
     cb.lightCount      = frame.lightCount;
     cb.sceneAmbient[0] = frame.sceneAmbient.x;
     cb.sceneAmbient[1] = frame.sceneAmbient.y;
@@ -121,13 +122,13 @@ void GDXLightSystem::UploadBuffer(ID3D11DeviceContext* ctx, const FrameData& fra
 
     for (uint32_t i = 0; i < frame.lightCount; ++i)
     {
-        const LightEntry&      src = frame.lights[i];
-        GDXLightCBufferEntry&  dst = cb.lights[i];
+        const LightEntry&          src = frame.lights[i];
+        GDXDX11LightCBufferEntry&  dst = cb.lights[i];
 
         dst.position[0] = src.position.x;
         dst.position[1] = src.position.y;
         dst.position[2] = src.position.z;
-        dst.position[3] = src.position.w;  // Lichttyp: 0=dir, 1=point, 2=spot
+        dst.position[3] = src.position.w;
 
         dst.direction[0] = src.direction.x;
         dst.direction[1] = src.direction.y;
@@ -137,7 +138,7 @@ void GDXLightSystem::UploadBuffer(ID3D11DeviceContext* ctx, const FrameData& fra
         dst.diffuse[0] = src.diffuse.x;
         dst.diffuse[1] = src.diffuse.y;
         dst.diffuse[2] = src.diffuse.z;
-        dst.diffuse[3] = src.diffuse.w;  // radius
+        dst.diffuse[3] = src.diffuse.w;
 
         dst.innerCosAngle = src.innerCosAngle;
         dst.outerCosAngle = src.outerCosAngle;
