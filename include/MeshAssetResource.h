@@ -23,8 +23,8 @@ struct GpuMeshBuffer
     void* positionBuffer    = nullptr;   // float3  POSITION0
     void* normalBuffer      = nullptr;   // float3  NORMAL0
     void* colorBuffer       = nullptr;   // float4  COLOR0
-    void* uv1Buffer         = nullptr;   // float2  TEXCOORD0
-    void* uv2Buffer         = nullptr;   // float2  TEXCOORD1
+    void* uv1Buffer         = nullptr;   // float2  TEXCOORD0 (UV0)
+    void* uv2Buffer         = nullptr;   // float2  TEXCOORD1 (UV1 / 2. UV-Set)
     void* tangentBuffer     = nullptr;   // float4  TANGENT0   (xyz + Handedness)
     void* boneIndexBuffer   = nullptr;   // uint4   BLENDINDICES0
     void* boneWeightBuffer  = nullptr;   // float4  BLENDWEIGHT0

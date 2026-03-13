@@ -1,4 +1,5 @@
 #include "TransformSystem.h"
+#include "Components.h"
 #include <vector>
 
 using namespace DirectX;
@@ -133,23 +134,43 @@ void TransformSystem::Update(Registry& registry)
 
 // ---------------------------------------------------------------------------
 // MarkDirty — Entity und alle Kinder als dirty markieren.
+//
+// Iterativ (kein Rekursionsrisiko).
+// Fast path: ChildrenComponent vorhanden → O(depth).
+// Slow path: Kein ChildrenComponent → O(n) Scan pro Ebene.
+// Vollständige Variante via HierarchySystem::MarkDirtySubtree() verfügbar.
 // ---------------------------------------------------------------------------
 void TransformSystem::MarkDirty(Registry& registry, EntityID id)
 {
-    auto* t = registry.Get<TransformComponent>(id);
-    if (!t) return;
-    t->dirty = true;
+    std::vector<EntityID> stack;
+    stack.reserve(16);
+    stack.push_back(id);
 
-    // Kind-Entities: alle Entities mit ParentComponent die auf id zeigen.
-    // Hinweis: Dies ist O(n) über alle ParentComponents — für tiefe Hierarchien
-    // in Phase 7 durch eine Parent→Children-Map ersetzen.
-    registry.View<TransformComponent, ParentComponent>(
-        [&](EntityID childID, TransformComponent& childT, ParentComponent& pc)
+    while (!stack.empty())
+    {
+        const EntityID cur = stack.back();
+        stack.pop_back();
+
+        if (!registry.IsAlive(cur)) continue;
+
+        auto* t = registry.Get<TransformComponent>(cur);
+        if (t) t->dirty = true;
+
+        // Fast path: ChildrenComponent → O(1) Kindlookup
+        if (const auto* cc = registry.Get<ChildrenComponent>(cur))
         {
-            if (pc.parent == id)
-            {
-                childT.dirty = true;
-                MarkDirty(registry, childID);  // Rekursiv für Enkel etc.
-            }
-        });
+            for (EntityID child : cc->children)
+                stack.push_back(child);
+        }
+        else
+        {
+            // Slow path: O(n) Scan (Fallback wenn HierarchySystem nicht genutzt)
+            registry.View<TransformComponent, ParentComponent>(
+                [&](EntityID childID, TransformComponent&, ParentComponent& pc)
+                {
+                    if (pc.parent == cur)
+                        stack.push_back(childID);
+                });
+        }
+    }
 }

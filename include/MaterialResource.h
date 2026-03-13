@@ -7,13 +7,10 @@
 // ---------------------------------------------------------------------------
 // MaterialData — cbuffer-kompatibles PBR-Datenstruct.
 //
-// DIREKT aus der alten Engine übernommen (Material::MaterialData).
-// Layout muss exakt mit dem HLSL cbuffer MaterialBuffer (b2) übereinstimmen.
+// Layout muss exakt mit dem HLSL cbuffer MaterialConstants (b2) übereinstimmen.
 // Änderungen hier erfordern Änderungen im PixelShader.
 //
-// 16-Byte-Alignment-Pflicht für DX11 Constant Buffers:
-//   Jedes Feld oder jede Feldgruppe muss auf 16-Byte-Grenzen ausgerichtet sein.
-//   Felder, die eine 16-Byte-Grenze überspannen, brechen das cbuffer-Layout.
+// 16-Byte-Alignment-Pflicht für DX11 Constant Buffers.
 // ---------------------------------------------------------------------------
 struct MaterialData
 {
@@ -24,36 +21,40 @@ struct MaterialData
     DirectX::XMFLOAT4 specularColor = { 0.5f, 0.5f, 0.5f, 1.0f };
 
     // --- Zeile 3: 16 Byte ---
-    DirectX::XMFLOAT4 emissiveColor = { 0.0f, 0.0f, 0.0f, 1.0f };  // .rgb * intensity
+    DirectX::XMFLOAT4 emissiveColor = { 0.0f, 0.0f, 0.0f, 1.0f };
 
     // --- Zeile 4: 16 Byte ---
-    DirectX::XMFLOAT4 uvTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f }; // xy=tiling, zw=offset
+    DirectX::XMFLOAT4 uvTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f }; // UV0: xy=tiling, zw=offset
 
     // --- Zeile 5: 16 Byte ---
-    float metallic          = 0.0f;   // 0..1
-    float roughness         = 0.5f;   // 0..1
-    float normalScale       = 1.0f;   // 0..2
-    float occlusionStrength = 1.0f;   // 0..1
+    // UV1 / Detail-Map Tiling+Offset — unabhängig von UV0.
+    // Wird nur ausgewertet wenn MF_USE_DETAIL_MAP gesetzt.
+    DirectX::XMFLOAT4 uvDetailTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f };
 
     // --- Zeile 6: 16 Byte ---
-    float    shininess       = 32.0f; // Phong (Legacy)
-    float    transparency    = 0.0f;  // 0=opak, 1=voll transparent
-    float    alphaCutoff     = 0.5f;  // Alpha-Test-Schwellwert
-    float    receiveShadows  = 1.0f;  // 1.0 = ja, 0.0 = nein (als float für den Shader)
+    float metallic          = 0.0f;
+    float roughness         = 0.5f;
+    float normalScale       = 1.0f;
+    float occlusionStrength = 1.0f;
 
     // --- Zeile 7: 16 Byte ---
-    float    blendMode   = 0.0f;      // 0=off 1=multiply 2=additive 3=lerp(alpha)
+    float    shininess      = 32.0f;
+    float    transparency   = 0.0f;
+    float    alphaCutoff    = 0.5f;
+    float    receiveShadows = 1.0f;
+
+    // --- Zeile 8: 16 Byte ---
+    float    blendMode   = 0.0f;
     float    blendFactor = 0.0f;
-    uint32_t flags       = 0u;        // MaterialFlags-Bitfeld
+    uint32_t flags       = 0u;    // MaterialFlags-Bitfeld
     float    _pad0       = 0.0f;
 
-    // Gesamtgröße: 7 × 16 = 112 Byte (cbuffer-konform)
+    // Gesamtgröße: 8 × 16 = 128 Byte (cbuffer-konform)
 };
-static_assert(sizeof(MaterialData) == 112, "MaterialData muss 112 Byte sein (cbuffer-Anforderung)");
+static_assert(sizeof(MaterialData) == 128, "MaterialData muss 128 Byte sein (cbuffer-Anforderung)");
 
 // ---------------------------------------------------------------------------
 // MaterialFlags — Bitfeld für MaterialData::flags.
-// Direkt aus der alten Engine übernommen.
 // ---------------------------------------------------------------------------
 enum MaterialFlags : uint32_t
 {
@@ -69,47 +70,49 @@ enum MaterialFlags : uint32_t
     MF_USE_ROUGHNESS_MAP = 1u << 8,
     MF_USE_METALLIC_MAP  = 1u << 9,
     MF_SHADING_PBR       = 1u << 10,
+
+    // Detail-Map über UV1 (2. UV-Set).
+    // Wenn gesetzt: gDetailMap (t4) wird mit UV1 abgetastet und als
+    // 2x-Multiply über Albedo gemischt.
+    // Wenn kein UV1-Set im Mesh vorhanden: Fallback auf UV0 (kein Crash,
+    // kein sichtbarer Effekt wenn Detail-Textur neutral/grau).
+    MF_USE_DETAIL_MAP    = 1u << 11,
 };
 
 // ---------------------------------------------------------------------------
 // MaterialResource — geteilte Material-Ressource im ResourceStore.
 //
-// Kein Shader*-Zeiger, keine MaterialGpuData*-Zeiger.
-// Alles über Handles referenziert.
-//
-// Eigentumsmodell:
-//   ResourceStore<MaterialResource, MaterialTag> besitzt alle Instanzen.
-//   Mehrere Entities können denselben MaterialHandle referenzieren.
-//   Der cbuffer (cpuDirty=true → GPU-Upload) gehört dem Material.
+// Kein Shader*-Zeiger, keine GPU-Manager-Zeiger.
+// Alles über Handles referenziert — ECS-konform.
 // ---------------------------------------------------------------------------
 struct MaterialResource
 {
     // PBR-Daten (cbuffer-Inhalt)
     MaterialData data;
 
-    // Shader-Referenz (per Handle — kein Zeiger)
+    // Shader-Referenz (per Handle)
     ShaderHandle shader;
 
     // Textur-Referenzen (per Handle — kein Zeiger)
     TextureHandle albedoTex;
     TextureHandle normalTex;
-    TextureHandle ormTex;        // Occlusion/Roughness/Metallic combined
+    TextureHandle ormTex;
     TextureHandle emissiveTex;
+    TextureHandle detailTex;   // UV1-Detail-Map — optional, nur wenn MF_USE_DETAIL_MAP
 
-    // Stabile numerische ID für Sort-Key-Berechnung.
-    // Wird vom ResourceStore beim Add() gesetzt (Slot-Index genügt).
+    // Stabile ID für Sort-Key
     uint32_t sortID = 0u;
 
-    // GPU-Seite (Backend-agnostisch)
-    void*  gpuConstantBuffer = nullptr;  // ID3D11Buffer* o.ä.
-    bool   cpuDirty          = true;     // true → GPU-Upload nötig
+    // GPU-Seite (backend-agnostisch)
+    void* gpuConstantBuffer = nullptr;
+    bool  cpuDirty          = true;
 
-    // Hilfsmethoden für MaterialFlags
-    bool IsTransparent()  const noexcept { return (data.flags & MF_TRANSPARENT)  != 0u; }
-    bool IsAlphaTest()    const noexcept { return (data.flags & MF_ALPHA_TEST)    != 0u; }
-    bool IsDoubleSided()  const noexcept { return (data.flags & MF_DOUBLE_SIDED)  != 0u; }
-    bool IsUnlit()        const noexcept { return (data.flags & MF_UNLIT)         != 0u; }
-    bool UsesPBR()        const noexcept { return (data.flags & MF_SHADING_PBR)  != 0u; }
+    bool IsTransparent() const noexcept { return (data.flags & MF_TRANSPARENT)     != 0u; }
+    bool IsAlphaTest()   const noexcept { return (data.flags & MF_ALPHA_TEST)      != 0u; }
+    bool IsDoubleSided() const noexcept { return (data.flags & MF_DOUBLE_SIDED)    != 0u; }
+    bool IsUnlit()       const noexcept { return (data.flags & MF_UNLIT)           != 0u; }
+    bool UsesPBR()       const noexcept { return (data.flags & MF_SHADING_PBR)     != 0u; }
+    bool UsesDetailMap() const noexcept { return (data.flags & MF_USE_DETAIL_MAP)  != 0u; }
 
     void SetFlag(MaterialFlags f, bool on) noexcept
     {
@@ -118,7 +121,14 @@ struct MaterialResource
         cpuDirty = true;
     }
 
-    // Bequemer Konstruktor für Flat-Color-Materialien (für Tests).
+    // Setzt UV1-Tiling für die Detail-Map (unabhängig von UV0).
+    void SetDetailTiling(float tilingX, float tilingY,
+                         float offsetX = 0.0f, float offsetY = 0.0f) noexcept
+    {
+        data.uvDetailTilingOffset = { tilingX, tilingY, offsetX, offsetY };
+        cpuDirty = true;
+    }
+
     static MaterialResource FlatColor(float r, float g, float b, float a = 1.0f)
     {
         MaterialResource m;

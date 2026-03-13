@@ -11,6 +11,7 @@
 #include "Components.h"
 #include "MeshAssetResource.h"
 #include "MaterialResource.h"
+#include "MeshProcessor.h"
 #include "Events.h"
 
 #include <memory>
@@ -161,12 +162,22 @@ public:
             MeshAssetResource asset;
             asset.debugName = "GroundCube";
             asset.AddSubmesh(BuiltinMeshes::Cube());
+
+            MeshBuildSettings build;
+            build.computeTangentsIfPossible = true;
+            MeshProcessor::Process(asset, build);
+
             m_hCube = m_renderer.UploadMesh(std::move(asset));
         }
         {
             MeshAssetResource asset;
             asset.debugName = "TailSkinned";
             asset.AddSubmesh(BuildTailSubmesh());
+
+            MeshBuildSettings build;
+            build.computeTangentsIfPossible = true;
+            MeshProcessor::Process(asset, build);
+
             m_hTail = m_renderer.UploadMesh(std::move(asset));
         }
 

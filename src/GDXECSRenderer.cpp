@@ -118,26 +118,16 @@ ShaderHandle GDXECSRenderer::CreateShaderVariant(const ShaderVariantKey& rawKey)
 
     if (key.pass == ShaderPassType::Main)
     {
+        psFile = L"ECSPixelShader.hlsl";
+
         if (skinned && vertexColor)
-        {
             vsFile = L"ECSVertexShader_SkinnedVertexColor.hlsl";
-            psFile = L"ECSPixelShader_VertexColor.hlsl";
-        }
         else if (skinned)
-        {
             vsFile = L"ECSVertexShader_Skinned.hlsl";
-            psFile = L"ECSPixelShader.hlsl";
-        }
         else if (vertexColor)
-        {
             vsFile = L"ECSVertexShader_VertexColor.hlsl";
-            psFile = L"ECSPixelShader_VertexColor.hlsl";
-        }
         else
-        {
             vsFile = L"ECSVertexShader.hlsl";
-            psFile = L"ECSPixelShader.hlsl";
-        }
     }
     else
     {

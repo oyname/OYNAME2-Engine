@@ -123,6 +123,46 @@ struct ParentComponent
     ParentComponent() = default;
     explicit ParentComponent(EntityID p) : parent(p) {}
 };
+// ===========================================================================
+// ChildrenComponent — Rückreferenz vom Parent zu seinen direkten Kindern.
+//
+// Wird ausschließlich von HierarchySystem::SetParent / Detach gepflegt.
+// Ermöglicht O(1)-Kindlookup und O(depth) dirty-Propagation.
+//
+// NICHT manuell befüllen.
+// Entities ohne Kinder haben keine ChildrenComponent.
+// ===========================================================================
+struct ChildrenComponent
+{
+    std::vector<EntityID> children;
+
+    uint32_t Count() const noexcept
+    {
+        return static_cast<uint32_t>(children.size());
+    }
+
+    void Add(EntityID child)
+    {
+        for (EntityID e : children)
+            if (e == child) return;
+        children.push_back(child);
+    }
+
+    void Remove(EntityID child)
+    {
+        for (auto it = children.begin(); it != children.end(); ++it)
+        {
+            if (*it == child)
+            {
+                *it = children.back();
+                children.pop_back();
+                return;
+            }
+        }
+    }
+};
+
+
 
 // ===========================================================================
 // MeshRefComponent — Referenz auf eine Mesh-Ressource per Handle.
@@ -195,8 +235,8 @@ struct SkinComponent
 // ===========================================================================
 struct VisibilityComponent
 {
-    bool     visible   = true;
-    bool     active    = true;
+    bool     visible = true;
+    bool     active = true;
     uint32_t layerMask = 0x00000001u;  // LAYER_DEFAULT
 
     // Schatten werfen: RenderGatherSystem liest dieses Flag um ShadowCasterTag zu ersetzen.
@@ -243,8 +283,8 @@ struct ActiveCameraTag {};
 enum class LightKind : uint8_t
 {
     Directional = 0,
-    Point       = 1,
-    Spot        = 2,   // Kegel-Licht: Position + Richtung + inner/outer cone
+    Point = 1,
+    Spot = 2,   // Kegel-Licht: Position + Richtung + inner/outer cone
 };
 
 // ===========================================================================
@@ -256,18 +296,18 @@ struct LightComponent
 
     DirectX::XMFLOAT4 diffuseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
 
-    float radius         = 10.0f;   // Point/Spot: Reichweite in Welteinheiten
-    float intensity      = 1.0f;
+    float radius = 10.0f;   // Point/Spot: Reichweite in Welteinheiten
+    float intensity = 1.0f;
 
     // Spot-Light Kegel (in Grad)
     float innerConeAngle = 15.0f;
     float outerConeAngle = 30.0f;
 
     // Shadow (nur Directional)
-    bool  castShadows     = false;
+    bool  castShadows = false;
     float shadowOrthoSize = 50.0f;
-    float shadowNear      = 0.1f;
-    float shadowFar       = 1000.0f;
+    float shadowNear = 0.1f;
+    float shadowFar = 1000.0f;
 
     LightComponent() = default;
 };

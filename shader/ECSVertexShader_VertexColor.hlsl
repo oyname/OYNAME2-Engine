@@ -19,6 +19,7 @@ struct VS_INPUT
     float3 normal     : NORMAL;
     float4 color      : COLOR;
     float2 texCoord   : TEXCOORD0;
+    float2 texCoord1  : TEXCOORD1;
 };
 
 struct VS_OUTPUT
@@ -29,6 +30,7 @@ struct VS_OUTPUT
     float2 texCoord           : TEXCOORD0;
     float4 positionLightSpace : TEXCOORD2;
     float3 viewDirection      : TEXCOORD3;
+    float2 texCoord1          : TEXCOORD4;
     float4 vertexColor        : COLOR0;
 };
 
@@ -40,6 +42,7 @@ VS_OUTPUT main(VS_INPUT input)
     o.position = mul(worldPos, gViewProj);
     o.normal = normalize(mul(input.normal, (float3x3)gWorldInverseTranspose));
     o.texCoord = input.texCoord;
+    o.texCoord1 = input.texCoord1;
     o.positionLightSpace = mul(worldPos, gShadowViewProj);
     o.viewDirection = normalize(gCameraPos.xyz - worldPos.xyz);
     o.vertexColor = input.color;

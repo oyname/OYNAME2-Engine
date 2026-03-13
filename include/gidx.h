@@ -32,6 +32,9 @@
 #include "SubmeshData.h"
 #include "MaterialResource.h"
 #include "MeshAssetResource.h"
+#include "SubmeshBuilder.h"
+#include "MeshUtilities.h"
+#include "MeshProcessor.h"
 #include "WindowDesc.h"
 #include "Events.h"
 #include "Debug.h"
@@ -295,32 +298,55 @@ namespace Engine
     }
 
 
+
+    inline LPMESH UploadMeshAsset(MeshAssetResource asset, const MeshBuildSettings& settings = {})
+    {
+        if (!_::renderer)
+        {
+            DBERROR(GDX_SRC_LOC, "Engine::UploadMeshAsset: Bind()/Graphics() fehlt");
+            return NULL_MESH;
+        }
+
+        if (!MeshProcessor::Process(asset, settings))
+        {
+            DBERROR(GDX_SRC_LOC, "Engine::UploadMeshAsset: Mesh-Verarbeitung/Validierung fehlgeschlagen");
+            return NULL_MESH;
+        }
+
+        return _::renderer->UploadMesh(std::move(asset));
+    }
+
+    inline LPMESH UploadSubmesh(SubmeshData submesh, const char* debugName = "Submesh", const MeshBuildSettings& settings = {})
+    {
+        MeshAssetResource asset;
+        asset.debugName = debugName ? debugName : "Submesh";
+        asset.AddSubmesh(std::move(submesh));
+        return UploadMeshAsset(std::move(asset), settings);
+    }
+
     // ===========================================================================
     // BUILTIN MESH HELPER
     // ===========================================================================
 
     inline LPMESH Sphere(float radius = 0.5f, uint32_t slices = 24, uint32_t stacks = 16)
     {
-        MeshAssetResource asset;
-        asset.debugName = "Sphere";
-        asset.AddSubmesh(BuiltinMeshes::Sphere(radius, slices, stacks));
-        return _::renderer->UploadMesh(std::move(asset));
+        MeshBuildSettings settings;
+        settings.computeTangentsIfPossible = true;
+        return UploadSubmesh(BuiltinMeshes::Sphere(radius, slices, stacks), "Sphere", settings);
     }
 
     inline LPMESH Cube()
     {
-        MeshAssetResource asset;
-        asset.debugName = "Cube";
-        asset.AddSubmesh(BuiltinMeshes::Cube());
-        return _::renderer->UploadMesh(std::move(asset));
+        MeshBuildSettings settings;
+        settings.computeTangentsIfPossible = true;
+        return UploadSubmesh(BuiltinMeshes::Cube(), "Cube", settings);
     }
 
     inline LPMESH Octahedron(float radius = 0.5f)
     {
-        MeshAssetResource asset;
-        asset.debugName = "Octahedron";
-        asset.AddSubmesh(BuiltinMeshes::Octahedron(radius));
-        return _::renderer->UploadMesh(std::move(asset));
+        MeshBuildSettings settings;
+        settings.computeTangentsIfPossible = true;
+        return UploadSubmesh(BuiltinMeshes::Octahedron(radius), "Octahedron", settings);
     }
 
 

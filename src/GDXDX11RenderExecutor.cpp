@@ -72,6 +72,10 @@ bool GDXDX11MeshUploader::UploadSubmesh(SubmeshData& cpu, GpuMeshBuffer& gpu)
         upload(cpu.uv0.data(), sizeof(DirectX::XMFLOAT2),
                cpu.VertexCount(), gpu.uv1Buffer, gpu.strideUV1);
 
+    if (cpu.HasUV1())
+        upload(cpu.uv1.data(), sizeof(DirectX::XMFLOAT2),
+               cpu.VertexCount(), gpu.uv2Buffer, gpu.strideUV2);
+
     if (cpu.HasTangents())
         upload(cpu.tangents.data(), sizeof(DirectX::XMFLOAT4),
                cpu.VertexCount(), gpu.tangentBuffer, gpu.strideTangent);
@@ -187,8 +191,17 @@ bool GDXDX11RenderExecutor::BindVertexStreams(const GpuMeshBuffer& gpu, uint32_t
     if (!bind(flags & GDX_VERTEX_POSITION,     gpu.positionBuffer,   gpu.stridePosition))   return false;
     if (!bind(flags & GDX_VERTEX_NORMAL,       gpu.normalBuffer,     gpu.strideNormal))     return false;
     if (!bind(flags & GDX_VERTEX_COLOR,        gpu.colorBuffer,      gpu.strideColor))      return false;
-    if (!bind(flags & GDX_VERTEX_TEX1,         gpu.uv1Buffer,        gpu.strideUV1))        return false;
-    if (!bind(flags & GDX_VERTEX_TEX2,         gpu.uv2Buffer,        gpu.strideUV2))        return false;
+    if (!bind(flags & GDX_VERTEX_TEX1, gpu.uv1Buffer, gpu.strideUV1)) return false;
+    // UV1-Slot: echter UV1-Buffer wenn vorhanden, sonst UV0 aliasieren.
+    // Garantiert valide Daten in TEXCOORD1 ohne Shader-Variante.
+    // MF_USE_DETAIL_MAP im Material entscheidet ob UV1 genutzt wird.
+    if (flags & GDX_VERTEX_TEX1)
+    {
+        const bool hasUV1  = (flags & GDX_VERTEX_TEX2) && gpu.uv2Buffer;
+        void*     uv1Buf   = hasUV1 ? gpu.uv2Buffer  : gpu.uv1Buffer;
+        uint32_t  uv1Str   = hasUV1 ? gpu.strideUV2  : gpu.strideUV1;
+        if (!bind(true, uv1Buf, uv1Str)) return false;
+    }
     if (!bind(flags & GDX_VERTEX_TANGENT,      gpu.tangentBuffer,    gpu.strideTangent))    return false;
     if (!bind(flags & GDX_VERTEX_BONE_INDICES, gpu.boneIndexBuffer,  gpu.strideBoneIndex))  return false;
     if (!bind(flags & GDX_VERTEX_BONE_WEIGHTS, gpu.boneWeightBuffer, gpu.strideBoneWeight)) return false;
@@ -219,15 +232,16 @@ void GDXDX11RenderExecutor::BindMaterialTextures(
         return static_cast<ID3D11ShaderResourceView*>(tex->srv);
     };
 
-    ID3D11ShaderResourceView* srvs[4] =
+    ID3D11ShaderResourceView* srvs[5] =
     {
         getSRV(mat.albedoTex,   defaultWhite),   // t0
         getSRV(mat.normalTex,   defaultNormal),  // t1
         getSRV(mat.ormTex,      defaultORM),     // t2
         getSRV(mat.emissiveTex, defaultBlack),   // t3
+        getSRV(mat.detailTex,   defaultWhite),   // t4 — Detail-Map (UV1)
     };
 
-    m_context->PSSetShaderResources(0, 4, srvs);
+    m_context->PSSetShaderResources(0, 5, srvs);
 }
 
 // ---------------------------------------------------------------------------

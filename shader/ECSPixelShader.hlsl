@@ -1,8 +1,15 @@
 // ECSPixelShader.hlsl — GIDX ECS Engine
-// Lighting: Directional, Point, Spot (alle drei echt implementiert).
+// Lighting: Directional, Point, Spot.
 // Shading:  Phong (Standard) oder Cook-Torrance PBR (MF_SHADING_PBR).
 // Shadow:   PCF 3x3 (t16, s7).
-// Texturen: t0=Albedo, t1=Normal, t2=ORM, t3=Emissive.
+// Texturen: t0=Albedo, t1=Normal, t2=ORM, t3=Emissive, t4=DetailMap.
+//
+// UV-Sets:
+//   texCoord  (TEXCOORD0) — UV0: primäre Texturkoordinaten (Albedo, Normal, ORM, Emissive)
+//   texCoord1 (TEXCOORD4) — UV1: Detail-Map / Lightmap
+//   MF_USE_DETAIL_MAP steuert ob UV1 ausgewertet wird.
+//   Kein echtes UV1 im Mesh: Executor aliasiert UV0 → TEXCOORD1-Slot.
+//   Ohne MF_USE_DETAIL_MAP wird texCoord1 nie ausgewertet — kein Overhead.
 
 // ---------------------------------------------------------------------------
 // Texturen + Sampler
@@ -11,6 +18,7 @@ Texture2D              gAlbedo    : register(t0);
 Texture2D              gNormalMap : register(t1);
 Texture2D              gORM       : register(t2);
 Texture2D              gEmissive  : register(t3);
+Texture2D              gDetailMap : register(t4);   // UV1-Detail-Map (2x Multiply Blend)
 Texture2D              gShadowMap : register(t16);
 
 SamplerState           gSampler    : register(s0);
@@ -30,43 +38,44 @@ cbuffer FrameConstants : register(b1)
 
 cbuffer MaterialConstants : register(b2)
 {
-    float4   gBaseColor;
-    float4   gSpecularColor;
-    float4   gEmissiveColor;
-    float4   gUVTilingOffset;
-    float    gMetallic;
+    float4   gBaseColor;              // Zeile 1
+    float4   gSpecularColor;          // Zeile 2
+    float4   gEmissiveColor;          // Zeile 3
+    float4   gUVTilingOffset;         // Zeile 4 — UV0: xy=tiling, zw=offset
+    float4   gUVDetailTilingOffset;   // Zeile 5 — UV1: xy=tiling, zw=offset
+    float    gMetallic;               // Zeile 6
     float    gRoughness;
     float    gNormalScale;
     float    gOcclusionStrength;
-    float    gShininess;
+    float    gShininess;              // Zeile 7
     float    gTransparency;
     float    gAlphaCutoff;
     float    gReceiveShadows;
-    float    gBlendMode;
+    float    gBlendMode;              // Zeile 8
     float    gBlendFactor;
     uint     gFlags;
     float    _pad0;
 };
 
 // MaterialFlags (muss mit MaterialResource.h übereinstimmen)
-#define MF_ALPHA_TEST     (1u << 0)
-#define MF_DOUBLE_SIDED   (1u << 1)
-#define MF_UNLIT          (1u << 2)
-#define MF_USE_NORMAL_MAP (1u << 3)
-#define MF_USE_ORM_MAP    (1u << 4)
-#define MF_USE_EMISSIVE   (1u << 5)
-#define MF_SHADING_PBR    (1u << 10)
-#define ROUGHNESS_MIN     0.04f
+#define MF_ALPHA_TEST      (1u << 0)
+#define MF_DOUBLE_SIDED    (1u << 1)
+#define MF_UNLIT           (1u << 2)
+#define MF_USE_NORMAL_MAP  (1u << 3)
+#define MF_USE_ORM_MAP     (1u << 4)
+#define MF_USE_EMISSIVE    (1u << 5)
+#define MF_SHADING_PBR     (1u << 10)
+#define MF_USE_DETAIL_MAP  (1u << 11)  // UV1-Detail-Map aktiv
+#define ROUGHNESS_MIN      0.04f
 
 // ---------------------------------------------------------------------------
 // LightBuffer (b3)
-// w-Komponente von position kodiert den Typ: 0=Directional, 1=Point, 2=Spot
 // ---------------------------------------------------------------------------
 struct LightData
 {
-    float4 position;      // xyz=pos,  w=typ (0=dir, 1=point, 2=spot)
-    float4 direction;     // xyz=dir (world, normalized), w=unused
-    float4 diffuse;       // rgb=color*intensity, a=radius
+    float4 position;       // xyz=pos, w=typ (0=dir, 1=point, 2=spot)
+    float4 direction;      // xyz=dir (world, normalized), w=unused
+    float4 diffuse;        // rgb=color*intensity, a=radius
     float  innerCosAngle;
     float  outerCosAngle;
     float  _pad0;
@@ -76,7 +85,7 @@ struct LightData
 cbuffer LightBuffer : register(b3)
 {
     LightData lights[32];
-    float3    sceneAmbient; // globale Grundhelligkeit — einmal pro Szene
+    float3    sceneAmbient;
     uint      lightCount;
 };
 
@@ -85,12 +94,14 @@ cbuffer LightBuffer : register(b3)
 // ---------------------------------------------------------------------------
 struct PS_INPUT
 {
-    float4 position          : SV_POSITION;
-    float3 normal            : NORMAL;
-    float3 worldPosition     : TEXCOORD1;
-    float2 texCoord          : TEXCOORD0;
-    float4 positionLightSpace: TEXCOORD2;
-    float3 viewDirection     : TEXCOORD3;
+    float4 position           : SV_POSITION;
+    float3 normal             : NORMAL;
+    float3 worldPosition      : TEXCOORD1;
+    float2 texCoord           : TEXCOORD0;    // UV0
+    float4 positionLightSpace : TEXCOORD2;
+    float3 viewDirection      : TEXCOORD3;
+    float2 texCoord1          : TEXCOORD4;    // UV1 (oder Alias UV0 wenn kein 2. UV-Set)
+    float4 vertexColor        : COLOR0;
 };
 
 // ---------------------------------------------------------------------------
@@ -156,8 +167,7 @@ float CalculateShadow(float4 lightSpacePos, float3 N, float3 lightDir)
 }
 
 // ---------------------------------------------------------------------------
-// Attenuation für Point- und Spot-Lichter
-// Inverse-Square mit sauberem Cutoff am Radius
+// Attenuation
 // ---------------------------------------------------------------------------
 float CalcAttenuation(float dist, float radius)
 {
@@ -168,16 +178,10 @@ float CalcAttenuation(float dist, float radius)
     return (1.0f - s2) * (1.0f - s2) / max(1.0f + s2, 1e-5f);
 }
 
-// ---------------------------------------------------------------------------
-// Spot-Cone Attenuation
-// innerCos > outerCos (engerer Winkel → größerer Kosinus)
-// ---------------------------------------------------------------------------
 float CalcSpotCone(float3 lightDir, float3 spotDir,
                    float innerCos, float outerCos)
 {
-    // spotDir zeigt in Lichtrichtung, lightDir zeigt von Licht zum Pixel
     float cosAngle = dot(normalize(lightDir), normalize(spotDir));
-    // smoothstep: 0 außerhalb outerCone, 1 innerhalb innerCone
     return smoothstep(outerCos, innerCos, cosAngle);
 }
 
@@ -186,7 +190,12 @@ float CalcSpotCone(float3 lightDir, float3 spotDir,
 // ---------------------------------------------------------------------------
 float4 main(PS_INPUT input) : SV_TARGET
 {
-    float2 uv = input.texCoord * gUVTilingOffset.xy + gUVTilingOffset.zw;
+    // UV0 — primäre Koordinaten (Tiling + Offset aus Material)
+    float2 uv  = input.texCoord  * gUVTilingOffset.xy       + gUVTilingOffset.zw;
+
+    // UV1 — Detail-Map-Koordinaten (eigenes Tiling + Offset)
+    // Ohne MF_USE_DETAIL_MAP wird diese Variable nie ausgewertet.
+    float2 uv1 = input.texCoord1 * gUVDetailTilingOffset.xy + gUVDetailTilingOffset.zw;
 
     // --- Normal ---
     float3 N = normalize(input.normal);
@@ -204,9 +213,20 @@ float4 main(PS_INPUT input) : SV_TARGET
     }
 
     // --- Albedo ---
-    float4 baseColor = gAlbedo.Sample(gSampler, uv) * gBaseColor;
+    float4 baseColor = gAlbedo.Sample(gSampler, uv) * gBaseColor * input.vertexColor;
     if ((gFlags & MF_ALPHA_TEST) != 0u)
         if (baseColor.a < gAlphaCutoff) discard;
+
+    // --- Detail-Map (UV1) ---
+    // Nur wenn MF_USE_DETAIL_MAP gesetzt — kein Overhead ohne das Flag.
+    // Blend: 2x Multiply (neutral bei 0.5 Grau, heller/dunkler bei Abweichung).
+    if ((gFlags & MF_USE_DETAIL_MAP) != 0u)
+    {
+        float3 detail    = gDetailMap.Sample(gSampler, uv1).rgb;
+        baseColor.rgb   *= detail * 2.0f;
+        baseColor.rgb    = saturate(baseColor.rgb);
+    }
+
     float3 albedo = baseColor.rgb;
 
     // --- PBR Parameter ---
@@ -224,7 +244,7 @@ float4 main(PS_INPUT input) : SV_TARGET
     // --- Unlit ---
     if ((gFlags & MF_UNLIT) != 0u)
     {
-        float3 em = float3(0,0,0);
+        float3 em = float3(0, 0, 0);
         if ((gFlags & MF_USE_EMISSIVE) != 0u)
             em = gEmissive.Sample(gSampler, uv).rgb * gEmissiveColor.rgb;
         return float4(albedo + em, baseColor.a * (1.0f - gTransparency));
@@ -234,17 +254,15 @@ float4 main(PS_INPUT input) : SV_TARGET
     float3 V     = normalize(input.viewDirection);
     bool   isPBR = (gFlags & MF_SHADING_PBR) != 0u;
 
-    // Fallback Ambient wenn keine Lichter vorhanden
-    float3 ambient      = sceneAmbient;
-    float3 diffuseAcc   = float3(0,0,0);
-    float3 specularAcc  = float3(0,0,0);
+    float3 ambient     = sceneAmbient;
+    float3 diffuseAcc  = float3(0, 0, 0);
+    float3 specularAcc = float3(0, 0, 0);
 
-    // Erstes Directional-Licht für Shadow identifizieren
     int    shadowIdx = -1;
-    float3 shadowDir = float3(0,-1,0);
+    float3 shadowDir = float3(0, -1, 0);
     [loop] for (uint s = 0; s < lightCount; ++s)
     {
-        if (lights[s].position.w < 0.5f)  // Directional
+        if (lights[s].position.w < 0.5f)
         {
             shadowIdx = (int)s;
             shadowDir = normalize(lights[s].direction.xyz);
@@ -255,49 +273,40 @@ float4 main(PS_INPUT input) : SV_TARGET
     [loop]
     for (uint i = 0; i < lightCount; ++i)
     {
-        float  lightType  = lights[i].position.w; // 0=dir, 1=point, 2=spot
+        float  lightType  = lights[i].position.w;
         float3 lightColor = lights[i].diffuse.rgb;
         float  radius     = lights[i].diffuse.a;
 
-        float3 lightDir;      // Richtung von Pixel ZUM Licht (negiert später für NdotL)
+        float3 lightDir;
         float  attenuation = 1.0f;
 
-        if (lightType < 0.5f)   // --- Directional ---
+        if (lightType < 0.5f)
         {
             lightDir    = normalize(lights[i].direction.xyz);
             attenuation = 1.0f;
         }
-        else if (lightType < 1.5f)  // --- Point ---
+        else if (lightType < 1.5f)
         {
             float3 toLight = lights[i].position.xyz - input.worldPosition;
             float  dist    = length(toLight);
-            lightDir       = -normalize(toLight);   // Richtung: Pixel → Licht (negiert)
+            lightDir       = -normalize(toLight);
             attenuation    = CalcAttenuation(dist, radius);
         }
-        else  // --- Spot (lightType >= 1.5) ---
+        else
         {
             float3 toLight  = lights[i].position.xyz - input.worldPosition;
             float  dist     = length(toLight);
             float3 toLightN = normalize(toLight);
-            lightDir        = -toLightN;   // Richtung Pixel → Licht
-
-            // Distanz-Falloff (wie Point)
-            float distAtt  = CalcAttenuation(dist, radius);
-
-            // Winkel-Falloff (Spot Cone)
-            // lights[i].direction zeigt in Lichtrichtung (vom Licht weg)
-            float coneAtt = CalcSpotCone(
-                lights[i].direction.xyz,  // Spot-Achse (vom Licht weg)
-                -toLightN,                // Richtung vom Licht zum Pixel
-                lights[i].innerCosAngle,
-                lights[i].outerCosAngle);
-
+            lightDir        = -toLightN;
+            float distAtt   = CalcAttenuation(dist, radius);
+            float coneAtt   = CalcSpotCone(
+                lights[i].direction.xyz, -toLightN,
+                lights[i].innerCosAngle, lights[i].outerCosAngle);
             attenuation = distAtt * coneAtt;
         }
 
         if (attenuation <= 0.0f) continue;
 
-        // Shadow nur für erstes Directional-Licht
         float shadow = 1.0f;
         if (gReceiveShadows > 0.5f && (int)i == shadowIdx)
             shadow = CalculateShadow(input.positionLightSpace, N, shadowDir);
@@ -306,36 +315,32 @@ float4 main(PS_INPUT input) : SV_TARGET
 
         if (!isPBR)
         {
-            // --- Phong ---
             diffuseAcc += lightColor * NdotL * attenuation * shadow;
             float3 H    = normalize(-lightDir + V);
             float  spec = pow(max(dot(N, H), 0.0f), max(gShininess, 1.0f));
-            specularAcc += gSpecularColor.rgb * spec * lightColor
-                         * attenuation * shadow * NdotL;
+            specularAcc += gSpecularColor.rgb * spec * lightColor * attenuation * shadow * NdotL;
         }
         else
         {
-            // --- Cook-Torrance PBR ---
             float3 L    = -lightDir;
             float3 H    = normalize(V + L);
             float NdotV = max(dot(N, V), 0.0f);
             float NdotH = max(dot(N, H), 0.0f);
             float VdotH = max(dot(V, H), 0.0f);
 
-            float3 F0     = lerp(float3(0.04f,0.04f,0.04f), albedo, metallic);
-            float  D      = DistributionGGX(NdotH, roughness);
-            float  G      = GeometrySmith(NdotV, NdotL, roughness);
-            float3 F      = FresnelSchlick(VdotH, F0);
-            float3 kD     = (1.0f - F) * (1.0f - metallic);
-            float3 spec   = (D * G * F) / max(4.0f * NdotV * NdotL, 1e-6f);
+            float3 F0   = lerp(float3(0.04f, 0.04f, 0.04f), albedo, metallic);
+            float  D    = DistributionGGX(NdotH, roughness);
+            float  G    = GeometrySmith(NdotV, NdotL, roughness);
+            float3 F    = FresnelSchlick(VdotH, F0);
+            float3 kD   = (1.0f - F) * (1.0f - metallic);
+            float3 spec = (D * G * F) / max(4.0f * NdotV * NdotL, 1e-6f);
 
-            diffuseAcc += (kD * albedo / PI + spec)
-                        * lightColor * NdotL * attenuation * shadow;
+            diffuseAcc += (kD * albedo / PI + spec) * lightColor * NdotL * attenuation * shadow;
         }
     }
 
     // --- Emissive ---
-    float3 emissive = float3(0,0,0);
+    float3 emissive = float3(0, 0, 0);
     if ((gFlags & MF_USE_EMISSIVE) != 0u)
         emissive = gEmissive.Sample(gSampler, uv).rgb * gEmissiveColor.rgb;
 

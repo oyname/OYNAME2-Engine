@@ -85,6 +85,15 @@
     <Filter Include="app\shader skinning">
       <UniqueIdentifier>{14630285-121d-420f-963c-4c0a55c1b503}</UniqueIdentifier>
     </Filter>
+    <Filter Include="app\uv dateil cube">
+      <UniqueIdentifier>{8e0fafdb-4d4d-4273-9399-4878acb80cb4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\parenting showcase">
+      <UniqueIdentifier>{dac974b4-a685-453f-bac0-b003a26da59f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\MeshBuilder">
+      <UniqueIdentifier>{f944617f-68eb-4179-8a2b-b9886c030f56}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\GDXEngine.cpp">
@@ -179,6 +188,18 @@
     </ClCompile>
     <ClCompile Include="..\app\bone_animation.cpp">
       <Filter>app\shader skinning</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\uv1_detail_cube.cpp">
+      <Filter>app\uv dateil cube</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\HierarchySystem.cpp">
+      <Filter>engine\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\parenting_showcase.cpp">
+      <Filter>app\parenting showcase</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\meshbuilder.cpp">
+      <Filter>app\MeshBuilder</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -338,12 +359,54 @@
     <ClInclude Include="..\include\ShaderVariant.h">
       <Filter>engine\renderer\shader</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\HierarchySystem.h">
+      <Filter>engine\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\MeshProcessor.h">
+      <Filter>engine\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\MeshUtilities.h">
+      <Filter>engine\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\SubmeshBuilder.h">
+      <Filter>engine\assets</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Text Include="..\shader\ECSPixelShader.hlsl">
       <Filter>shader</Filter>
     </Text>
     <Text Include="..\shader\ECSVertexShader.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\ECSVertexShader_VertexColor.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\ECSVertexShader_SkinnedVertexColor.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\ECSPixelShader_VertexColor.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\ECSShadowPixelShader.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\ECSShadowPixelShader_AlphaTest.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\ECSShadowVertexShader.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\ECSShadowVertexShader_AlphaTest.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\ECSShadowVertexShader_Skinned.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\ECSShadowVertexShader_SkinnedAlphaTest.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\ECSVertexShader_Skinned.hlsl">
       <Filter>shader</Filter>
     </Text>
   </ItemGroup>

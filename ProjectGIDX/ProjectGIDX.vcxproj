@@ -123,8 +123,8 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\app\bone_animation.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\app\layers.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
@@ -139,6 +139,14 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\app\ECSGame.cpp" />
+    <ClCompile Include="..\app\meshbuilder.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\app\parenting_showcase.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="..\app\RTT Example.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
@@ -168,6 +176,10 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
+    <ClCompile Include="..\app\uv1_detail_cube.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="..\src\CameraSystem.cpp" />
     <ClCompile Include="..\src\GDXDX11LightSystem.cpp" />
     <ClCompile Include="..\src\GDXDX11RenderBackend.cpp" />
@@ -175,6 +187,7 @@
     <ClCompile Include="..\src\GDXSamplerCache.cpp" />
     <ClCompile Include="..\src\GDXShadowMap.cpp" />
     <ClCompile Include="..\src\GDXTextureLoader.cpp" />
+    <ClCompile Include="..\src\HierarchySystem.cpp" />
     <ClCompile Include="..\src\TransformSystem.cpp" />
     <ClCompile Include="..\src\RenderGatherSystem.cpp" />
     <ClCompile Include="..\src\GDXECSRenderer.cpp" />
@@ -218,6 +231,7 @@
     <ClInclude Include="..\include\GDXWin32Window.h" />
     <ClInclude Include="..\include\gidx.h" />
     <ClInclude Include="..\include\Handle.h" />
+    <ClInclude Include="..\include\HierarchySystem.h" />
     <ClInclude Include="..\include\IGDXDXGIContext.h" />
     <ClInclude Include="..\include\IGDXLightSystem.h" />
     <ClInclude Include="..\include\IGDXOpenGLContext.h" />
@@ -228,6 +242,8 @@
     <ClInclude Include="..\include\IGDXWindow.h" />
     <ClInclude Include="..\include\MaterialResource.h" />
     <ClInclude Include="..\include\MeshAssetResource.h" />
+    <ClInclude Include="..\include\MeshProcessor.h" />
+    <ClInclude Include="..\include\MeshUtilities.h" />
     <ClInclude Include="..\include\Registry.h" />
     <ClInclude Include="..\include\RenderCommand.h" />
     <ClInclude Include="..\include\RenderGatherSystem.h" />
@@ -235,6 +251,7 @@
     <ClInclude Include="..\include\RenderQueue.h" />
     <ClInclude Include="..\include\ResourceStore.h" />
     <ClInclude Include="..\include\ShaderVariant.h" />
+    <ClInclude Include="..\include\SubmeshBuilder.h" />
     <ClInclude Include="..\include\SubmeshData.h" />
     <ClInclude Include="..\include\TransformSystem.h" />
     <ClInclude Include="..\include\WindowDesc.h" />
@@ -245,6 +262,38 @@
       <FileType>Document</FileType>
     </Text>
     <Text Include="..\shader\ECSVertexShader.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="..\shader\ECSPixelShader_VertexColor.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+    <Text Include="..\shader\ECSShadowPixelShader.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+    <Text Include="..\shader\ECSShadowPixelShader_AlphaTest.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+    <Text Include="..\shader\ECSShadowVertexShader.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+    <Text Include="..\shader\ECSShadowVertexShader_AlphaTest.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+    <Text Include="..\shader\ECSShadowVertexShader_Skinned.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+    <Text Include="..\shader\ECSShadowVertexShader_SkinnedAlphaTest.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+    <Text Include="..\shader\ECSVertexShader_Skinned.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+    <Text Include="..\shader\ECSVertexShader_SkinnedVertexColor.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+    <Text Include="..\shader\ECSVertexShader_VertexColor.hlsl">
       <FileType>Document</FileType>
     </Text>
   </ItemGroup>

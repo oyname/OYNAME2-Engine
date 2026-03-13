@@ -14,7 +14,7 @@
 //
 // Konvention:
 //   - positions ist immer gefüllt.
-//   - normals, uv0, tangents, colors sind optional.
+//   - normals, uv0, uv1, tangents, colors sind optional.
 //   - indices leer  -> non-indexed Mesh
 //   - indices gefüllt -> alle Indices müssen < positions.size() sein.
 //   - boneIndices / boneWeights: beide leer oder beide gleich groß wie positions.
@@ -24,6 +24,7 @@ struct SubmeshData
     std::vector<DirectX::XMFLOAT3> positions;
     std::vector<DirectX::XMFLOAT3> normals;
     std::vector<DirectX::XMFLOAT2> uv0;
+    std::vector<DirectX::XMFLOAT2> uv1;
     std::vector<DirectX::XMFLOAT4> tangents;
     std::vector<DirectX::XMFLOAT4> colors;
     std::vector<uint32_t>          indices;
@@ -51,6 +52,11 @@ struct SubmeshData
         return !uv0.empty() && uv0.size() == positions.size();
     }
 
+    bool HasUV1() const noexcept
+    {
+        return !uv1.empty() && uv1.size() == positions.size();
+    }
+
     bool HasTangents() const noexcept
     {
         return !tangents.empty() && tangents.size() == positions.size();
@@ -73,6 +79,7 @@ struct SubmeshData
         uint32_t f = GDX_VERTEX_POSITION;
         if (HasNormals())   f |= GDX_VERTEX_NORMAL;
         if (HasUV0())       f |= GDX_VERTEX_TEX1;
+        if (HasUV1())       f |= GDX_VERTEX_TEX2;
         if (!colors.empty() && colors.size() == positions.size())
             f |= GDX_VERTEX_COLOR;
         if (HasTangents())  f |= GDX_VERTEX_TANGENT;
@@ -86,6 +93,7 @@ struct SubmeshData
         if (positions.empty()) return false;
         if (!normals.empty() && normals.size() != positions.size()) return false;
         if (!uv0.empty() && uv0.size() != positions.size()) return false;
+        if (!uv1.empty() && uv1.size() != positions.size()) return false;
         if (!tangents.empty() && tangents.size() != positions.size()) return false;
         if (!colors.empty() && colors.size() != positions.size()) return false;
 

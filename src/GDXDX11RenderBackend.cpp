@@ -17,7 +17,7 @@
 #pragma comment(lib, "d3dcompiler.lib")
 
 bool GDXTextureLoader_LoadFromFile(ID3D11Device*, ID3D11DeviceContext*,
-                                   const wchar_t*, GDXTextureResource&, bool isSRGB);
+    const wchar_t*, GDXTextureResource&, bool isSRGB);
 bool GDXTextureLoader_Create1x1(ID3D11Device*, uint8_t, uint8_t, uint8_t, uint8_t, GDXTextureResource&);
 
 namespace
@@ -53,7 +53,7 @@ namespace
     }
 
     bool CompileFromFile(const std::wstring& path, const std::string& entry,
-                         const std::string& target, ID3DBlob** out)
+        const std::string& target, ID3DBlob** out)
     {
         if (!out) return false;
         *out = nullptr;
@@ -69,33 +69,52 @@ namespace
 
         if (FAILED(hr))
         {
-            if (err) err->Release();
+            if (err)
+            {
+                const char* msg = static_cast<const char*>(err->GetBufferPointer());
+                Debug::LogError("HLSL compile failed: ", path, " [", entry.c_str(), " / ", target.c_str(), "] ", msg ? msg : "");
+                err->Release();
+            }
+            else
+            {
+                Debug::LogError("HLSL compile failed: ", path, " [", entry.c_str(), " / ", target.c_str(), "] (no compiler message)");
+            }
             return false;
         }
+
         if (err) err->Release();
         return true;
     }
 
     HRESULT BuildInputLayout(ID3D11Device* device, uint32_t flags,
-                             ID3DBlob* vsBlob, ID3D11InputLayout** out)
+        ID3DBlob* vsBlob, ID3D11InputLayout** out)
     {
         std::vector<D3D11_INPUT_ELEMENT_DESC> elems;
         elems.reserve(8);
         UINT slot = 0u;
 
         auto add = [&](const char* sem, UINT idx, DXGI_FORMAT fmt)
-        {
-            elems.push_back({ sem, idx, fmt, slot++, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 });
-        };
+            {
+                elems.push_back({ sem, idx, fmt, slot++, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 });
+            };
 
-        if (flags & GDX_VERTEX_POSITION)     add("POSITION",     0, DXGI_FORMAT_R32G32B32_FLOAT);
-        if (flags & GDX_VERTEX_NORMAL)       add("NORMAL",       0, DXGI_FORMAT_R32G32B32_FLOAT);
-        if (flags & GDX_VERTEX_COLOR)        add("COLOR",        0, DXGI_FORMAT_R32G32B32A32_FLOAT);
-        if (flags & GDX_VERTEX_TEX1)         add("TEXCOORD",     0, DXGI_FORMAT_R32G32_FLOAT);
-        if (flags & GDX_VERTEX_TEX2)         add("TEXCOORD",     1, DXGI_FORMAT_R32G32_FLOAT);
-        if (flags & GDX_VERTEX_TANGENT)      add("TANGENT",      0, DXGI_FORMAT_R32G32B32A32_FLOAT);
+        if (flags & GDX_VERTEX_POSITION)     add("POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT);
+        if (flags & GDX_VERTEX_NORMAL)       add("NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT);
+        if (flags & GDX_VERTEX_COLOR)        add("COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT);
+        if (flags & GDX_VERTEX_TEX1)
+        {
+            // UV0 immer emittieren.
+            // UV1 (TEXCOORD1) ebenfalls immer — alle Shader die TEX1 nutzen
+            // deklarieren TEXCOORD1 als VS_INPUT (UV2-Patch).
+            // Ob echte UV2-Daten vorliegen entscheidet der Executor:
+            // kein GDX_VERTEX_TEX2 → UV0-Buffer wird auf Slot 1 aliasiert.
+            add("TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT);   // UV0
+            add("TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT);   // UV1 (oder Alias)
+        }
+        // GDX_VERTEX_TEX2 allein (ohne TEX1) ist kein gültiger Zustand — ignorieren.
+        if (flags & GDX_VERTEX_TANGENT)      add("TANGENT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT);
         if (flags & GDX_VERTEX_BONE_INDICES) add("BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_UINT);
-        if (flags & GDX_VERTEX_BONE_WEIGHTS) add("BLENDWEIGHT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT);
+        if (flags & GDX_VERTEX_BONE_WEIGHTS) add("BLENDWEIGHT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT);
 
         if (elems.empty() || !vsBlob) return E_INVALIDARG;
         return device->CreateInputLayout(elems.data(), (UINT)elems.size(),
@@ -115,7 +134,7 @@ bool GDXDX11RenderBackend::Initialize(ResourceStore<GDXTextureResource, TextureT
     if (!m_context || !m_context->IsValid()) return false;
 
     m_device = static_cast<ID3D11Device*>(m_context->GetDevice());
-    m_ctx    = static_cast<ID3D11DeviceContext*>(m_context->GetDeviceContext());
+    m_ctx = static_cast<ID3D11DeviceContext*>(m_context->GetDeviceContext());
     if (!m_device || !m_ctx) return false;
 
     if (!CreateRenderStates()) return false;
@@ -358,19 +377,19 @@ bool GDXDX11RenderBackend::CreateRenderStates()
 bool GDXDX11RenderBackend::InitDefaultTextures(ResourceStore<GDXTextureResource, TextureTag>& texStore)
 {
     auto make1x1 = [&](uint8_t r, uint8_t g, uint8_t b, uint8_t a,
-                       TextureHandle& handle, const wchar_t* name) -> bool
-    {
-        GDXTextureResource res;
-        res.debugName = name;
-        if (!GDXTextureLoader_Create1x1(m_device, r, g, b, a, res)) return false;
-        handle = texStore.Add(std::move(res));
-        return handle.IsValid();
-    };
+        TextureHandle& handle, const wchar_t* name) -> bool
+        {
+            GDXTextureResource res;
+            res.debugName = name;
+            if (!GDXTextureLoader_Create1x1(m_device, r, g, b, a, res)) return false;
+            handle = texStore.Add(std::move(res));
+            return handle.IsValid();
+        };
 
-    return make1x1(255, 255, 255, 255, m_defaultTextures.white,  L"Default_White")
+    return make1x1(255, 255, 255, 255, m_defaultTextures.white, L"Default_White")
         && make1x1(128, 128, 255, 255, m_defaultTextures.normal, L"Default_FlatNormal")
-        && make1x1(255, 128,   0, 255, m_defaultTextures.orm,    L"Default_ORM")
-        && make1x1(  0,   0,   0, 255, m_defaultTextures.black,  L"Default_Black");
+        && make1x1(255, 128, 0, 255, m_defaultTextures.orm, L"Default_ORM")
+        && make1x1(0, 0, 0, 255, m_defaultTextures.black, L"Default_Black");
 }
 
 void GDXDX11RenderBackend::Shutdown(
@@ -384,35 +403,35 @@ void GDXDX11RenderBackend::Shutdown(
     m_shadowMap.Release();
 
     matStore.ForEach([](MaterialHandle, MaterialResource& mat)
-    {
-        if (mat.gpuConstantBuffer)
         {
-            static_cast<ID3D11Buffer*>(mat.gpuConstantBuffer)->Release();
-            mat.gpuConstantBuffer = nullptr;
-        }
-    });
+            if (mat.gpuConstantBuffer)
+            {
+                static_cast<ID3D11Buffer*>(mat.gpuConstantBuffer)->Release();
+                mat.gpuConstantBuffer = nullptr;
+            }
+        });
 
     shaderStore.ForEach([](ShaderHandle, GDXShaderResource& s)
-    {
-        if (s.vertexShader) { static_cast<ID3D11VertexShader*>(s.vertexShader)->Release(); s.vertexShader = nullptr; }
-        if (s.pixelShader)  { static_cast<ID3D11PixelShader*> (s.pixelShader)->Release();  s.pixelShader  = nullptr; }
-        if (s.inputLayout)  { static_cast<ID3D11InputLayout*> (s.inputLayout)->Release();  s.inputLayout  = nullptr; }
-    });
+        {
+            if (s.vertexShader) { static_cast<ID3D11VertexShader*>(s.vertexShader)->Release(); s.vertexShader = nullptr; }
+            if (s.pixelShader) { static_cast<ID3D11PixelShader*> (s.pixelShader)->Release();  s.pixelShader = nullptr; }
+            if (s.inputLayout) { static_cast<ID3D11InputLayout*> (s.inputLayout)->Release();  s.inputLayout = nullptr; }
+        });
 
     texStore.ForEach([](TextureHandle, GDXTextureResource& tex)
-    {
-        if (tex.srv)
         {
-            static_cast<ID3D11ShaderResourceView*>(tex.srv)->Release();
-            tex.srv = nullptr;
-        }
-    });
+            if (tex.srv)
+            {
+                static_cast<ID3D11ShaderResourceView*>(tex.srv)->Release();
+                tex.srv = nullptr;
+            }
+        });
 
     m_meshUploader.reset();
 
-    if (m_rasterizerState)   { m_rasterizerState->Release();   m_rasterizerState = nullptr; }
+    if (m_rasterizerState) { m_rasterizerState->Release();   m_rasterizerState = nullptr; }
     if (m_depthStencilState) { m_depthStencilState->Release(); m_depthStencilState = nullptr; }
-    if (m_blendState)        { m_blendState->Release();        m_blendState = nullptr; }
+    if (m_blendState) { m_blendState->Release();        m_blendState = nullptr; }
 
     m_context.reset();
     m_device = nullptr;
