@@ -1,5 +1,6 @@
 #pragma once
 #include "GDXVertexFlags.h"
+#include "ShaderVariant.h"
 #include <cstdint>
 #include <string>
 
@@ -31,6 +32,12 @@ struct GDXShaderResource
 
     // Debug-Name (RenderDoc, PIX)
     std::wstring debugName;
+
+    // Varianten-Metadaten (backend-neutral)
+    ShaderPassType passType = ShaderPassType::Main;
+    uint32_t variantFeatures = SVF_NONE;
+    bool supportsSkinning = false;
+    bool usesVertexColor = false;
 
     bool IsValid() const noexcept
     {

@@ -8,6 +8,7 @@
 #include "MaterialResource.h"
 #include "GDXShaderResource.h"
 #include "CameraSystem.h"
+#include <functional>
 
 // ---------------------------------------------------------------------------
 // RenderGatherSystem — baut RenderQueue aus ECS-Komponenten.
@@ -20,19 +21,21 @@ class RenderGatherSystem
 public:
     RenderGatherSystem() = default;
 
+    using ShaderResolver = std::function<ShaderHandle(RenderPass, const SubmeshData&, const MaterialResource&)>;
+
     void Gather(
         Registry&                                             registry,
         const FrameData&                                      frame,
-        ResourceStore<MeshAssetResource, MeshTag>&           meshStore,
+        ResourceStore<MeshAssetResource, MeshTag>&            meshStore,
         ResourceStore<MaterialResource,  MaterialTag>&        matStore,
-        ShaderHandle                                          defaultShader,
+        const ShaderResolver&                                 resolveShader,
         RenderQueue&                                          outQueue) const;
 
     void GatherShadow(
         Registry&                                             registry,
         const FrameData&                                      frame,
-        ResourceStore<MeshAssetResource, MeshTag>&           meshStore,
-        MaterialHandle                                        shadowMaterial,
-        ShaderHandle                                          shadowShader,
+        ResourceStore<MeshAssetResource, MeshTag>&            meshStore,
+        ResourceStore<MaterialResource,  MaterialTag>&        matStore,
+        const ShaderResolver&                                 resolveShader,
         RenderQueue&                                          outShadowQueue) const;
 };

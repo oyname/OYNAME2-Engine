@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Registry.h"
 #include "FrameData.h"
 #include "RenderQueue.h"
 #include "ResourceStore.h"
@@ -7,6 +8,7 @@
 #include "MaterialResource.h"
 #include "GDXShaderResource.h"
 #include "GDXTextureResource.h"
+#include "Components.h"
 
 #include <cstdint>
 
@@ -33,6 +35,12 @@ struct alignas(16) Dx11FrameConstants
     float shadowViewProj[16];
 };
 static_assert(sizeof(Dx11FrameConstants) == 272);
+
+struct alignas(16) Dx11SkinConstants
+{
+    float boneMatrices[SkinComponent::MaxBones][16];
+};
+static_assert(sizeof(Dx11SkinConstants) == SkinComponent::MaxBones * 64);
 
 // ---------------------------------------------------------------------------
 // GDXDX11MeshUploader
@@ -72,6 +80,7 @@ public:
 
     // Haupt-Pass: Mesh + Material + Texturen + Shader
     void ExecuteQueue(
+        Registry&                                            registry,
         const RenderQueue&                                   queue,
         ResourceStore<MeshAssetResource,  MeshTag>&         meshStore,
         ResourceStore<MaterialResource,   MaterialTag>&      matStore,
@@ -83,15 +92,19 @@ public:
     // Separater Pfad — ExecuteQueue() würde alle Draws überspringen weil
     // Shadow-Commands kein gültiges Material haben.
     void ExecuteShadowQueue(
+        Registry&                                   registry,
         const RenderQueue&                          queue,
         ResourceStore<MeshAssetResource, MeshTag>&  meshStore,
-        ResourceStore<GDXShaderResource, ShaderTag>& shaderStore);
+        ResourceStore<MaterialResource, MaterialTag>& matStore,
+        ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+        ResourceStore<GDXTextureResource, TextureTag>& texStore);
 
     uint32_t GetDrawCallCount() const { return m_drawCalls; }
 
 private:
     void CreateConstantBuffers();
     bool BindVertexStreams(const GpuMeshBuffer& gpu, uint32_t vertexFlags);
+    void BindSkinningPalette(Registry& registry, const RenderCommand& cmd, const GDXShaderResource& shader);
 
     // Bindet Texturen t0-t3 aus MaterialResource (Fallback auf Default-Handles)
     void BindMaterialTextures(
@@ -107,6 +120,7 @@ private:
 
     ID3D11Buffer* m_entityCB = nullptr;
     ID3D11Buffer* m_frameCB  = nullptr;
+    ID3D11Buffer* m_skinCB   = nullptr;
 
     ShaderHandle   m_lastShader   = ShaderHandle::Invalid();
     MaterialHandle m_lastMaterial = MaterialHandle::Invalid();

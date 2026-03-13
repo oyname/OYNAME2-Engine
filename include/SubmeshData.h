@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cmath>
 #include <DirectXMath.h>
+#include "GDXVertexFlags.h"
 
 // ---------------------------------------------------------------------------
 // SubmeshData — CPU-Geometrie für einen Sub-Mesh-Slot.
@@ -65,6 +66,19 @@ struct SubmeshData
     bool IsEmpty() const noexcept
     {
         return positions.empty();
+    }
+
+    uint32_t ComputeVertexFlags() const noexcept
+    {
+        uint32_t f = GDX_VERTEX_POSITION;
+        if (HasNormals())   f |= GDX_VERTEX_NORMAL;
+        if (HasUV0())       f |= GDX_VERTEX_TEX1;
+        if (!colors.empty() && colors.size() == positions.size())
+            f |= GDX_VERTEX_COLOR;
+        if (HasTangents())  f |= GDX_VERTEX_TANGENT;
+        if (HasSkinning())
+            f |= GDX_VERTEX_BONE_INDICES | GDX_VERTEX_BONE_WEIGHTS;
+        return f;
     }
 
     bool Validate() const noexcept

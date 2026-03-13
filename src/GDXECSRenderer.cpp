@@ -2,6 +2,12 @@
 #include "GDXDX11RenderBackend.h"
 #include "Debug.h"
 
+namespace
+{
+    constexpr uint32_t kRelevantMainFeatures = SVF_SKINNED | SVF_VERTEX_COLOR;
+    constexpr uint32_t kRelevantShadowFeatures = SVF_SKINNED | SVF_ALPHA_TEST;
+}
+
 GDXECSRenderer::GDXECSRenderer(std::unique_ptr<IGDXRenderBackend> backend)
     : m_backend(std::move(backend))
 {
@@ -31,12 +37,18 @@ bool GDXECSRenderer::Initialize()
 
 bool GDXECSRenderer::LoadDefaultShaders()
 {
-    m_defaultShader = CreateShader(
-        L"ECSVertexShader.hlsl", L"ECSPixelShader.hlsl", GDX_VERTEX_DEFAULT);
+    ShaderVariantKey mainKey{};
+    mainKey.pass = ShaderPassType::Main;
+    mainKey.vertexFlags = GDX_VERTEX_DEFAULT;
+    mainKey.features = SVF_NONE;
+    m_defaultShader = CreateShaderVariant(mainKey);
     if (!m_defaultShader.IsValid()) return false;
 
-    m_shadowShader = CreateShader(
-        L"ECSShadowVertexShader.hlsl", L"ECSShadowPixelShader.hlsl", GDX_VERTEX_POSITION);
+    ShaderVariantKey shadowKey{};
+    shadowKey.pass = ShaderPassType::Shadow;
+    shadowKey.vertexFlags = GDX_VERTEX_POSITION;
+    shadowKey.features = SVF_NONE;
+    m_shadowShader = CreateShaderVariant(shadowKey);
 
     if (!m_shadowShader.IsValid())
         Debug::Log("GDXECSRenderer: Kein Shadow-Shader gefunden — Shadow Pass deaktiviert.");
@@ -58,6 +70,131 @@ ShaderHandle GDXECSRenderer::LoadShaderInternal(
 {
     if (!m_backend) return ShaderHandle::Invalid();
     return m_backend->CreateShader(m_shaderStore, vsFile, psFile, vertexFlags, debugName);
+}
+
+ShaderVariantKey GDXECSRenderer::BuildVariantKey(RenderPass pass, const SubmeshData& submesh, const MaterialResource& mat) const
+{
+    ShaderVariantKey key{};
+    key.pass = (pass == RenderPass::Shadow) ? ShaderPassType::Shadow : ShaderPassType::Main;
+    key.vertexFlags = submesh.ComputeVertexFlags();
+
+    if (submesh.HasSkinning()) key.features |= SVF_SKINNED;
+    if (submesh.colors.size() == submesh.positions.size() && !submesh.colors.empty()) key.features |= SVF_VERTEX_COLOR;
+    if (mat.IsAlphaTest()) key.features |= SVF_ALPHA_TEST;
+    if (mat.IsTransparent()) key.features |= SVF_TRANSPARENT;
+    if ((mat.data.flags & MF_USE_NORMAL_MAP) != 0u) key.features |= SVF_NORMAL_MAP;
+    if ((mat.data.flags & MF_UNLIT) != 0u) key.features |= SVF_UNLIT;
+
+    return key;
+}
+
+ShaderVariantKey GDXECSRenderer::NormalizeVariantKey(const ShaderVariantKey& in) const
+{
+    ShaderVariantKey key = in;
+
+    if (key.pass == ShaderPassType::Main)
+        key.features &= kRelevantMainFeatures;
+    else
+        key.features &= kRelevantShadowFeatures;
+
+    // Tangent-Stream nur behalten, wenn Shader später wirklich darauf aufbaut.
+    // Aktueller Standard-Shader erzeugt TBN per Derivaten.
+    key.vertexFlags &= ~GDX_VERTEX_TANGENT;
+
+    return key;
+}
+
+ShaderHandle GDXECSRenderer::CreateShaderVariant(const ShaderVariantKey& rawKey)
+{
+    const ShaderVariantKey key = NormalizeVariantKey(rawKey);
+
+    std::wstring vsFile;
+    std::wstring psFile;
+    uint32_t vertexFlags = key.vertexFlags;
+
+    const bool skinned = (key.features & SVF_SKINNED) != 0u;
+    const bool vertexColor = (key.features & SVF_VERTEX_COLOR) != 0u;
+    const bool alphaTest = (key.features & SVF_ALPHA_TEST) != 0u;
+
+    if (key.pass == ShaderPassType::Main)
+    {
+        if (skinned && vertexColor)
+        {
+            vsFile = L"ECSVertexShader_SkinnedVertexColor.hlsl";
+            psFile = L"ECSPixelShader_VertexColor.hlsl";
+        }
+        else if (skinned)
+        {
+            vsFile = L"ECSVertexShader_Skinned.hlsl";
+            psFile = L"ECSPixelShader.hlsl";
+        }
+        else if (vertexColor)
+        {
+            vsFile = L"ECSVertexShader_VertexColor.hlsl";
+            psFile = L"ECSPixelShader_VertexColor.hlsl";
+        }
+        else
+        {
+            vsFile = L"ECSVertexShader.hlsl";
+            psFile = L"ECSPixelShader.hlsl";
+        }
+    }
+    else
+    {
+        if (skinned && alphaTest)
+        {
+            vsFile = L"ECSShadowVertexShader_SkinnedAlphaTest.hlsl";
+            psFile = L"ECSShadowPixelShader_AlphaTest.hlsl";
+            vertexFlags = GDX_VERTEX_POSITION | GDX_VERTEX_TEX1 | GDX_VERTEX_BONE_INDICES | GDX_VERTEX_BONE_WEIGHTS;
+        }
+        else if (skinned)
+        {
+            vsFile = L"ECSShadowVertexShader_Skinned.hlsl";
+            psFile = L"ECSShadowPixelShader.hlsl";
+            vertexFlags = GDX_VERTEX_POSITION | GDX_VERTEX_BONE_INDICES | GDX_VERTEX_BONE_WEIGHTS;
+        }
+        else if (alphaTest)
+        {
+            vsFile = L"ECSShadowVertexShader_AlphaTest.hlsl";
+            psFile = L"ECSShadowPixelShader_AlphaTest.hlsl";
+            vertexFlags = GDX_VERTEX_POSITION | GDX_VERTEX_TEX1;
+        }
+        else
+        {
+            vsFile = L"ECSShadowVertexShader.hlsl";
+            psFile = L"ECSShadowPixelShader.hlsl";
+            vertexFlags = GDX_VERTEX_POSITION;
+        }
+    }
+
+    const std::wstring debugName = L"Variant: " + vsFile + L" / " + psFile;
+    ShaderHandle handle = LoadShaderInternal(vsFile, psFile, vertexFlags, debugName);
+    if (!handle.IsValid())
+        return ShaderHandle::Invalid();
+
+    if (auto* res = m_shaderStore.Get(handle))
+    {
+        res->passType = key.pass;
+        res->variantFeatures = key.features;
+        res->supportsSkinning = skinned;
+        res->usesVertexColor = vertexColor;
+    }
+
+    m_shaderVariantCache.emplace(key, handle);
+    return handle;
+}
+
+ShaderHandle GDXECSRenderer::ResolveShaderVariant(RenderPass pass, const SubmeshData& submesh, const MaterialResource& mat)
+{
+    if (pass != RenderPass::Shadow && mat.shader.IsValid())
+        return mat.shader;
+
+    const ShaderVariantKey key = NormalizeVariantKey(BuildVariantKey(pass, submesh, mat));
+    auto it = m_shaderVariantCache.find(key);
+    if (it != m_shaderVariantCache.end())
+        return it->second;
+
+    return CreateShaderVariant(key);
 }
 
 TextureHandle GDXECSRenderer::LoadTexture(const std::wstring& filePath, bool isSRGB)
@@ -125,24 +262,28 @@ void GDXECSRenderer::EndFrame()
     if (m_backend) m_backend->UpdateLights(m_registry, m_frameData);
     if (m_backend) m_backend->UpdateFrameConstants(m_frameData);
 
-    if (m_frameData.hasShadowPass && m_shadowShader.IsValid() && m_backend && m_backend->HasShadowResources())
+    auto resolveShader = [this](RenderPass pass, const SubmeshData& submesh, const MaterialResource& mat)
+    {
+        return ResolveShaderVariant(pass, submesh, mat);
+    };
+
+    if (m_frameData.hasShadowPass && m_backend && m_backend->HasShadowResources())
     {
         m_gatherSystem.GatherShadow(m_registry, m_frameData,
-            m_meshStore,
-            MaterialHandle::Invalid(),
-            m_shadowShader,
+            m_meshStore, m_matStore,
+            resolveShader,
             m_shadowQueue);
 
         if (!m_shadowQueue.Empty())
-            m_backend->ExecuteShadowPass(m_shadowQueue, m_meshStore, m_shaderStore, m_frameData);
+            m_backend->ExecuteShadowPass(m_registry, m_shadowQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore, m_frameData);
     }
 
     m_gatherSystem.Gather(m_registry, m_frameData,
         m_meshStore, m_matStore,
-        m_defaultShader, m_opaqueQueue);
+        resolveShader, m_opaqueQueue);
 
     if (m_backend)
-        m_backend->ExecuteMainPass(m_opaqueQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore);
+        m_backend->ExecuteMainPass(m_registry, m_opaqueQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore);
 
     m_stats.drawCalls = m_backend ? m_backend->GetDrawCallCount() : 0u;
     m_stats.renderCommands = static_cast<uint32_t>(m_opaqueQueue.Count());
@@ -178,5 +319,6 @@ void GDXECSRenderer::Shutdown()
         m_backend.reset();
     }
 
+    m_shaderVariantCache.clear();
     m_initialized = false;
 }

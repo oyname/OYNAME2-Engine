@@ -44,7 +44,7 @@ struct FrameData
     DirectX::XMFLOAT4X4 projMatrix     = {};
     DirectX::XMFLOAT4X4 viewProjMatrix = {};  // view * proj
     DirectX::XMFLOAT3   cameraPos      = {};
-    float               _padCam        = 0.0f;
+    uint32_t            cullMask       = 0xFFFFFFFFu;
 
     // --- Lights ---
     std::array<LightEntry, MAX_LIGHTS> lights     = {};

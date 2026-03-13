@@ -15,6 +15,9 @@
 #include "TransformSystem.h"
 #include "CameraSystem.h"
 #include "RenderGatherSystem.h"
+#include "ShaderVariant.h"
+
+#include <unordered_map>
 
 #include <memory>
 #include <string>
@@ -78,6 +81,11 @@ private:
 
     bool LoadDefaultShaders();
 
+    ShaderVariantKey BuildVariantKey(RenderPass pass, const SubmeshData& submesh, const MaterialResource& mat) const;
+    ShaderVariantKey NormalizeVariantKey(const ShaderVariantKey& key) const;
+    ShaderHandle ResolveShaderVariant(RenderPass pass, const SubmeshData& submesh, const MaterialResource& mat);
+    ShaderHandle CreateShaderVariant(const ShaderVariantKey& key);
+
     std::unique_ptr<IGDXRenderBackend> m_backend;
 
     Registry m_registry;
@@ -97,6 +105,7 @@ private:
 
     ShaderHandle m_defaultShader;
     ShaderHandle m_shadowShader;
+    std::unordered_map<ShaderVariantKey, ShaderHandle, ShaderVariantKeyHash> m_shaderVariantCache;
 
     TextureHandle m_defaultWhiteTex;
     TextureHandle m_defaultNormalTex;

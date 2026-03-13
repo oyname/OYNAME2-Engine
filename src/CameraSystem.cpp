@@ -12,6 +12,7 @@ void CameraSystem::Update(Registry& registry, FrameData& frame) const
             // Kameraposition aus Weltmatrix
             const XMVECTOR position = world.r[3];
             XMStoreFloat3(&frame.cameraPos, position);
+            frame.cullMask = cam.cullMask;
 
             // Rotationsteil aus Weltmatrix extrahieren
             XMMATRIX rot = world;

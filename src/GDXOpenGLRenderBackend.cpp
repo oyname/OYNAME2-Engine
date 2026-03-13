@@ -113,14 +113,18 @@ void GDXOpenGLRenderBackend::UpdateFrameConstants(const FrameData&)
 {
 }
 
-void GDXOpenGLRenderBackend::ExecuteShadowPass(const RenderQueue&,
+void GDXOpenGLRenderBackend::ExecuteShadowPass(Registry&,
+                                               const RenderQueue&,
                                                ResourceStore<MeshAssetResource, MeshTag>&,
+                                               ResourceStore<MaterialResource, MaterialTag>&,
                                                ResourceStore<GDXShaderResource, ShaderTag>&,
+                                               ResourceStore<GDXTextureResource, TextureTag>&,
                                                const FrameData&)
 {
 }
 
-void* GDXOpenGLRenderBackend::ExecuteMainPass(const RenderQueue&,
+void* GDXOpenGLRenderBackend::ExecuteMainPass(Registry&,
+                                              const RenderQueue&,
                                               ResourceStore<MeshAssetResource, MeshTag>&,
                                               ResourceStore<MaterialResource, MaterialTag>&,
                                               ResourceStore<GDXShaderResource, ShaderTag>&,

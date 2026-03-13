@@ -63,6 +63,7 @@ using MeshHandle     = Handle<struct MeshTag>;
 using MaterialHandle = Handle<struct MaterialTag>;
 using ShaderHandle   = Handle<struct ShaderTag>;
 using TextureHandle  = Handle<struct TextureTag>;
+using RenderTargetHandle = Handle<struct RenderTargetTag>;
 
 // Hash-Support für unordered_map.
 #include <functional>

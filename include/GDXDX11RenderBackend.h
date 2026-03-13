@@ -46,12 +46,16 @@ public:
     void UpdateLights(Registry& registry, FrameData& frame) override;
     void UpdateFrameConstants(const FrameData& frame) override;
 
-    void ExecuteShadowPass(const RenderQueue& shadowQueue,
+    void ExecuteShadowPass(Registry& registry,
+                           const RenderQueue& shadowQueue,
                            ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+                           ResourceStore<MaterialResource, MaterialTag>& matStore,
                            ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+                           ResourceStore<GDXTextureResource, TextureTag>& texStore,
                            const FrameData& frame) override;
 
-    void* ExecuteMainPass(const RenderQueue& opaqueQueue,
+    void* ExecuteMainPass(Registry& registry,
+                          const RenderQueue& opaqueQueue,
                           ResourceStore<MeshAssetResource, MeshTag>& meshStore,
                           ResourceStore<MaterialResource, MaterialTag>& matStore,
                           ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,

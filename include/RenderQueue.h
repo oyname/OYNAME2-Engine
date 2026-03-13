@@ -20,7 +20,7 @@ struct RenderQueue
 
     // Convenience-Submit mit ShaderHandle (neu)
     void Submit(MeshHandle mesh, MaterialHandle material, ShaderHandle shader,
-                uint32_t submeshIdx,
+                uint32_t submeshIdx, EntityID ownerEntity,
                 const DirectX::XMFLOAT4X4& worldMatrix,
                 RenderPass pass, uint32_t shaderSortID, uint32_t materialSortID,
                 float depth = 0.0f)
@@ -30,7 +30,9 @@ struct RenderQueue
         cmd.material     = material;
         cmd.shader       = shader;
         cmd.submeshIndex = submeshIdx;
-        cmd.worldMatrix  = worldMatrix;
+        cmd.ownerEntity = ownerEntity;
+        cmd.pass        = pass;
+        cmd.worldMatrix = worldMatrix;
         cmd.SetSortKey(pass, shaderSortID, materialSortID, depth);
         commands.push_back(cmd);
     }

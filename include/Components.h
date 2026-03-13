@@ -26,6 +26,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 #include <DirectXMath.h>
 
 // ===========================================================================
@@ -166,6 +167,20 @@ struct MaterialRefComponent
 
     MaterialRefComponent() = default;
     explicit MaterialRefComponent(MaterialHandle h) : material(h) {}
+};
+
+// ===========================================================================
+// SkinComponent — Laufzeit-Bone-Palette für skinnte Meshes.
+// Erwartet finale Bone-Matrizen im Mesh-Lokalraum.
+// ===========================================================================
+struct SkinComponent
+{
+    static constexpr uint32_t MaxBones = 64u;
+
+    std::vector<DirectX::XMFLOAT4X4> finalBoneMatrices;
+    bool enabled = true;
+
+    SkinComponent() = default;
 };
 
 // ===========================================================================

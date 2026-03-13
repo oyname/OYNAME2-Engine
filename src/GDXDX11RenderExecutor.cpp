@@ -128,12 +128,15 @@ void GDXDX11RenderExecutor::CreateConstantBuffers()
         sizeof(Dx11EntityConstants), D3D11_BIND_CONSTANT_BUFFER, true);
     m_frameCB  = CreateBuffer(m_device, nullptr,
         sizeof(Dx11FrameConstants),  D3D11_BIND_CONSTANT_BUFFER, true);
+    m_skinCB   = CreateBuffer(m_device, nullptr,
+        sizeof(Dx11SkinConstants), D3D11_BIND_CONSTANT_BUFFER, true);
 }
 
 void GDXDX11RenderExecutor::Shutdown()
 {
     if (m_entityCB) { m_entityCB->Release(); m_entityCB = nullptr; }
     if (m_frameCB)  { m_frameCB->Release();  m_frameCB  = nullptr; }
+    if (m_skinCB)   { m_skinCB->Release();   m_skinCB   = nullptr; }
 }
 
 void GDXDX11RenderExecutor::UpdateFrameConstants(const FrameData& frame)
@@ -228,42 +231,119 @@ void GDXDX11RenderExecutor::BindMaterialTextures(
 }
 
 // ---------------------------------------------------------------------------
+// BindSkinningPalette — VS b4, identity fallback wenn keine Skin-Daten vorhanden.
+// ---------------------------------------------------------------------------
+void GDXDX11RenderExecutor::BindSkinningPalette(
+    Registry& registry,
+    const RenderCommand& cmd,
+    const GDXShaderResource& shader)
+{
+    if (!shader.supportsSkinning || !m_skinCB)
+        return;
+
+    Dx11SkinConstants sc = {};
+    for (uint32_t i = 0; i < SkinComponent::MaxBones; ++i)
+    {
+        DirectX::XMFLOAT4X4 ident;
+        DirectX::XMStoreFloat4x4(&ident, DirectX::XMMatrixIdentity());
+        std::memcpy(sc.boneMatrices[i], &ident, 64);
+    }
+
+    if (cmd.ownerEntity != NULL_ENTITY)
+    {
+        auto* skin = registry.Get<SkinComponent>(cmd.ownerEntity);
+        if (skin && skin->enabled)
+        {
+            const uint32_t count = static_cast<uint32_t>(
+                skin->finalBoneMatrices.size() < SkinComponent::MaxBones
+                ? skin->finalBoneMatrices.size()
+                : SkinComponent::MaxBones);
+
+            for (uint32_t i = 0; i < count; ++i)
+                std::memcpy(sc.boneMatrices[i], &skin->finalBoneMatrices[i], 64);
+        }
+    }
+
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (SUCCEEDED(m_context->Map(m_skinCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+    {
+        std::memcpy(mapped.pData, &sc, sizeof(sc));
+        m_context->Unmap(m_skinCB, 0);
+    }
+
+    m_context->VSSetConstantBuffers(4, 1, &m_skinCB);
+}
+
+// ---------------------------------------------------------------------------
 // ExecuteShadowQueue — Depth-Only Shadow Pass.
 // Kein Material-Check, kein Textur-Bind, nur World-Matrix + Position-Stream.
 // Löst den Kernfehler: ExecuteQueue() übersprang alle Shadow-Draws weil
 // cmd.material == Invalid() → mat == nullptr → continue.
 // ---------------------------------------------------------------------------
 void GDXDX11RenderExecutor::ExecuteShadowQueue(
-    const RenderQueue&                          queue,
-    ResourceStore<MeshAssetResource, MeshTag>&  meshStore,
-    ResourceStore<GDXShaderResource, ShaderTag>& shaderStore)
+    Registry&                                     registry,
+    const RenderQueue&                            queue,
+    ResourceStore<MeshAssetResource, MeshTag>&    meshStore,
+    ResourceStore<MaterialResource, MaterialTag>& matStore,
+    ResourceStore<GDXShaderResource, ShaderTag>&  shaderStore,
+    ResourceStore<GDXTextureResource, TextureTag>& texStore)
 {
     m_drawCalls  = 0u;
     m_lastShader = ShaderHandle::Invalid();
+    m_lastMaterial = MaterialHandle::Invalid();
 
     m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+    ID3D11ShaderResourceView* nullShadow = nullptr;
+    m_context->PSSetShaderResources(16, 1, &nullShadow);
 
     for (const RenderCommand& cmd : queue.commands)
     {
         MeshAssetResource* mesh   = meshStore.Get(cmd.mesh);
+        MaterialResource*  mat    = matStore.Get(cmd.material);
         GDXShaderResource* shader = shaderStore.Get(cmd.shader);
 
-        if (!mesh || !shader || !shader->IsValid())            continue;
-        if (cmd.submeshIndex >= mesh->gpuBuffers.size())       continue;
+        if (!mesh || !mat || !shader || !shader->IsValid())      continue;
+        if (cmd.submeshIndex >= mesh->gpuBuffers.size())         continue;
 
         const GpuMeshBuffer& gpu = mesh->gpuBuffers[cmd.submeshIndex];
-        if (!gpu.ready || !gpu.positionBuffer)                 continue;
+        if (!gpu.ready || !gpu.positionBuffer)                   continue;
 
-        // Shader setzen (nur wenn gewechselt)
         if (cmd.shader != m_lastShader)
         {
             m_context->VSSetShader(static_cast<ID3D11VertexShader*>(shader->vertexShader), nullptr, 0);
-            m_context->PSSetShader(static_cast<ID3D11PixelShader*> (shader->pixelShader),  nullptr, 0);
+            m_context->PSSetShader(static_cast<ID3D11PixelShader*>(shader->pixelShader), nullptr, 0);
             m_context->IASetInputLayout(static_cast<ID3D11InputLayout*>(shader->inputLayout));
             m_lastShader = cmd.shader;
+            m_lastMaterial = MaterialHandle::Invalid();
         }
 
-        // Entity cbuffer b0 (World-Matrix für Shadow-VS)
+        BindSkinningPalette(registry, cmd, *shader);
+
+        if (cmd.material != m_lastMaterial)
+        {
+            if (mat->gpuConstantBuffer)
+            {
+                auto* cb = static_cast<ID3D11Buffer*>(mat->gpuConstantBuffer);
+                if (mat->cpuDirty)
+                {
+                    D3D11_MAPPED_SUBRESOURCE m = {};
+                    if (SUCCEEDED(m_context->Map(cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)))
+                    {
+                        std::memcpy(m.pData, &mat->data, sizeof(MaterialData));
+                        m_context->Unmap(cb, 0);
+                    }
+                    mat->cpuDirty = false;
+                }
+                m_context->PSSetConstantBuffers(2, 1, &cb);
+            }
+
+            BindMaterialTextures(*mat, texStore,
+                defaultWhiteTex, defaultNormalTex,
+                defaultORMTex, defaultBlackTex);
+            m_lastMaterial = cmd.material;
+        }
+
         {
             Dx11EntityConstants ec = {};
             std::memcpy(ec.worldMatrix, &cmd.worldMatrix, 64);
@@ -277,13 +357,11 @@ void GDXDX11RenderExecutor::ExecuteShadowQueue(
             m_context->VSSetConstantBuffers(0, 1, &m_entityCB);
         }
 
-        // Nur POSITION-Stream (Shadow-Shader braucht nichts anderes)
-        if (!BindVertexStreams(gpu, GDX_VERTEX_POSITION)) continue;
+        if (!BindVertexStreams(gpu, shader->vertexFlags)) continue;
 
         if (gpu.indexBuffer)
         {
-            m_context->IASetIndexBuffer(
-                static_cast<ID3D11Buffer*>(gpu.indexBuffer), DXGI_FORMAT_R32_UINT, 0u);
+            m_context->IASetIndexBuffer(static_cast<ID3D11Buffer*>(gpu.indexBuffer), DXGI_FORMAT_R32_UINT, 0u);
             m_context->DrawIndexed(gpu.indexCount, 0u, 0);
         }
         else
@@ -298,6 +376,7 @@ void GDXDX11RenderExecutor::ExecuteShadowQueue(
 // ExecuteQueue
 // ---------------------------------------------------------------------------
 void GDXDX11RenderExecutor::ExecuteQueue(
+    Registry&                                       registry,
     const RenderQueue&                              queue,
     ResourceStore<MeshAssetResource, MeshTag>&     meshStore,
     ResourceStore<MaterialResource,  MaterialTag>& matStore,
@@ -338,6 +417,8 @@ void GDXDX11RenderExecutor::ExecuteQueue(
             m_lastShader   = cmd.shader;
             m_lastMaterial = MaterialHandle::Invalid();
         }
+
+        BindSkinningPalette(registry, cmd, *shader);
 
         // --- Material + Texturen (State-Batching) ---------------------------
         if (cmd.material != m_lastMaterial)

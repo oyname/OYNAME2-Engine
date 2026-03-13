@@ -277,15 +277,18 @@ void GDXDX11RenderBackend::UpdateFrameConstants(const FrameData& frame)
 }
 
 void GDXDX11RenderBackend::ExecuteShadowPass(
+    Registry& registry,
     const RenderQueue& shadowQueue,
     ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+    ResourceStore<MaterialResource, MaterialTag>& matStore,
     ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+    ResourceStore<GDXTextureResource, TextureTag>& texStore,
     const FrameData& frame)
 {
     if (!m_shadowMap.IsReady() || shadowQueue.Empty()) return;
 
     m_shadowMap.BeginPass(m_ctx);
-    m_executor.ExecuteShadowQueue(shadowQueue, meshStore, shaderStore);
+    m_executor.ExecuteShadowQueue(registry, shadowQueue, meshStore, matStore, shaderStore, texStore);
     m_shadowMap.EndPass(m_ctx);
 
     auto* rtv = static_cast<ID3D11RenderTargetView*>(m_context->GetRenderTarget());
@@ -302,6 +305,7 @@ void GDXDX11RenderBackend::ExecuteShadowPass(
 }
 
 void* GDXDX11RenderBackend::ExecuteMainPass(
+    Registry& registry,
     const RenderQueue& opaqueQueue,
     ResourceStore<MeshAssetResource, MeshTag>& meshStore,
     ResourceStore<MaterialResource, MaterialTag>& matStore,
@@ -309,7 +313,7 @@ void* GDXDX11RenderBackend::ExecuteMainPass(
     ResourceStore<GDXTextureResource, TextureTag>& texStore)
 {
     void* shadowSRV = m_shadowMap.IsReady() ? m_shadowMap.GetSRV() : nullptr;
-    m_executor.ExecuteQueue(opaqueQueue, meshStore, matStore, shaderStore, texStore, shadowSRV);
+    m_executor.ExecuteQueue(registry, opaqueQueue, meshStore, matStore, shaderStore, texStore, shadowSRV);
     return shadowSRV;
 }
 

@@ -50,12 +50,16 @@ public:
     virtual void UpdateLights(Registry& registry, FrameData& frame) = 0;
     virtual void UpdateFrameConstants(const FrameData& frame) = 0;
 
-    virtual void ExecuteShadowPass(const RenderQueue& shadowQueue,
+    virtual void ExecuteShadowPass(Registry& registry,
+                                   const RenderQueue& shadowQueue,
                                    ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+                                   ResourceStore<MaterialResource, MaterialTag>& matStore,
                                    ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+                                   ResourceStore<GDXTextureResource, TextureTag>& texStore,
                                    const FrameData& frame) = 0;
 
-    virtual void* ExecuteMainPass(const RenderQueue& opaqueQueue,
+    virtual void* ExecuteMainPass(Registry& registry,
+                                  const RenderQueue& opaqueQueue,
                                   ResourceStore<MeshAssetResource, MeshTag>& meshStore,
                                   ResourceStore<MaterialResource, MaterialTag>& matStore,
                                   ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,

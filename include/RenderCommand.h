@@ -1,5 +1,6 @@
 #pragma once
 #include "Handle.h"
+#include "ECSTypes.h"
 
 #include <cstdint>
 #include <DirectXMath.h>
@@ -22,8 +23,10 @@ struct RenderCommand
 {
     MeshHandle     mesh;
     MaterialHandle material;
-    ShaderHandle   shader;        // NEU — vom Material weitergeleitet
+    ShaderHandle   shader;
     uint32_t       submeshIndex = 0u;
+    EntityID       ownerEntity = NULL_ENTITY;
+    RenderPass     pass = RenderPass::Opaque;
 
     DirectX::XMFLOAT4X4 worldMatrix = {};
 

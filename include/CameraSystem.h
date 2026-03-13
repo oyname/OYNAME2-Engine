@@ -20,6 +20,7 @@ public:
     // Befüllt FrameData::viewMatrix, projMatrix, viewProjMatrix, cameraPos.
     // Muss nach TransformSystem::Update() aufgerufen werden.
     void Update(Registry& registry, FrameData& frame) const;
+    bool BuildFrameDataForCamera(Registry& registry, EntityID cameraEntity, FrameData& frame, float aspectOverride = 0.0f) const;
 
     // Hilfsmethode: Berechnet Tiefe eines Weltpunkts in NDC (0..1).
     // Wird von RenderGatherSystem für den Sort-Key-Depth-Wert verwendet.

@@ -52,14 +52,41 @@
     <Filter Include="third_party">
       <UniqueIdentifier>{4132ef45-9b48-487e-91c6-6c80e2b19e23}</UniqueIdentifier>
     </Filter>
+    <Filter Include="app\ESC Main">
+      <UniqueIdentifier>{a1696cae-911b-4c83-9a1c-66634feefaf2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\gidx Main">
+      <UniqueIdentifier>{84f82f50-210d-4821-a7aa-0723a60980fc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\RTT Example">
+      <UniqueIdentifier>{c0788479-4ffa-4770-a0a0-a71cee510b5b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\Layers esc">
+      <UniqueIdentifier>{b4a8cc87-29fc-41db-aa47-ff98d7bd1c72}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\Transparent">
+      <UniqueIdentifier>{4a36576d-571c-4881-add8-22cf54c1d676}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\SnakeGame">
+      <UniqueIdentifier>{13c2d461-dbf0-403a-865c-760dd9d91a17}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="engine\renderer\shader">
+      <UniqueIdentifier>{2a2135da-620b-456d-829a-f964d42162f1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\shader satic opaque">
+      <UniqueIdentifier>{7b6db410-f1f6-4614-b47f-3dc8cc534737}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\shader vertexcolor">
+      <UniqueIdentifier>{0ed9faf6-7448-4a9c-afee-00eaa27cb60d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\shader alphatest shadow">
+      <UniqueIdentifier>{f5c61a24-5605-44fd-a737-a32e2b299ce3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\shader skinning">
+      <UniqueIdentifier>{14630285-121d-420f-963c-4c0a55c1b503}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\app\main_lowlevel.cpp">
-      <Filter>app</Filter>
-    </ClCompile>
-    <ClCompile Include="..\app\ECSGame.cpp">
-      <Filter>app</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\GDXEngine.cpp">
       <Filter>engine\core</Filter>
     </ClCompile>
@@ -105,14 +132,8 @@
     <ClCompile Include="..\src\GDXShadowMap.cpp">
       <Filter>renderer\dx11</Filter>
     </ClCompile>
-    <ClCompile Include="..\app\SnakeGame.cpp">
-      <Filter>app</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\GDXDX11LightSystem.cpp">
       <Filter>ecs</Filter>
-    </ClCompile>
-    <ClCompile Include="..\app\main.cpp">
-      <Filter>app</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXDX11RenderBackend.cpp">
       <Filter>renderer\dx11</Filter>
@@ -120,11 +141,47 @@
     <ClCompile Include="..\src\GDXInput.cpp">
       <Filter>engine\core</Filter>
     </ClCompile>
+    <ClCompile Include="..\app\ECSGame.cpp">
+      <Filter>app\ESC Main</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\main_ecs.cpp">
+      <Filter>app\ESC Main</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\main.cpp">
+      <Filter>app\gidx Main</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\RTT Example.cpp">
+      <Filter>app\RTT Example</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\layers.cpp">
+      <Filter>app\Layers esc</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\transparent_example.cpp">
+      <Filter>app\Transparent</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\SnakeGame.cpp">
+      <Filter>app\SnakeGame</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\game_main.cpp">
+      <Filter>app\SnakeGame</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\test_shader_static_opaque.cpp">
+      <Filter>app\shader satic opaque</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\test_shader_vertexcolor.cpp">
+      <Filter>app\shader vertexcolor</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\test_shader_alphatest_shadow.cpp">
+      <Filter>app\shader alphatest shadow</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\test_shader_skinning.cpp">
+      <Filter>app\shader skinning</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\bone_animation.cpp">
+      <Filter>app\shader skinning</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\app\ECSGame.h">
-      <Filter>app</Filter>
-    </ClInclude>
     <ClInclude Include="..\include\Events.h">
       <Filter>engine\core</Filter>
     </ClInclude>
@@ -239,9 +296,6 @@
     <ClInclude Include="..\third_party\stb_image.h">
       <Filter>third_party</Filter>
     </ClInclude>
-    <ClInclude Include="..\app\SnakeGame.h">
-      <Filter>app</Filter>
-    </ClInclude>
     <ClInclude Include="..\include\IGDXRenderBackend.h">
       <Filter>engine\renderer</Filter>
     </ClInclude>
@@ -265,6 +319,24 @@
     </ClInclude>
     <ClInclude Include="..\include\GDXInput.h">
       <Filter>engine\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXRenderTargetResource.h">
+      <Filter>engine\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\app\ECSGame.h">
+      <Filter>app\ESC Main</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXDX11RenderBackend.h">
+      <Filter>renderer\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\RenderPassClearDesc.h">
+      <Filter>engine\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\app\SnakeGame.h">
+      <Filter>app\SnakeGame</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\ShaderVariant.h">
+      <Filter>engine\renderer\shader</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
