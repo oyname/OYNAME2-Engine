@@ -1,61 +1,33 @@
 #pragma once
 #include "Handle.h"
+#include "GDXTextureSlots.h"
 
+#include <array>
 #include <cstdint>
 #include <DirectXMath.h>
 
-// ---------------------------------------------------------------------------
-// MaterialData — cbuffer-kompatibles PBR-Datenstruct.
-//
-// Layout muss exakt mit dem HLSL cbuffer MaterialConstants (b2) übereinstimmen.
-// Änderungen hier erfordern Änderungen im PixelShader.
-//
-// 16-Byte-Alignment-Pflicht für DX11 Constant Buffers.
-// ---------------------------------------------------------------------------
 struct MaterialData
 {
-    // --- Zeile 1: 16 Byte ---
     DirectX::XMFLOAT4 baseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-
-    // --- Zeile 2: 16 Byte ---
     DirectX::XMFLOAT4 specularColor = { 0.5f, 0.5f, 0.5f, 1.0f };
-
-    // --- Zeile 3: 16 Byte ---
     DirectX::XMFLOAT4 emissiveColor = { 0.0f, 0.0f, 0.0f, 1.0f };
-
-    // --- Zeile 4: 16 Byte ---
-    DirectX::XMFLOAT4 uvTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f }; // UV0: xy=tiling, zw=offset
-
-    // --- Zeile 5: 16 Byte ---
-    // UV1 / Detail-Map Tiling+Offset — unabhängig von UV0.
-    // Wird nur ausgewertet wenn MF_USE_DETAIL_MAP gesetzt.
+    DirectX::XMFLOAT4 uvTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f };
     DirectX::XMFLOAT4 uvDetailTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f };
-
-    // --- Zeile 6: 16 Byte ---
     float metallic          = 0.0f;
     float roughness         = 0.5f;
     float normalScale       = 1.0f;
     float occlusionStrength = 1.0f;
-
-    // --- Zeile 7: 16 Byte ---
     float    shininess      = 32.0f;
     float    transparency   = 0.0f;
     float    alphaCutoff    = 0.5f;
     float    receiveShadows = 1.0f;
-
-    // --- Zeile 8: 16 Byte ---
     float    blendMode   = 0.0f;
     float    blendFactor = 0.0f;
-    uint32_t flags       = 0u;    // MaterialFlags-Bitfeld
+    uint32_t flags       = 0u;
     float    _pad0       = 0.0f;
-
-    // Gesamtgröße: 8 × 16 = 128 Byte (cbuffer-konform)
 };
 static_assert(sizeof(MaterialData) == 128, "MaterialData muss 128 Byte sein (cbuffer-Anforderung)");
 
-// ---------------------------------------------------------------------------
-// MaterialFlags — Bitfeld für MaterialData::flags.
-// ---------------------------------------------------------------------------
 enum MaterialFlags : uint32_t
 {
     MF_NONE              = 0u,
@@ -70,42 +42,26 @@ enum MaterialFlags : uint32_t
     MF_USE_ROUGHNESS_MAP = 1u << 8,
     MF_USE_METALLIC_MAP  = 1u << 9,
     MF_SHADING_PBR       = 1u << 10,
-
-    // Detail-Map über UV1 (2. UV-Set).
-    // Wenn gesetzt: gDetailMap (t4) wird mit UV1 abgetastet und als
-    // 2x-Multiply über Albedo gemischt.
-    // Wenn kein UV1-Set im Mesh vorhanden: Fallback auf UV0 (kein Crash,
-    // kein sichtbarer Effekt wenn Detail-Textur neutral/grau).
     MF_USE_DETAIL_MAP    = 1u << 11,
 };
 
-// ---------------------------------------------------------------------------
-// MaterialResource — geteilte Material-Ressource im ResourceStore.
-//
-// Kein Shader*-Zeiger, keine GPU-Manager-Zeiger.
-// Alles über Handles referenziert — ECS-konform.
-// ---------------------------------------------------------------------------
-struct MaterialResource
+class MaterialResource
 {
-    // PBR-Daten (cbuffer-Inhalt)
+public:
     MaterialData data;
-
-    // Shader-Referenz (per Handle)
     ShaderHandle shader;
 
-    // Textur-Referenzen (per Handle — kein Zeiger)
-    TextureHandle albedoTex;
-    TextureHandle normalTex;
-    TextureHandle ormTex;
-    TextureHandle emissiveTex;
-    TextureHandle detailTex;   // UV1-Detail-Map — optional, nur wenn MF_USE_DETAIL_MAP
+    // Kanonischer Materialzustand: nur textureLayers wird vom Renderer gelesen.
+    MaterialTextureLayerArray textureLayers{};
 
-    // Stabile ID für Sort-Key
     uint32_t sortID = 0u;
-
-    // GPU-Seite (backend-agnostisch)
     void* gpuConstantBuffer = nullptr;
     bool  cpuDirty          = true;
+
+    MaterialResource()
+    {
+        NormalizeTextureLayers();
+    }
 
     bool IsTransparent() const noexcept { return (data.flags & MF_TRANSPARENT)     != 0u; }
     bool IsAlphaTest()   const noexcept { return (data.flags & MF_ALPHA_TEST)      != 0u; }
@@ -121,9 +77,78 @@ struct MaterialResource
         cpuDirty = true;
     }
 
-    // Setzt UV1-Tiling für die Detail-Map (unabhängig von UV0).
-    void SetDetailTiling(float tilingX, float tilingY,
-                         float offsetX = 0.0f, float offsetY = 0.0f) noexcept
+    MaterialTextureLayer& Layer(MaterialTextureSlot slot) noexcept
+    {
+        return textureLayers[static_cast<size_t>(slot)];
+    }
+
+    const MaterialTextureLayer& Layer(MaterialTextureSlot slot) const noexcept
+    {
+        return textureLayers[static_cast<size_t>(slot)];
+    }
+
+    void SetTexture(MaterialTextureSlot slot, TextureHandle texture, MaterialTextureUVSet uvSet = MaterialTextureUVSet::Auto) noexcept
+    {
+        auto& layer = Layer(slot);
+        layer.texture = texture;
+        layer.enabled = texture.IsValid();
+        layer.uvSet = (uvSet == MaterialTextureUVSet::Auto) ? DefaultUVSetForSlot(slot) : uvSet;
+        layer.expectsSRGB = DefaultExpectsSRGBForSlot(slot);
+
+        ApplyTextureFeatureFlag(slot, texture.IsValid());
+        cpuDirty = true;
+    }
+
+    void ClearTexture(MaterialTextureSlot slot) noexcept
+    {
+        auto& layer = Layer(slot);
+        layer.texture = TextureHandle::Invalid();
+        layer.enabled = false;
+        layer.uvSet = DefaultUVSetForSlot(slot);
+        layer.expectsSRGB = DefaultExpectsSRGBForSlot(slot);
+
+        ApplyTextureFeatureFlag(slot, false);
+        cpuDirty = true;
+    }
+
+    bool HasTexture(MaterialTextureSlot slot) const noexcept
+    {
+        const auto& layer = Layer(slot);
+        return layer.enabled && layer.texture.IsValid();
+    }
+
+    TextureHandle GetTexture(MaterialTextureSlot slot) const noexcept
+    {
+        const auto& layer = Layer(slot);
+        if (layer.enabled && layer.texture.IsValid())
+            return layer.texture;
+        return TextureHandle::Invalid();
+    }
+
+    bool HasConsistentTextureState() const noexcept
+    {
+        for (size_t i = 0; i < textureLayers.size(); ++i)
+        {
+            const auto& layer = textureLayers[i];
+            if (layer.enabled != layer.texture.IsValid())
+                return false;
+        }
+        return true;
+    }
+
+    void NormalizeTextureLayers() noexcept
+    {
+        for (size_t i = 0; i < textureLayers.size(); ++i)
+        {
+            auto& layer = textureLayers[i];
+            const auto slot = static_cast<MaterialTextureSlot>(i);
+            if (layer.uvSet == MaterialTextureUVSet::Auto)
+                layer.uvSet = DefaultUVSetForSlot(slot);
+            layer.expectsSRGB = DefaultExpectsSRGBForSlot(slot);
+        }
+    }
+
+    void SetDetailTiling(float tilingX, float tilingY, float offsetX = 0.0f, float offsetY = 0.0f) noexcept
     {
         data.uvDetailTilingOffset = { tilingX, tilingY, offsetX, offsetY };
         cpuDirty = true;
@@ -134,5 +159,47 @@ struct MaterialResource
         MaterialResource m;
         m.data.baseColor = { r, g, b, a };
         return m;
+    }
+
+    static constexpr MaterialTextureUVSet DefaultUVSetForSlot(MaterialTextureSlot slot) noexcept
+    {
+        switch (slot)
+        {
+        case MaterialTextureSlot::Detail: return MaterialTextureUVSet::UV1;
+        case MaterialTextureSlot::Albedo:
+        case MaterialTextureSlot::Normal:
+        case MaterialTextureSlot::ORM:
+        case MaterialTextureSlot::Emissive:
+        default: return MaterialTextureUVSet::UV0;
+        }
+    }
+
+    static constexpr bool DefaultExpectsSRGBForSlot(MaterialTextureSlot slot) noexcept
+    {
+        switch (slot)
+        {
+        case MaterialTextureSlot::Albedo:
+        case MaterialTextureSlot::Emissive:
+        case MaterialTextureSlot::Detail:
+            return true;
+        case MaterialTextureSlot::Normal:
+        case MaterialTextureSlot::ORM:
+        default:
+            return false;
+        }
+    }
+
+private:
+    void ApplyTextureFeatureFlag(MaterialTextureSlot slot, bool enabled) noexcept
+    {
+        switch (slot)
+        {
+        case MaterialTextureSlot::Normal:   SetFlag(MF_USE_NORMAL_MAP, enabled); break;
+        case MaterialTextureSlot::ORM:      SetFlag(MF_USE_ORM_MAP, enabled); break;
+        case MaterialTextureSlot::Emissive: SetFlag(MF_USE_EMISSIVE, enabled); break;
+        case MaterialTextureSlot::Detail:   SetFlag(MF_USE_DETAIL_MAP, enabled); break;
+        case MaterialTextureSlot::Albedo:
+        default: break;
+        }
     }
 };

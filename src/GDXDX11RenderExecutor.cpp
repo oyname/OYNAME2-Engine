@@ -1,6 +1,8 @@
 #include "GDXDX11RenderExecutor.h"
 #include "GDXVertexFlags.h"
 #include "SubmeshData.h"
+#include "Debug.h"
+#include "GDXTextureSlots.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -27,6 +29,21 @@ static ID3D11Buffer* CreateBuffer(ID3D11Device* device,
     if (FAILED(device->CreateBuffer(&desc, data ? &init : nullptr, &buf)))
         return nullptr;
     return buf;
+}
+
+static const char* ResourceStateName(ResourceState s)
+{
+    switch (s)
+    {
+    case ResourceState::Unknown:      return "Unknown";
+    case ResourceState::ShaderRead:   return "ShaderRead";
+    case ResourceState::RenderTarget: return "RenderTarget";
+    case ResourceState::DepthWrite:   return "DepthWrite";
+    case ResourceState::CopySource:   return "CopySource";
+    case ResourceState::CopyDest:     return "CopyDest";
+    case ResourceState::Present:      return "Present";
+    default:                          return "?";
+    }
 }
 
 // ===========================================================================
@@ -123,6 +140,7 @@ bool GDXDX11RenderExecutor::Init(const InitParams& p)
     m_context = p.context;
     if (!m_device || !m_context) return false;
     CreateConstantBuffers();
+    m_textureStates.clear();
     return m_entityCB && m_frameCB;
 }
 
@@ -141,6 +159,7 @@ void GDXDX11RenderExecutor::Shutdown()
     if (m_entityCB) { m_entityCB->Release(); m_entityCB = nullptr; }
     if (m_frameCB)  { m_frameCB->Release();  m_frameCB  = nullptr; }
     if (m_skinCB)   { m_skinCB->Release();   m_skinCB   = nullptr; }
+    m_textureStates.clear();
 }
 
 void GDXDX11RenderExecutor::UpdateFrameConstants(const FrameData& frame)
@@ -213,32 +232,67 @@ bool GDXDX11RenderExecutor::BindVertexStreams(const GpuMeshBuffer& gpu, uint32_t
 }
 
 // ---------------------------------------------------------------------------
-// BindMaterialTextures — t0=Albedo, t1=Normal, t2=ORM, t3=Emissive
-// Fallback auf Default-Texturen wenn kein Handle gesetzt.
+// BindMaterialTextures — nutzt explizite ResourceBindings wenn vorhanden,
+// sonst Fallback auf den Materialzustand. Trackt ShaderRead-Nutzung pro Textur.
 // ---------------------------------------------------------------------------
 void GDXDX11RenderExecutor::BindMaterialTextures(
-    const MaterialResource&                    mat,
+    const RenderCommand&                    cmd,
+    const MaterialResource&                 mat,
     ResourceStore<GDXTextureResource, TextureTag>& texStore,
     TextureHandle defaultWhite,
     TextureHandle defaultNormal,
     TextureHandle defaultORM,
     TextureHandle defaultBlack)
 {
-    auto getSRV = [&](TextureHandle h, TextureHandle fallback) -> ID3D11ShaderResourceView*
+    auto resolveTexture = [&](ShaderResourceSemantic semantic, TextureHandle fallback) -> TextureHandle
     {
-        const TextureHandle eff = h.IsValid() ? h : fallback;
-        const GDXTextureResource* tex = texStore.Get(eff);
+        if (const ShaderResourceBindingDesc* binding = cmd.resourceBindings.FindTextureBinding(semantic))
+        {
+            if (binding->enabled && binding->texture.IsValid())
+                return binding->texture;
+        }
+
+        switch (semantic)
+        {
+        case ShaderResourceSemantic::Albedo:
+            return mat.GetTexture(MaterialTextureSlot::Albedo).IsValid() ? mat.GetTexture(MaterialTextureSlot::Albedo) : fallback;
+        case ShaderResourceSemantic::Normal:
+            return mat.GetTexture(MaterialTextureSlot::Normal).IsValid() ? mat.GetTexture(MaterialTextureSlot::Normal) : fallback;
+        case ShaderResourceSemantic::ORM:
+            return mat.GetTexture(MaterialTextureSlot::ORM).IsValid() ? mat.GetTexture(MaterialTextureSlot::ORM) : fallback;
+        case ShaderResourceSemantic::Emissive:
+            return mat.GetTexture(MaterialTextureSlot::Emissive).IsValid() ? mat.GetTexture(MaterialTextureSlot::Emissive) : fallback;
+        case ShaderResourceSemantic::Detail:
+            return mat.GetTexture(MaterialTextureSlot::Detail).IsValid() ? mat.GetTexture(MaterialTextureSlot::Detail) : fallback;
+        case ShaderResourceSemantic::ShadowMap:
+        default:
+            return fallback;
+        }
+    };
+
+    auto getSRV = [&](TextureHandle handle, const char* reason) -> ID3D11ShaderResourceView*
+    {
+        if (handle.IsValid())
+            ValidateShaderReadState(handle, reason);
+
+        const GDXTextureResource* tex = texStore.Get(handle);
         if (!tex || !tex->srv) return nullptr;
         return static_cast<ID3D11ShaderResourceView*>(tex->srv);
     };
 
+    const TextureHandle albedo   = resolveTexture(ShaderResourceSemantic::Albedo,   defaultWhite);
+    const TextureHandle normal   = resolveTexture(ShaderResourceSemantic::Normal,   defaultNormal);
+    const TextureHandle orm      = resolveTexture(ShaderResourceSemantic::ORM,      defaultORM);
+    const TextureHandle emissive = resolveTexture(ShaderResourceSemantic::Emissive, defaultBlack);
+    const TextureHandle detail   = resolveTexture(ShaderResourceSemantic::Detail,   defaultWhite);
+
     ID3D11ShaderResourceView* srvs[5] =
     {
-        getSRV(mat.albedoTex,   defaultWhite),   // t0
-        getSRV(mat.normalTex,   defaultNormal),  // t1
-        getSRV(mat.ormTex,      defaultORM),     // t2
-        getSRV(mat.emissiveTex, defaultBlack),   // t3
-        getSRV(mat.detailTex,   defaultWhite),   // t4 — Detail-Map (UV1)
+        getSRV(albedo,   "BindMaterialTextures Albedo"),
+        getSRV(normal,   "BindMaterialTextures Normal"),
+        getSRV(orm,      "BindMaterialTextures ORM"),
+        getSRV(emissive, "BindMaterialTextures Emissive"),
+        getSRV(detail,   "BindMaterialTextures Detail"),
     };
 
     m_context->PSSetShaderResources(0, 5, srvs);
@@ -286,6 +340,57 @@ void GDXDX11RenderExecutor::BindSkinningPalette(
     }
 
     m_context->VSSetConstantBuffers(4, 1, &m_skinCB);
+}
+
+ResourceState GDXDX11RenderExecutor::GetTrackedTextureState(TextureHandle texture) const
+{
+    const auto it = m_textureStates.find(texture);
+    return (it != m_textureStates.end()) ? it->second : ResourceState::Unknown;
+}
+
+void GDXDX11RenderExecutor::SetTrackedTextureState(TextureHandle texture, ResourceState state)
+{
+    if (!texture.IsValid())
+        return;
+    m_textureStates[texture] = state;
+}
+
+void GDXDX11RenderExecutor::ValidateShaderReadState(TextureHandle texture, const char* debugReason)
+{
+    if (!texture.IsValid())
+        return;
+
+    const ResourceState current = GetTrackedTextureState(texture);
+    if (current != ResourceState::Unknown && current != ResourceState::ShaderRead)
+    {
+        DBWARN(GDX_SRC_LOC, "Texture state mismatch before shader read (", debugReason ? debugReason : "", "): expected ShaderRead, tracked=", ResourceStateName(current));
+    }
+
+    // Validierung darf den getrackten State nicht heimlich umbiegen.
+}
+
+void GDXDX11RenderExecutor::TransitionTexture(TextureHandle texture, ResourceState expectedBefore, ResourceState after, const char* debugReason)
+{
+    if (!texture.IsValid())
+        return;
+
+    const ResourceState current = GetTrackedTextureState(texture);
+    if (current != ResourceState::Unknown && expectedBefore != ResourceState::Unknown && current != expectedBefore)
+    {
+        DBWARN(GDX_SRC_LOC, "Texture transition mismatch (", debugReason ? debugReason : "", "): tracked=", ResourceStateName(current), ", expectedBefore=", ResourceStateName(expectedBefore), ", after=", ResourceStateName(after));
+    }
+
+    if (current == after)
+    {
+        DBWARN(GDX_SRC_LOC, "Redundant texture transition (", debugReason ? debugReason : "", "): state=", ResourceStateName(after));
+    }
+
+    SetTrackedTextureState(texture, after);
+}
+
+void GDXDX11RenderExecutor::ResetTrackedResourceStates()
+{
+    m_textureStates.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -352,7 +457,7 @@ void GDXDX11RenderExecutor::ExecuteShadowQueue(
                 m_context->PSSetConstantBuffers(2, 1, &cb);
             }
 
-            BindMaterialTextures(*mat, texStore,
+            BindMaterialTextures(cmd, *mat, texStore,
                 defaultWhiteTex, defaultNormalTex,
                 defaultORMTex, defaultBlackTex);
             m_lastMaterial = cmd.material;
@@ -455,7 +560,7 @@ void GDXDX11RenderExecutor::ExecuteQueue(
             }
 
             // Texturen t0-t3
-            BindMaterialTextures(*mat, texStore,
+            BindMaterialTextures(cmd, *mat, texStore,
                 defaultWhiteTex, defaultNormalTex,
                 defaultORMTex,   defaultBlackTex);
 

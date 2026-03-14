@@ -13,7 +13,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "..//third_party/stb_image.h"
 
-#include "GDXTextureResource.h"
+#include "GDXTextureLoader.h"
 
 // ---------------------------------------------------------------------------
 // Interne Hilfsfunktion: Texture2D + SRV mit Mips erstellen
@@ -106,6 +106,8 @@ bool GDXTextureLoader_LoadFromFile(
     outResource.width     = static_cast<uint32_t>(w);
     outResource.height    = static_cast<uint32_t>(h);
     outResource.ready     = true;
+    outResource.isSRGB    = isSRGB;
+    outResource.semantic  = GDXTextureSemantic::Unknown;
     outResource.debugName = filename;
     return true;
 }
@@ -155,5 +157,39 @@ bool GDXTextureLoader_Create1x1(
     outResource.width  = 1u;
     outResource.height = 1u;
     outResource.ready  = true;
+    outResource.isSRGB = false;
+    outResource.semantic = GDXTextureSemantic::Unknown;
+    return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// Öffentliche API: Textur aus ImageBuffer erstellen
+// ---------------------------------------------------------------------------
+bool GDXTextureLoader_CreateFromImage(
+    ID3D11Device*        device,
+    ID3D11DeviceContext* ctx,
+    const ImageBuffer&   image,
+    GDXTextureResource&  outResource,
+    bool                 isSRGB,
+    const wchar_t*       debugName)
+{
+    if (!device || !ctx || !image.IsValid()) return false;
+
+    const DXGI_FORMAT fmt = isSRGB
+        ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB
+        : DXGI_FORMAT_R8G8B8A8_UNORM;
+
+    ID3D11ShaderResourceView* srv = nullptr;
+    const bool ok = CreateSRVWithMips(device, ctx, image.Data(), static_cast<int>(image.Width()), static_cast<int>(image.Height()), fmt, &srv);
+    if (!ok) return false;
+
+    outResource.srv = srv;
+    outResource.width = image.Width();
+    outResource.height = image.Height();
+    outResource.ready = true;
+    outResource.isSRGB = isSRGB;
+    outResource.semantic = GDXTextureSemantic::Procedural;
+    outResource.debugName = debugName ? debugName : L"ImageBufferTexture";
     return true;
 }

@@ -1,6 +1,8 @@
 #include "GDXDX11RenderBackend.h"
+#include "GDXRenderTargetResource.h"
 #include "GDXVertexFlags.h"
 #include "Debug.h"
+#include "GDXResourceState.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -22,6 +24,53 @@ bool GDXTextureLoader_Create1x1(ID3D11Device*, uint8_t, uint8_t, uint8_t, uint8_
 
 namespace
 {
+    void ExecuteMainPassCommon(
+        ID3D11DeviceContext* ctx,
+        ID3D11RasterizerState* rasterizerState,
+        ID3D11DepthStencilState* depthStencilState,
+        ID3D11DepthStencilState* depthStateNoWrite,
+        ID3D11BlendState* blendState,
+        ID3D11BlendState* blendStateAlpha,
+        GDXSamplerCache& samplerCache,
+        GDXDX11RenderExecutor& executor,
+        GDXShadowMap& shadowMap,
+        Registry& registry,
+        const RenderQueue& opaqueQueue,
+        ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+        ResourceStore<MaterialResource, MaterialTag>& matStore,
+        ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+        ResourceStore<GDXTextureResource, TextureTag>& texStore)
+    {
+        if (!ctx) return;
+
+        const float bf[4] = { 0,0,0,0 };
+
+        RenderQueue solidQueue;
+        RenderQueue transparentQueue;
+        for (const auto& cmd : opaqueQueue.commands)
+        {
+            if (cmd.pass == RenderPass::Transparent) transparentQueue.commands.push_back(cmd);
+            else solidQueue.commands.push_back(cmd);
+        }
+
+        ctx->RSSetState(rasterizerState);
+        ctx->OMSetDepthStencilState(depthStencilState, 0u);
+        ctx->OMSetBlendState(blendState, bf, 0xFFFFFFFF);
+        samplerCache.BindAll(ctx);
+        if (!solidQueue.Empty())
+            executor.ExecuteQueue(registry, solidQueue, meshStore, matStore, shaderStore, texStore,
+                                  shadowMap.IsReady() ? shadowMap.GetSRV() : nullptr);
+
+        ctx->OMSetDepthStencilState(depthStateNoWrite, 0u);
+        ctx->OMSetBlendState(blendStateAlpha, bf, 0xFFFFFFFF);
+        if (!transparentQueue.Empty())
+            executor.ExecuteQueue(registry, transparentQueue, meshStore, matStore, shaderStore, texStore,
+                                  shadowMap.IsReady() ? shadowMap.GetSRV() : nullptr);
+
+        ctx->OMSetDepthStencilState(depthStencilState, 0u);
+        ctx->OMSetBlendState(blendState, bf, 0xFFFFFFFF);
+    }
+
     std::filesystem::path GetExeDir()
     {
         std::array<wchar_t, 4096> buf{};
@@ -59,9 +108,9 @@ namespace
         *out = nullptr;
 
         UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
-#if defined(_DEBUG)
+    #if defined(_DEBUG)
         flags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-#endif
+    #endif
         ID3DBlob* err = nullptr;
         const HRESULT hr = D3DCompileFromFile(
             path.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE,
@@ -94,24 +143,18 @@ namespace
         UINT slot = 0u;
 
         auto add = [&](const char* sem, UINT idx, DXGI_FORMAT fmt)
-            {
-                elems.push_back({ sem, idx, fmt, slot++, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 });
-            };
+        {
+            elems.push_back({ sem, idx, fmt, slot++, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 });
+        };
 
         if (flags & GDX_VERTEX_POSITION)     add("POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT);
         if (flags & GDX_VERTEX_NORMAL)       add("NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT);
         if (flags & GDX_VERTEX_COLOR)        add("COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT);
         if (flags & GDX_VERTEX_TEX1)
         {
-            // UV0 immer emittieren.
-            // UV1 (TEXCOORD1) ebenfalls immer — alle Shader die TEX1 nutzen
-            // deklarieren TEXCOORD1 als VS_INPUT (UV2-Patch).
-            // Ob echte UV2-Daten vorliegen entscheidet der Executor:
-            // kein GDX_VERTEX_TEX2 → UV0-Buffer wird auf Slot 1 aliasiert.
-            add("TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT);   // UV0
-            add("TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT);   // UV1 (oder Alias)
+            add("TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT);
+            add("TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT);
         }
-        // GDX_VERTEX_TEX2 allein (ohne TEX1) ist kein gültiger Zustand — ignorieren.
         if (flags & GDX_VERTEX_TANGENT)      add("TANGENT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT);
         if (flags & GDX_VERTEX_BONE_INDICES) add("BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_UINT);
         if (flags & GDX_VERTEX_BONE_WEIGHTS) add("BLENDWEIGHT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT);
@@ -154,7 +197,6 @@ bool GDXDX11RenderBackend::Initialize(ResourceStore<GDXTextureResource, TextureT
     m_executor.defaultNormalTex = m_defaultTextures.normal;
     m_executor.defaultORMTex = m_defaultTextures.orm;
     m_executor.defaultBlackTex = m_defaultTextures.black;
-
     return true;
 }
 
@@ -191,6 +233,7 @@ ShaderHandle GDXDX11RenderBackend::CreateShader(
     const std::wstring& vsFile,
     const std::wstring& psFile,
     uint32_t vertexFlags,
+    const GDXShaderLayout& shaderLayout,
     const std::wstring& debugName)
 {
     const auto vsPath = FindShaderPath(vsFile);
@@ -208,8 +251,8 @@ ShaderHandle GDXDX11RenderBackend::CreateShader(
         return ShaderHandle::Invalid();
     }
 
-    ID3D11InputLayout* layout = nullptr;
-    if (FAILED(BuildInputLayout(m_device, vertexFlags, vsBlob, &layout)))
+    ID3D11InputLayout* inputLayout = nullptr;
+    if (FAILED(BuildInputLayout(m_device, vertexFlags, vsBlob, &inputLayout)))
     {
         vs->Release();
         vsBlob->Release();
@@ -221,7 +264,7 @@ ShaderHandle GDXDX11RenderBackend::CreateShader(
     if (!CompileFromFile(psPath.wstring(), "main", "ps_5_0", &psBlob))
     {
         vs->Release();
-        layout->Release();
+        inputLayout->Release();
         return ShaderHandle::Invalid();
     }
 
@@ -230,16 +273,17 @@ ShaderHandle GDXDX11RenderBackend::CreateShader(
     {
         psBlob->Release();
         vs->Release();
-        layout->Release();
+        inputLayout->Release();
         return ShaderHandle::Invalid();
     }
     psBlob->Release();
 
     GDXShaderResource res;
     res.vertexFlags = vertexFlags;
+    res.layout = shaderLayout;
     res.vertexShader = vs;
     res.pixelShader = ps;
-    res.inputLayout = layout;
+    res.inputLayout = inputLayout;
     res.debugName = debugName;
     return shaderStore.Add(std::move(res));
 }
@@ -256,6 +300,56 @@ TextureHandle GDXDX11RenderBackend::CreateTexture(
         Debug::LogError(GDX_SRC_LOC, L"LoadTexture fehlgeschlagen: ", filePath.c_str());
         return fallbackOnFailure;
     }
+    return texStore.Add(std::move(res));
+}
+
+TextureHandle GDXDX11RenderBackend::CreateTextureFromImage(
+    ResourceStore<GDXTextureResource, TextureTag>& texStore,
+    const ImageBuffer& image,
+    bool isSRGB,
+    const std::wstring& debugName,
+    TextureHandle fallbackOnFailure)
+{
+    if (!m_device || !image.IsValid() || !image.Data())
+        return fallbackOnFailure;
+
+    GDXTextureResource res;
+    D3D11_TEXTURE2D_DESC td = {};
+    td.Width = image.Width();
+    td.Height = image.Height();
+    td.MipLevels = 1;
+    td.ArraySize = 1;
+    td.Format = isSRGB ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_DEFAULT;
+    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+    D3D11_SUBRESOURCE_DATA init = {};
+    init.pSysMem = image.Data();
+    init.SysMemPitch = image.Width() * 4u;
+
+    ID3D11Texture2D* tex = nullptr;
+    if (FAILED(m_device->CreateTexture2D(&td, &init, &tex)))
+        return fallbackOnFailure;
+
+    D3D11_SHADER_RESOURCE_VIEW_DESC sd = {};
+    sd.Format = td.Format;
+    sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    sd.Texture2D.MipLevels = 1;
+
+    ID3D11ShaderResourceView* srv = nullptr;
+    const HRESULT hr = m_device->CreateShaderResourceView(tex, &sd, &srv);
+    tex->Release();
+    if (FAILED(hr))
+        return fallbackOnFailure;
+
+    res.srv = srv;
+    res.width = image.Width();
+    res.height = image.Height();
+    res.ready = true;
+    res.isSRGB = isSRGB;
+    res.semantic = GDXTextureSemantic::Procedural;
+    res.debugName = debugName;
     return texStore.Add(std::move(res));
 }
 
@@ -331,9 +425,100 @@ void* GDXDX11RenderBackend::ExecuteMainPass(
     ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
     ResourceStore<GDXTextureResource, TextureTag>& texStore)
 {
-    void* shadowSRV = m_shadowMap.IsReady() ? m_shadowMap.GetSRV() : nullptr;
-    m_executor.ExecuteQueue(registry, opaqueQueue, meshStore, matStore, shaderStore, texStore, shadowSRV);
-    return shadowSRV;
+    if (!m_ctx || !m_context) return nullptr;
+
+    auto* rtv = static_cast<ID3D11RenderTargetView*>(m_context->GetRenderTarget());
+    auto* dsv = static_cast<ID3D11DepthStencilView*>(m_context->GetDepthStencil());
+    m_ctx->OMSetRenderTargets(1, &rtv, dsv);
+
+    ExecuteMainPassCommon(
+        m_ctx,
+        m_rasterizerState,
+        m_depthStencilState,
+        m_depthStateNoWrite,
+        m_blendState,
+        m_blendStateAlpha,
+        m_samplerCache,
+        m_executor,
+        m_shadowMap,
+        registry,
+        opaqueQueue,
+        meshStore,
+        matStore,
+        shaderStore,
+        texStore);
+
+    return nullptr;
+}
+
+void* GDXDX11RenderBackend::ExecuteMainPassToTarget(
+    GDXRenderTargetResource& rt,
+    const RenderPassClearDesc& clearDesc,
+    Registry& registry,
+    const RenderQueue& opaqueQueue,
+    ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+    ResourceStore<MaterialResource, MaterialTag>& matStore,
+    ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+    ResourceStore<GDXTextureResource, TextureTag>& texStore)
+{
+    if (!m_ctx || !rt.ready || !rt.rtv || !rt.dsv) return nullptr;
+
+    auto* rtv = static_cast<ID3D11RenderTargetView*>(rt.rtv);
+    auto* dsv = static_cast<ID3D11DepthStencilView*>(rt.dsv);
+
+    ID3D11ShaderResourceView* nullSrvs[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
+    m_ctx->PSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, nullSrvs);
+
+    m_ctx->OMSetRenderTargets(1, &rtv, dsv);
+
+    if (rt.exposedTexture.IsValid())
+        m_executor.TransitionTexture(rt.exposedTexture, ResourceState::ShaderRead, ResourceState::RenderTarget, "ExecuteMainPassToTarget begin");
+
+    if (clearDesc.clearColorEnabled)
+        m_ctx->ClearRenderTargetView(rtv, clearDesc.clearColor);
+
+    UINT depthStencilFlags = 0u;
+    if (clearDesc.clearDepthEnabled) depthStencilFlags |= D3D11_CLEAR_DEPTH;
+    if (clearDesc.clearStencilEnabled) depthStencilFlags |= D3D11_CLEAR_STENCIL;
+    if (depthStencilFlags != 0u)
+        m_ctx->ClearDepthStencilView(dsv, depthStencilFlags, clearDesc.clearDepthValue, clearDesc.clearStencilValue);
+
+    D3D11_VIEWPORT vp = {};
+    vp.Width = static_cast<float>(rt.width);
+    vp.Height = static_cast<float>(rt.height);
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    m_ctx->RSSetViewports(1, &vp);
+
+    ExecuteMainPassCommon(
+        m_ctx,
+        m_rasterizerState,
+        m_depthStencilState,
+        m_depthStateNoWrite,
+        m_blendState,
+        m_blendStateAlpha,
+        m_samplerCache,
+        m_executor,
+        m_shadowMap,
+        registry,
+        opaqueQueue,
+        meshStore,
+        matStore,
+        shaderStore,
+        texStore);
+
+    m_ctx->PSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, nullSrvs);
+
+    if (rt.exposedTexture.IsValid())
+        m_executor.TransitionTexture(rt.exposedTexture, ResourceState::RenderTarget, ResourceState::ShaderRead, "ExecuteMainPassToTarget end");
+
+    if (m_context)
+    {
+        auto* backbufferRTV = static_cast<ID3D11RenderTargetView*>(m_context->GetRenderTarget());
+        auto* backbufferDSV = static_cast<ID3D11DepthStencilView*>(m_context->GetDepthStencil());
+        m_ctx->OMSetRenderTargets(1, &backbufferRTV, backbufferDSV);
+    }
+    return nullptr;
 }
 
 uint32_t GDXDX11RenderBackend::GetDrawCallCount() const
@@ -343,7 +528,7 @@ uint32_t GDXDX11RenderBackend::GetDrawCallCount() const
 
 bool GDXDX11RenderBackend::HasShadowResources() const
 {
-    return m_shadowMap.IsReady();
+    return m_shadowMap.GetDSV() != nullptr && m_shadowMap.GetSRV() != nullptr;
 }
 
 const IGDXRenderBackend::DefaultTextureSet& GDXDX11RenderBackend::GetDefaultTextures() const
@@ -353,6 +538,8 @@ const IGDXRenderBackend::DefaultTextureSet& GDXDX11RenderBackend::GetDefaultText
 
 bool GDXDX11RenderBackend::CreateRenderStates()
 {
+    if (!m_device) return false;
+
     D3D11_RASTERIZER_DESC rd = {};
     rd.FillMode = D3D11_FILL_SOLID;
     rd.CullMode = D3D11_CULL_BACK;
@@ -363,13 +550,36 @@ bool GDXDX11RenderBackend::CreateRenderStates()
     D3D11_DEPTH_STENCIL_DESC dsd = {};
     dsd.DepthEnable = TRUE;
     dsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-    dsd.DepthFunc = D3D11_COMPARISON_LESS;
+    dsd.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
     if (FAILED(m_device->CreateDepthStencilState(&dsd, &m_depthStencilState))) return false;
+
+    D3D11_DEPTH_STENCIL_DESC dsdNoWrite = {};
+    dsdNoWrite.DepthEnable = TRUE;
+    dsdNoWrite.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    dsdNoWrite.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+    if (FAILED(m_device->CreateDepthStencilState(&dsdNoWrite, &m_depthStateNoWrite))) return false;
 
     D3D11_BLEND_DESC bd = {};
     bd.RenderTarget[0].BlendEnable = FALSE;
+    bd.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+    bd.RenderTarget[0].DestBlend = D3D11_BLEND_ZERO;
+    bd.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    bd.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+    bd.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
+    bd.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
     bd.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
     if (FAILED(m_device->CreateBlendState(&bd, &m_blendState))) return false;
+
+    D3D11_BLEND_DESC alphaBd = {};
+    alphaBd.RenderTarget[0].BlendEnable = TRUE;
+    alphaBd.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+    alphaBd.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    alphaBd.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    alphaBd.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+    alphaBd.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+    alphaBd.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    alphaBd.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    if (FAILED(m_device->CreateBlendState(&alphaBd, &m_blendStateAlpha))) return false;
 
     return true;
 }
@@ -378,13 +588,13 @@ bool GDXDX11RenderBackend::InitDefaultTextures(ResourceStore<GDXTextureResource,
 {
     auto make1x1 = [&](uint8_t r, uint8_t g, uint8_t b, uint8_t a,
         TextureHandle& handle, const wchar_t* name) -> bool
-        {
-            GDXTextureResource res;
-            res.debugName = name;
-            if (!GDXTextureLoader_Create1x1(m_device, r, g, b, a, res)) return false;
-            handle = texStore.Add(std::move(res));
-            return handle.IsValid();
-        };
+    {
+        GDXTextureResource res;
+        res.debugName = name;
+        if (!GDXTextureLoader_Create1x1(m_device, r, g, b, a, res)) return false;
+        handle = texStore.Add(std::move(res));
+        return handle.IsValid();
+    };
 
     return make1x1(255, 255, 255, 255, m_defaultTextures.white, L"Default_White")
         && make1x1(128, 128, 255, 255, m_defaultTextures.normal, L"Default_FlatNormal")
@@ -399,8 +609,6 @@ void GDXDX11RenderBackend::Shutdown(
 {
     m_executor.Shutdown();
     m_lightSystem.Shutdown();
-    m_samplerCache.Shutdown();
-    m_shadowMap.Release();
 
     matStore.ForEach([](MaterialHandle, MaterialResource& mat)
         {
@@ -411,11 +619,11 @@ void GDXDX11RenderBackend::Shutdown(
             }
         });
 
-    shaderStore.ForEach([](ShaderHandle, GDXShaderResource& s)
+    shaderStore.ForEach([](ShaderHandle, GDXShaderResource& sh)
         {
-            if (s.vertexShader) { static_cast<ID3D11VertexShader*>(s.vertexShader)->Release(); s.vertexShader = nullptr; }
-            if (s.pixelShader) { static_cast<ID3D11PixelShader*> (s.pixelShader)->Release();  s.pixelShader = nullptr; }
-            if (s.inputLayout) { static_cast<ID3D11InputLayout*> (s.inputLayout)->Release();  s.inputLayout = nullptr; }
+            if (sh.vertexShader) { static_cast<ID3D11VertexShader*>(sh.vertexShader)->Release(); sh.vertexShader = nullptr; }
+            if (sh.pixelShader) { static_cast<ID3D11PixelShader*>(sh.pixelShader)->Release(); sh.pixelShader = nullptr; }
+            if (sh.inputLayout) { static_cast<ID3D11InputLayout*>(sh.inputLayout)->Release(); sh.inputLayout = nullptr; }
         });
 
     texStore.ForEach([](TextureHandle, GDXTextureResource& tex)
@@ -427,13 +635,100 @@ void GDXDX11RenderBackend::Shutdown(
             }
         });
 
-    m_meshUploader.reset();
-
-    if (m_rasterizerState) { m_rasterizerState->Release();   m_rasterizerState = nullptr; }
+    if (m_blendStateAlpha) { m_blendStateAlpha->Release(); m_blendStateAlpha = nullptr; }
+    if (m_blendState) { m_blendState->Release(); m_blendState = nullptr; }
+    if (m_depthStateNoWrite) { m_depthStateNoWrite->Release(); m_depthStateNoWrite = nullptr; }
     if (m_depthStencilState) { m_depthStencilState->Release(); m_depthStencilState = nullptr; }
-    if (m_blendState) { m_blendState->Release();        m_blendState = nullptr; }
+    if (m_rasterizerState) { m_rasterizerState->Release(); m_rasterizerState = nullptr; }
 
-    m_context.reset();
-    m_device = nullptr;
+    m_shadowMap.Release();
+    m_samplerCache.Shutdown();
+    m_meshUploader.reset();
     m_ctx = nullptr;
+    m_device = nullptr;
+    m_context.reset();
+}
+
+// ---------------------------------------------------------------------------
+// CreateRenderTarget — Offscreen RTT (DX11)
+// ---------------------------------------------------------------------------
+RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
+    ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore,
+    ResourceStore<GDXTextureResource,      TextureTag>&      texStore,
+    uint32_t width, uint32_t height,
+    const std::wstring& debugName)
+{
+    if (!m_device || !m_ctx) return RenderTargetHandle::Invalid();
+
+    HRESULT hr = S_OK;
+
+    // --- Farb-Textur (RGBA8) ---
+    D3D11_TEXTURE2D_DESC texDesc = {};
+    texDesc.Width            = width;
+    texDesc.Height           = height;
+    texDesc.MipLevels        = 1;
+    texDesc.ArraySize        = 1;
+    texDesc.Format           = DXGI_FORMAT_R8G8B8A8_UNORM;
+    texDesc.SampleDesc.Count = 1;
+    texDesc.Usage            = D3D11_USAGE_DEFAULT;
+    texDesc.BindFlags        = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+
+    ID3D11Texture2D* colorTex = nullptr;
+    hr = m_device->CreateTexture2D(&texDesc, nullptr, &colorTex);
+    if (FAILED(hr)) { return RenderTargetHandle::Invalid(); }
+
+    ID3D11RenderTargetView* rtv = nullptr;
+    hr = m_device->CreateRenderTargetView(colorTex, nullptr, &rtv);
+    if (FAILED(hr)) { colorTex->Release(); return RenderTargetHandle::Invalid(); }
+
+    ID3D11ShaderResourceView* srv = nullptr;
+    hr = m_device->CreateShaderResourceView(colorTex, nullptr, &srv);
+    if (FAILED(hr)) { rtv->Release(); colorTex->Release(); return RenderTargetHandle::Invalid(); }
+
+    // --- Depth-Textur ---
+    D3D11_TEXTURE2D_DESC depthDesc = {};
+    depthDesc.Width            = width;
+    depthDesc.Height           = height;
+    depthDesc.MipLevels        = 1;
+    depthDesc.ArraySize        = 1;
+    depthDesc.Format           = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    depthDesc.SampleDesc.Count = 1;
+    depthDesc.Usage            = D3D11_USAGE_DEFAULT;
+    depthDesc.BindFlags        = D3D11_BIND_DEPTH_STENCIL;
+
+    ID3D11Texture2D* depthTex = nullptr;
+    hr = m_device->CreateTexture2D(&depthDesc, nullptr, &depthTex);
+    if (FAILED(hr)) { srv->Release(); rtv->Release(); colorTex->Release(); return RenderTargetHandle::Invalid(); }
+
+    ID3D11DepthStencilView* dsv = nullptr;
+    hr = m_device->CreateDepthStencilView(depthTex, nullptr, &dsv);
+    if (FAILED(hr)) { depthTex->Release(); srv->Release(); rtv->Release(); colorTex->Release(); return RenderTargetHandle::Invalid(); }
+
+    // --- SRV als Engine-Textur registrieren ---
+    GDXTextureResource texRes;
+    texRes.srv       = srv;
+    texRes.width     = width;
+    texRes.height    = height;
+    texRes.ready     = true;
+    texRes.isSRGB    = false;
+    texRes.semantic  = GDXTextureSemantic::RenderTarget;
+    texRes.debugName = debugName + L"_Tex";
+    TextureHandle exposedTex = texStore.Add(std::move(texRes));
+    if (exposedTex.IsValid())
+        m_executor.TransitionTexture(exposedTex, ResourceState::Unknown, ResourceState::ShaderRead, "CreateRenderTarget initial state");
+
+    // --- RenderTargetResource anlegen ---
+    GDXRenderTargetResource rt;
+    rt.colorTexture  = colorTex;
+    rt.rtv           = rtv;
+    rt.srv           = srv;
+    rt.depthTexture  = depthTex;
+    rt.dsv           = dsv;
+    rt.width         = width;
+    rt.height        = height;
+    rt.ready         = true;
+    rt.exposedTexture = exposedTex;
+    rt.debugName     = debugName;
+
+    return rtStore.Add(std::move(rt));
 }

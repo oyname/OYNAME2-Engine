@@ -9,16 +9,15 @@
 #include "GDXShaderResource.h"
 #include "GDXTextureResource.h"
 #include "Components.h"
+#include "GDXResourceState.h"
 
 #include <cstdint>
+#include <unordered_map>
 
 struct ID3D11Device;
 struct ID3D11DeviceContext;
 struct ID3D11Buffer;
 
-// ---------------------------------------------------------------------------
-// Constant-Buffer Structs
-// ---------------------------------------------------------------------------
 struct alignas(16) Dx11EntityConstants
 {
     float worldMatrix[16];
@@ -42,9 +41,6 @@ struct alignas(16) Dx11SkinConstants
 };
 static_assert(sizeof(Dx11SkinConstants) == SkinComponent::MaxBones * 64);
 
-// ---------------------------------------------------------------------------
-// GDXDX11MeshUploader
-// ---------------------------------------------------------------------------
 class GDXDX11MeshUploader
 {
 public:
@@ -61,9 +57,6 @@ private:
     ID3D11DeviceContext* m_context = nullptr;
 };
 
-// ---------------------------------------------------------------------------
-// GDXDX11RenderExecutor
-// ---------------------------------------------------------------------------
 class GDXDX11RenderExecutor
 {
 public:
@@ -77,8 +70,6 @@ public:
     void Shutdown();
 
     void UpdateFrameConstants(const FrameData& frame);
-
-    // Haupt-Pass: Mesh + Material + Texturen + Shader
     void ExecuteQueue(
         Registry&                                            registry,
         const RenderQueue&                                   queue,
@@ -88,9 +79,6 @@ public:
         ResourceStore<GDXTextureResource, TextureTag>&      texStore,
         void* shadowSRV = nullptr);
 
-    // Shadow-Pass: Depth-Only, kein Material, nur POSITION-Stream.
-    // Separater Pfad — ExecuteQueue() würde alle Draws überspringen weil
-    // Shadow-Commands kein gültiges Material haben.
     void ExecuteShadowQueue(
         Registry&                                   registry,
         const RenderQueue&                          queue,
@@ -101,19 +89,28 @@ public:
 
     uint32_t GetDrawCallCount() const { return m_drawCalls; }
 
+    void TransitionTexture(TextureHandle texture,
+                           ResourceState expectedBefore,
+                           ResourceState after,
+                           const char* debugReason = nullptr);
+    void ResetTrackedResourceStates();
+
 private:
     void CreateConstantBuffers();
     bool BindVertexStreams(const GpuMeshBuffer& gpu, uint32_t vertexFlags);
     void BindSkinningPalette(Registry& registry, const RenderCommand& cmd, const GDXShaderResource& shader);
-
-    // Bindet Texturen t0-t3 aus MaterialResource (Fallback auf Default-Handles)
     void BindMaterialTextures(
+        const RenderCommand& cmd,
         const MaterialResource& mat,
         ResourceStore<GDXTextureResource, TextureTag>& texStore,
         TextureHandle defaultWhite,
         TextureHandle defaultNormal,
         TextureHandle defaultORM,
         TextureHandle defaultBlack);
+
+    ResourceState GetTrackedTextureState(TextureHandle texture) const;
+    void SetTrackedTextureState(TextureHandle texture, ResourceState state);
+    void ValidateShaderReadState(TextureHandle texture, const char* debugReason);
 
     ID3D11Device*        m_device  = nullptr;
     ID3D11DeviceContext* m_context = nullptr;
@@ -126,9 +123,9 @@ private:
     MaterialHandle m_lastMaterial = MaterialHandle::Invalid();
 
     uint32_t m_drawCalls = 0u;
+    std::unordered_map<TextureHandle, ResourceState> m_textureStates;
 
 public:
-    // Default-Textur-Handles (vom Renderer gesetzt nach Initialize)
     TextureHandle defaultWhiteTex;
     TextureHandle defaultNormalTex;
     TextureHandle defaultORMTex;

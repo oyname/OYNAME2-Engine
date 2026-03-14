@@ -38,8 +38,10 @@ void GDXDX11LightSystem::Shutdown()
 
 void GDXDX11LightSystem::Update(Registry& registry, FrameData& frame, void* ctxPtr)
 {
-    frame.lightCount    = 0u;
-    frame.hasShadowPass = false;
+    frame.lightCount       = 0u;
+    frame.hasShadowPass    = false;
+    frame.shadowCasterMask = 0xFFFFFFFFu;
+    frame.lightAffectMask  = 0xFFFFFFFFu;
 
     registry.View<LightComponent, WorldTransformComponent>(
         [&](EntityID, LightComponent& lc, WorldTransformComponent& wt)
@@ -103,6 +105,8 @@ void GDXDX11LightSystem::Update(Registry& registry, FrameData& frame, void* ctxP
                     XMMatrixMultiply(lightView, lightProj));
 
                 frame.hasShadowPass = true;
+                frame.shadowCasterMask = lc.shadowLayerMask;
+                frame.lightAffectMask = lc.affectLayerMask;
             }
         });
 

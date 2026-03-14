@@ -17,6 +17,7 @@
 #include <memory>
 #include <filesystem>
 #include <system_error>
+#include <type_traits>
 #include <DirectXMath.h>
 
 static bool FileExists(const std::wstring& path)
@@ -60,7 +61,7 @@ static SubmeshData BuildCubeUV0UV1(float detailTile = 1.0f)
             b.SetUV0(i2, { 1.0f, 0.0f });
             b.SetUV0(i3, { 1.0f, 1.0f });
 
-            // uv1 — Detail-Textur (stärker gekachelt)
+            // uv1 — Detail-Textur
             b.SetUV1(i0, { 0.0f,       detailTile });
             b.SetUV1(i1, { 0.0f,       0.0f });
             b.SetUV1(i2, { detailTile, 0.0f });
@@ -106,7 +107,7 @@ public:
         Registry& reg = m_renderer.GetRegistry();
 
         // ---------------------------------------------------------------------
-        // Mesh — uv0 + uv1, detailTile=4
+        // Mesh
         // ---------------------------------------------------------------------
         {
             MeshAssetResource asset;
@@ -136,19 +137,22 @@ public:
         // ---------------------------------------------------------------------
         {
             MaterialResource mat = MaterialResource::FlatColor(1, 1, 1, 1);
-            mat.albedoTex = hAlbedo;
+
+            if (hAlbedo.IsValid())
+                mat.SetTexture(MaterialTextureSlot::Albedo, hAlbedo);
 
             const TextureHandle firstDetail = m_hDetailA.IsValid() ? m_hDetailA : m_hDetailB;
             if (firstDetail.IsValid())
             {
-                mat.detailTex = firstDetail;
-                mat.SetFlag(MF_USE_DETAIL_MAP, true);
+                mat.SetTexture(MaterialTextureSlot::Detail, firstDetail, MaterialTextureUVSet::UV1);
                 mat.SetDetailTiling(1.0f, 1.0f);
             }
 
             mat.data.receiveShadows = 1.0f;
 
             m_hMat = m_renderer.CreateMaterial(mat);
+
+            m_useDetailA = firstDetail.IsValid() && (firstDetail == m_hDetailA);
         }
 
         // ---------------------------------------------------------------------
@@ -236,7 +240,8 @@ public:
         Registry& reg = m_renderer.GetRegistry();
 
         m_yaw += 35.0f * dt;
-        if (m_yaw >= 360.0f) m_yaw -= 360.0f;
+        if (m_yaw >= 360.0f)
+            m_yaw -= 360.0f;
 
         if (auto* tc = reg.Get<TransformComponent>(m_cube))
             tc->SetEulerDeg(20.0f, m_yaw, 0.0f);
@@ -250,7 +255,8 @@ public:
 
                 if constexpr (std::is_same_v<T, KeyPressedEvent>)
                 {
-                    if (ev.repeat) return;
+                    if (ev.repeat)
+                        return;
 
                     if (ev.key == Key::Escape)
                         engine.Shutdown();
@@ -263,17 +269,20 @@ public:
 private:
     void ToggleDetailTexture()
     {
-        if (!m_hDetailA.IsValid() || !m_hDetailB.IsValid()) return;
+        if (!m_hDetailA.IsValid() || !m_hDetailB.IsValid())
+            return;
 
         MaterialResource* mat = m_renderer.GetMatStore().Get(m_hMat);
-        if (!mat) return;
+        if (!mat)
+            return;
 
         m_useDetailA = !m_useDetailA;
-        mat->detailTex = m_useDetailA ? m_hDetailA : m_hDetailB;
-        mat->cpuDirty = true;
+
+        const TextureHandle nextDetail = m_useDetailA ? m_hDetailA : m_hDetailB;
+        mat->SetTexture(MaterialTextureSlot::Detail, nextDetail, MaterialTextureUVSet::UV1);
 
         Debug::Log("UV1DetailDemo: detail = ",
-            m_useDetailA ? "detail_a.png" : "detail_b.png");
+            m_useDetailA ? "orm.png" : "bricks.bmp");
     }
 
 private:
@@ -283,12 +292,12 @@ private:
     EntityID m_light = NULL_ENTITY;
     EntityID m_cube = NULL_ENTITY;
 
-    MeshHandle     m_hCube;
-    MaterialHandle m_hMat;
-    TextureHandle  m_hDetailA;
-    TextureHandle  m_hDetailB;
-    bool           m_useDetailA = true;
+    MeshHandle     m_hCube = MeshHandle::Invalid();
+    MaterialHandle m_hMat = MaterialHandle::Invalid();
+    TextureHandle  m_hDetailA = TextureHandle::Invalid();
+    TextureHandle  m_hDetailB = TextureHandle::Invalid();
 
+    bool  m_useDetailA = true;
     float m_yaw = 0.0f;
 };
 

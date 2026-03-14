@@ -23,12 +23,19 @@ public:
                               const std::wstring& vsFile,
                               const std::wstring& psFile,
                               uint32_t vertexFlags,
+                              const GDXShaderLayout& layout,
                               const std::wstring& debugName) override;
 
     TextureHandle CreateTexture(ResourceStore<GDXTextureResource, TextureTag>& texStore,
                                 const std::wstring& filePath,
                                 bool isSRGB,
                                 TextureHandle fallbackOnFailure) override;
+
+    TextureHandle CreateTextureFromImage(ResourceStore<GDXTextureResource, TextureTag>& texStore,
+                                         const ImageBuffer& image,
+                                         bool isSRGB,
+                                         const std::wstring& debugName,
+                                         TextureHandle fallbackOnFailure) override;
 
     bool UploadMesh(MeshAssetResource& mesh) override;
     bool CreateMaterialGpu(MaterialResource& mat) override;
@@ -51,7 +58,16 @@ public:
                           ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
                           ResourceStore<GDXTextureResource, TextureTag>& texStore) override;
 
-    void SetShadowMapSize(uint32_t size) override;
+    void* ExecuteMainPassToTarget(GDXRenderTargetResource& rt,
+                                  const RenderPassClearDesc& clearDesc,
+                                  Registry& registry,
+                                  const RenderQueue& opaqueQueue,
+                                  ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+                                  ResourceStore<MaterialResource, MaterialTag>& matStore,
+                                  ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+                                  ResourceStore<GDXTextureResource, TextureTag>& texStore) override;
+
+    void SetShadowMapSize(uint32_t size);
     uint32_t GetDrawCallCount() const override;
     bool HasShadowResources() const override;
     const DefaultTextureSet& GetDefaultTextures() const override;

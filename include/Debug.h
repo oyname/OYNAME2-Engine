@@ -11,6 +11,7 @@
 // the bare filename appears in the output (e.g. "GDXEngine.cpp:42").
 // ---------------------------------------------------------------------------
 #include <string_view>
+
 namespace gdx::detail
 {
     constexpr std::string_view BaseName(std::string_view path) noexcept

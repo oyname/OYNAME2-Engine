@@ -77,6 +77,7 @@ ShaderHandle GDXOpenGLRenderBackend::CreateShader(ResourceStore<GDXShaderResourc
                                                   const std::wstring&,
                                                   const std::wstring&,
                                                   uint32_t,
+                                                  const GDXShaderLayout&,
                                                   const std::wstring&)
 {
     Debug::Log("GDXOpenGLRenderBackend: CreateShader noch nicht implementiert");
@@ -89,6 +90,16 @@ TextureHandle GDXOpenGLRenderBackend::CreateTexture(ResourceStore<GDXTextureReso
                                                     TextureHandle fallbackOnFailure)
 {
     Debug::Log("GDXOpenGLRenderBackend: CreateTexture noch nicht implementiert");
+    return fallbackOnFailure;
+}
+
+TextureHandle GDXOpenGLRenderBackend::CreateTextureFromImage(ResourceStore<GDXTextureResource, TextureTag>&,
+                                                             const ImageBuffer&,
+                                                             bool,
+                                                             const std::wstring&,
+                                                             TextureHandle fallbackOnFailure)
+{
+    Debug::Log("GDXOpenGLRenderBackend: CreateTextureFromImage noch nicht implementiert");
     return fallbackOnFailure;
 }
 
@@ -130,6 +141,19 @@ void* GDXOpenGLRenderBackend::ExecuteMainPass(Registry&,
                                               ResourceStore<GDXShaderResource, ShaderTag>&,
                                               ResourceStore<GDXTextureResource, TextureTag>&)
 {
+    return nullptr;
+}
+
+void* GDXOpenGLRenderBackend::ExecuteMainPassToTarget(GDXRenderTargetResource&,
+                                                      const RenderPassClearDesc&,
+                                                      Registry&,
+                                                      const RenderQueue&,
+                                                      ResourceStore<MeshAssetResource, MeshTag>&,
+                                                      ResourceStore<MaterialResource, MaterialTag>&,
+                                                      ResourceStore<GDXShaderResource, ShaderTag>&,
+                                                      ResourceStore<GDXTextureResource, TextureTag>&)
+{
+    Debug::Log("GDXOpenGLRenderBackend: RTT-Offscreen-Pass noch nicht implementiert");
     return nullptr;
 }
 

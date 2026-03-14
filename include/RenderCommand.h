@@ -1,6 +1,7 @@
 #pragma once
 #include "Handle.h"
 #include "ECSTypes.h"
+#include "GDXResourceBinding.h"
 
 #include <cstdint>
 #include <DirectXMath.h>
@@ -12,13 +13,6 @@ enum class RenderPass : uint8_t
     Transparent = 2,
 };
 
-// ---------------------------------------------------------------------------
-// RenderCommand — vollständige Beschreibung eines Draw Calls.
-//
-// Neu gegenüber vorheriger Version: ShaderHandle shader.
-// Der Executor liest den Shader aus dem ShaderStore → vertexFlags →
-// bindet genau die Streams die der Shader erwartet.
-// ---------------------------------------------------------------------------
 struct RenderCommand
 {
     MeshHandle     mesh;
@@ -29,6 +23,7 @@ struct RenderCommand
     RenderPass     pass = RenderPass::Opaque;
 
     DirectX::XMFLOAT4X4 worldMatrix = {};
+    ResourceBindingSet  resourceBindings{};
 
     uint64_t sortKey = 0ull;
 

@@ -11,7 +11,6 @@
 #include "Components.h"
 #include "MeshAssetResource.h"
 #include "MaterialResource.h"
-#include "MeshProcessor.h"
 #include "Events.h"
 
 #include <memory>
@@ -57,7 +56,7 @@ static SubmeshData BuildTailSubmesh()
     {
         const float t = static_cast<float>(r) * 0.5f;
         const float y = t * SEG_H;
-        const float gradient = y / (N_BONES * SEG_H);
+        const float gradient = y / (2 * SEG_H);  // 0..1 — nur noch für Farbe
 
         const float cr = (20.0f + 30.0f * gradient) / 255.0f;
         const float cg = (60.0f + 195.0f * gradient) / 255.0f;
@@ -162,22 +161,12 @@ public:
             MeshAssetResource asset;
             asset.debugName = "GroundCube";
             asset.AddSubmesh(BuiltinMeshes::Cube());
-
-            MeshBuildSettings build;
-            build.computeTangentsIfPossible = true;
-            MeshProcessor::Process(asset, build);
-
             m_hCube = m_renderer.UploadMesh(std::move(asset));
         }
         {
             MeshAssetResource asset;
             asset.debugName = "TailSkinned";
             asset.AddSubmesh(BuildTailSubmesh());
-
-            MeshBuildSettings build;
-            build.computeTangentsIfPossible = true;
-            MeshProcessor::Process(asset, build);
-
             m_hTail = m_renderer.UploadMesh(std::move(asset));
         }
 
@@ -197,9 +186,9 @@ public:
         // ---------------------------------------------------------------------
         {
             MaterialResource mat = MaterialResource::FlatColor(0.18f, 0.18f, 0.26f, 1.0f);
-            mat.albedoTex = albedoTex;
-            mat.normalTex = normalTex;
-            mat.ormTex = ormTex;
+            mat.SetTexture(MaterialTextureSlot::Albedo, albedoTex);
+            mat.SetTexture(MaterialTextureSlot::Normal, normalTex);
+            mat.SetTexture(MaterialTextureSlot::ORM, ormTex);
 
             mat.data.flags =
                 MF_SHADING_PBR |
@@ -214,13 +203,21 @@ public:
 
         {
             MaterialResource mat = MaterialResource::FlatColor(1.0f, 1.0f, 1.0f, 1.0f);
-            mat.albedoTex = albedoTex;
-            mat.normalTex = normalTex;
-            mat.ormTex = ormTex;
+            mat.SetTexture(MaterialTextureSlot::Albedo, albedoTex);
+            mat.SetTexture(MaterialTextureSlot::Normal, normalTex);
+            mat.SetTexture(MaterialTextureSlot::ORM, ormTex);
 
             mat.data.metallic = 0.0f;
             mat.data.roughness = 0.55f;
             mat.data.receiveShadows = 1.0f;
+
+            mat.data.baseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+            mat.data.metallic = 0.0f;   // Fallback wenn keine ORM
+            mat.data.roughness = 0.8f;   // Fallback wenn keine ORM
+            mat.data.normalScale = 3.0f;
+            mat.data.occlusionStrength = 1.0f;
+            mat.data.receiveShadows = 1.0f;
+            mat.data.uvTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f };
 
             mat.data.flags =
                 MF_SHADING_PBR |

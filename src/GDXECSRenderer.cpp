@@ -1,11 +1,58 @@
 #include "GDXECSRenderer.h"
 #include "GDXDX11RenderBackend.h"
+#include "GDXRenderTargetResource.h"
 #include "Debug.h"
+#include "GDXShaderLayout.h"
+#include "RenderPassTargetDesc.h"
+
+#include <DirectXMath.h>
 
 namespace
 {
     constexpr uint32_t kRelevantMainFeatures = SVF_SKINNED | SVF_VERTEX_COLOR;
     constexpr uint32_t kRelevantShadowFeatures = SVF_SKINNED | SVF_ALPHA_TEST;
+
+    bool BuildFrameDataFromCameraEntity(Registry& registry, EntityID cameraEntity, FrameData& frame)
+    {
+        using namespace DirectX;
+
+        const auto* wt = registry.Get<WorldTransformComponent>(cameraEntity);
+        const auto* cam = registry.Get<CameraComponent>(cameraEntity);
+        if (!wt || !cam) return false;
+
+        const XMMATRIX world = XMLoadFloat4x4(&wt->matrix);
+        const XMVECTOR position = world.r[3];
+        XMStoreFloat3(&frame.cameraPos, position);
+        frame.cullMask = cam->cullMask;
+
+        XMMATRIX rot = world;
+        rot.r[3] = XMVectorSet(0.0f, 0.0f, 0.0f, 1.0f);
+
+        const XMVECTOR baseForward = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+        const XMVECTOR baseUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+
+        const XMVECTOR forward = XMVector3Normalize(XMVector3TransformNormal(baseForward, rot));
+        const XMVECTOR up = XMVector3Normalize(XMVector3TransformNormal(baseUp, rot));
+        const XMVECTOR target = XMVectorAdd(position, forward);
+
+        const XMMATRIX view = XMMatrixLookAtLH(position, target, up);
+        XMStoreFloat4x4(&frame.viewMatrix, view);
+
+        XMMATRIX proj;
+        if (cam->isOrtho)
+        {
+            proj = XMMatrixOrthographicLH(cam->orthoWidth, cam->orthoHeight, cam->nearPlane, cam->farPlane);
+        }
+        else
+        {
+            const float fovRad = cam->fovDeg * (XM_PI / 180.0f);
+            proj = XMMatrixPerspectiveFovLH(fovRad, cam->aspectRatio, cam->nearPlane, cam->farPlane);
+        }
+
+        XMStoreFloat4x4(&frame.projMatrix, proj);
+        XMStoreFloat4x4(&frame.viewProjMatrix, XMMatrixMultiply(view, proj));
+        return true;
+    }
 }
 
 GDXECSRenderer::GDXECSRenderer(std::unique_ptr<IGDXRenderBackend> backend)
@@ -69,7 +116,8 @@ ShaderHandle GDXECSRenderer::LoadShaderInternal(
     const std::wstring& debugName)
 {
     if (!m_backend) return ShaderHandle::Invalid();
-    return m_backend->CreateShader(m_shaderStore, vsFile, psFile, vertexFlags, debugName);
+    const GDXShaderLayout layout = GDXShaderLayouts::BuildMain(vertexFlags, (vertexFlags & GDX_VERTEX_BONE_WEIGHTS) != 0u);
+    return m_backend->CreateShader(m_shaderStore, vsFile, psFile, vertexFlags, layout, debugName);
 }
 
 ShaderVariantKey GDXECSRenderer::BuildVariantKey(RenderPass pass, const SubmeshData& submesh, const MaterialResource& mat) const
@@ -158,7 +206,13 @@ ShaderHandle GDXECSRenderer::CreateShaderVariant(const ShaderVariantKey& rawKey)
     }
 
     const std::wstring debugName = L"Variant: " + vsFile + L" / " + psFile;
-    ShaderHandle handle = LoadShaderInternal(vsFile, psFile, vertexFlags, debugName);
+    const GDXShaderLayout layout = (key.pass == ShaderPassType::Shadow)
+        ? GDXShaderLayouts::BuildShadow(vertexFlags, skinned)
+        : GDXShaderLayouts::BuildMain(vertexFlags, skinned);
+
+    ShaderHandle handle = m_backend
+        ? m_backend->CreateShader(m_shaderStore, vsFile, psFile, vertexFlags, layout, debugName)
+        : ShaderHandle::Invalid();
     if (!handle.IsValid())
         return ShaderHandle::Invalid();
 
@@ -201,6 +255,13 @@ TextureHandle GDXECSRenderer::LoadTexture(const std::wstring& filePath, bool isS
     return m_backend->CreateTexture(m_texStore, filePath, isSRGB, m_defaultWhiteTex);
 }
 
+
+TextureHandle GDXECSRenderer::CreateTexture(const ImageBuffer& image, const std::wstring& debugName, bool isSRGB)
+{
+    if (!m_backend || !image.IsValid()) return m_defaultWhiteTex;
+    return m_backend->CreateTextureFromImage(m_texStore, image, isSRGB, debugName, m_defaultWhiteTex);
+}
+
 MeshHandle GDXECSRenderer::UploadMesh(MeshAssetResource mesh)
 {
     MeshHandle h = m_meshStore.Add(std::move(mesh));
@@ -211,6 +272,11 @@ MeshHandle GDXECSRenderer::UploadMesh(MeshAssetResource mesh)
 
 MaterialHandle GDXECSRenderer::CreateMaterial(MaterialResource mat)
 {
+    if (!mat.HasConsistentTextureState())
+        Debug::LogWarning(GDX_SRC_LOC, "CreateMaterial: inkonsistenter textureLayers-Zustand erkannt");
+
+    mat.NormalizeTextureLayers();
+
     MaterialHandle h = m_matStore.Add(std::move(mat));
     if (auto* r = m_matStore.Get(h))
     {
@@ -218,6 +284,19 @@ MaterialHandle GDXECSRenderer::CreateMaterial(MaterialResource mat)
         if (m_backend) m_backend->CreateMaterialGpu(*r);
     }
     return h;
+}
+
+RenderTargetHandle GDXECSRenderer::CreateRenderTarget(uint32_t w, uint32_t h, const std::wstring& name)
+{
+    if (!m_backend) return RenderTargetHandle::Invalid();
+    return m_backend->CreateRenderTarget(m_rtStore, m_texStore, w, h, name);
+}
+
+TextureHandle GDXECSRenderer::GetRenderTargetTexture(RenderTargetHandle h)
+{
+    if (auto* rt = m_rtStore.Get(h))
+        return rt->exposedTexture;
+    return m_defaultWhiteTex;
 }
 
 void GDXECSRenderer::SetShadowMapSize(uint32_t size)
@@ -236,6 +315,10 @@ void GDXECSRenderer::SetClearColor(float r, float g, float b, float a)
 
 void GDXECSRenderer::BeginFrame()
 {
+    m_currentFrameIndex = (m_currentFrameIndex + 1u) % GDXMaxFramesInFlight;
+    m_frameContexts[m_currentFrameIndex].Begin(m_currentFrameIndex, ++m_frameNumber, &m_frameData);
+    m_frameTransients[m_currentFrameIndex].BeginFrame();
+
     if (m_backend)
         m_backend->BeginFrame(m_clearColor);
 }
@@ -248,21 +331,80 @@ void GDXECSRenderer::Tick(float dt)
 void GDXECSRenderer::EndFrame()
 {
     m_transformSystem.Update(m_registry);
-    m_cameraSystem.Update(m_registry, m_frameData);
-    if (m_backend) m_backend->UpdateLights(m_registry, m_frameData);
-    if (m_backend) m_backend->UpdateFrameConstants(m_frameData);
 
     auto resolveShader = [this](RenderPass pass, const SubmeshData& submesh, const MaterialResource& mat)
     {
         return ResolveShaderVariant(pass, submesh, mat);
     };
 
+    m_registry.View<CameraComponent, RenderTargetCameraComponent>(
+        [this, &resolveShader](EntityID entity, CameraComponent& cam, RenderTargetCameraComponent& rtCam)
+        {
+            if (!m_backend || !rtCam.enabled || !rtCam.target.IsValid()) return;
+
+            GDXRenderTargetResource* rt = m_rtStore.Get(rtCam.target);
+            if (!rt || !rt->ready) return;
+
+            CameraComponent originalCam = cam;
+            if (rtCam.autoAspectFromTarget && rt->height > 0u)
+                cam.aspectRatio = static_cast<float>(rt->width) / static_cast<float>(rt->height);
+
+            FrameData rtFrame = m_frameData;
+            rtFrame.viewportWidth = static_cast<float>(rt->width);
+            rtFrame.viewportHeight = static_cast<float>(rt->height);
+
+            const bool built = BuildFrameDataFromCameraEntity(m_registry, entity, rtFrame);
+            cam = originalCam;
+            if (!built) return;
+
+            m_backend->UpdateLights(m_registry, rtFrame);
+            m_backend->UpdateFrameConstants(rtFrame);
+
+            RenderGatherOptions rtGatherOptions{};
+            rtGatherOptions.gatherShadows = rtCam.renderShadows;
+            rtGatherOptions.gatherOpaque = rtCam.renderOpaque;
+            rtGatherOptions.gatherTransparent = rtCam.renderTransparent;
+            rtGatherOptions.skipSelfReferentialDraws = rtCam.skipSelfReferentialDraws;
+            rtGatherOptions.forbiddenShaderReadTexture = rt->exposedTexture;
+            rtGatherOptions.visibilityLayerMask = rtFrame.cullMask;
+            rtGatherOptions.shadowCasterLayerMask = rtFrame.shadowCasterMask;
+
+            if (rtFrame.hasShadowPass && m_backend->HasShadowResources())
+            {
+                m_gatherSystem.GatherShadow(m_registry, rtFrame,
+                    m_meshStore, m_matStore,
+                    resolveShader,
+                    m_shadowQueue,
+                    &rtGatherOptions);
+
+                if (!m_shadowQueue.Empty())
+                    m_backend->ExecuteShadowPass(m_registry, m_shadowQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore, rtFrame);
+            }
+
+            m_gatherSystem.Gather(m_registry, rtFrame,
+                m_meshStore, m_matStore,
+                resolveShader, m_opaqueQueue,
+                &rtGatherOptions);
+
+            RenderPassTargetDesc targetDesc = RenderPassTargetDesc::Offscreen(rtCam.target, rtCam.clear,
+                static_cast<float>(rt->width), static_cast<float>(rt->height), rt->debugName);
+            m_backend->ExecutePass(targetDesc, m_registry, m_opaqueQueue,
+                m_meshStore, m_matStore, m_shaderStore, m_texStore, &m_rtStore);
+        });
+
+    m_cameraSystem.Update(m_registry, m_frameData);
+    if (m_backend) m_backend->UpdateLights(m_registry, m_frameData);
+    if (m_backend) m_backend->UpdateFrameConstants(m_frameData);
+
     if (m_frameData.hasShadowPass && m_backend && m_backend->HasShadowResources())
     {
+        RenderGatherOptions mainShadowOptions{};
+        mainShadowOptions.shadowCasterLayerMask = m_frameData.shadowCasterMask;
         m_gatherSystem.GatherShadow(m_registry, m_frameData,
             m_meshStore, m_matStore,
             resolveShader,
-            m_shadowQueue);
+            m_shadowQueue,
+            &mainShadowOptions);
 
         if (!m_shadowQueue.Empty())
             m_backend->ExecuteShadowPass(m_registry, m_shadowQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore, m_frameData);
@@ -270,16 +412,29 @@ void GDXECSRenderer::EndFrame()
 
     m_gatherSystem.Gather(m_registry, m_frameData,
         m_meshStore, m_matStore,
-        resolveShader, m_opaqueQueue);
+        resolveShader, m_opaqueQueue,
+        nullptr);
 
     if (m_backend)
-        m_backend->ExecuteMainPass(m_registry, m_opaqueQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore);
+    {
+        RenderPassTargetDesc mainTarget = RenderPassTargetDesc::Backbuffer(m_frameData.viewportWidth, m_frameData.viewportHeight);
+        m_backend->ExecutePass(mainTarget, m_registry, m_opaqueQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore, &m_rtStore);
+    }
+
+    auto& frameTransient = m_frameTransients[m_currentFrameIndex];
+    constexpr size_t kApproxFrameConstantsBytes = 272u;
+    constexpr size_t kApproxEntityConstantsBytes = 128u;
+    (void)frameTransient.uploadArena.Allocate(kApproxFrameConstantsBytes, 16u);
+    (void)frameTransient.uploadArena.Allocate(kApproxEntityConstantsBytes * (m_opaqueQueue.Count() + m_shadowQueue.Count()), 16u);
 
     m_stats.drawCalls = m_backend ? m_backend->GetDrawCallCount() : 0u;
     m_stats.renderCommands = static_cast<uint32_t>(m_opaqueQueue.Count());
     m_stats.lightCount = m_frameData.lightCount;
 
     if (m_backend) m_backend->Present(true);
+
+    m_frameContexts[m_currentFrameIndex].MarkSubmitted(m_frameNumber);
+    m_frameContexts[m_currentFrameIndex].MarkCompleted(m_frameNumber);
 }
 
 void GDXECSRenderer::Resize(int w, int h)

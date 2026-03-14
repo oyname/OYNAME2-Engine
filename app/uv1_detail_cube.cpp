@@ -129,13 +129,13 @@ public:
         // ---------------------------------------------------------------------
         {
             MaterialResource mat = MaterialResource::FlatColor(1, 1, 1, 1);
-            mat.albedoTex = hAlbedo;
+            mat.SetTexture(MaterialTextureSlot::Albedo, hAlbedo, MaterialTextureUVSet::UV0);
 
             // Detail-Textur auf dem richtigen Slot setzen
             const TextureHandle firstDetail = m_hDetailA.IsValid() ? m_hDetailA : m_hDetailB;
             if (firstDetail.IsValid())
             {
-                mat.detailTex = firstDetail;
+                mat.SetTexture(MaterialTextureSlot::Detail, firstDetail, MaterialTextureUVSet::UV1);
                 mat.SetFlag(MF_USE_DETAIL_MAP, true);
                 // UV1-Tiling wird hier über den cbuffer unabhängig von den
                 // Vertex-UVs zusätzlich skaliert (1:1 = kein Extra-Tiling).
@@ -265,11 +265,11 @@ private:
         if (!mat) return;
 
         m_useDetailA = !m_useDetailA;
-        mat->detailTex = m_useDetailA ? m_hDetailA : m_hDetailB;
-        mat->cpuDirty = true;   // cbuffer muss neu hochgeladen werden
+        const TextureHandle nextDetail = m_useDetailA ? m_hDetailA : m_hDetailB;
+        mat->SetTexture(MaterialTextureSlot::Detail, nextDetail, MaterialTextureUVSet::UV1);
 
         Debug::Log("UV1DetailDemo: detail = ",
-            m_useDetailA ? "detail_a.png" : "detail_b.png");
+            m_useDetailA ? "orm.png" : "bricks.bmp");
     }
 
 private:

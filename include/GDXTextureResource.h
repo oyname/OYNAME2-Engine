@@ -10,12 +10,26 @@
 // via m_texStore.ForEach(). Das vermeidet jeglichen Double-Free durch Move-
 // Semantik, ResourceStore-interne Kopien oder Shutdown-Reihenfolge.
 // ---------------------------------------------------------------------------
+enum class GDXTextureSemantic : uint8_t
+{
+    Unknown,
+    Albedo,
+    Normal,
+    ORM,
+    Emissive,
+    Detail,
+    RenderTarget,
+    Procedural,
+};
+
 struct GDXTextureResource
 {
     void* srv = nullptr;   // ID3D11ShaderResourceView* — nicht owned hier
     uint32_t     width = 0u;
     uint32_t     height = 0u;
     bool         ready = false;
+    bool         isSRGB = false;
+    GDXTextureSemantic semantic = GDXTextureSemantic::Unknown;
     std::wstring debugName;
 
     // Kein Destruktor-Cleanup — kein Double-Free moeglich.

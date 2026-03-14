@@ -4,9 +4,6 @@
 #include <vector>
 #include <algorithm>
 
-// ---------------------------------------------------------------------------
-// RenderQueue — sortierbare, flache Liste von RenderCommands.
-// ---------------------------------------------------------------------------
 struct RenderQueue
 {
     std::vector<RenderCommand> commands;
@@ -18,21 +15,23 @@ struct RenderQueue
         commands.push_back(std::move(cmd));
     }
 
-    // Convenience-Submit mit ShaderHandle (neu)
     void Submit(MeshHandle mesh, MaterialHandle material, ShaderHandle shader,
                 uint32_t submeshIdx, EntityID ownerEntity,
                 const DirectX::XMFLOAT4X4& worldMatrix,
                 RenderPass pass, uint32_t shaderSortID, uint32_t materialSortID,
-                float depth = 0.0f)
+                float depth = 0.0f,
+                const ResourceBindingSet* resourceBindings = nullptr)
     {
         RenderCommand cmd;
         cmd.mesh         = mesh;
         cmd.material     = material;
         cmd.shader       = shader;
         cmd.submeshIndex = submeshIdx;
-        cmd.ownerEntity = ownerEntity;
-        cmd.pass        = pass;
-        cmd.worldMatrix = worldMatrix;
+        cmd.ownerEntity  = ownerEntity;
+        cmd.pass         = pass;
+        cmd.worldMatrix  = worldMatrix;
+        if (resourceBindings)
+            cmd.resourceBindings = *resourceBindings;
         cmd.SetSortKey(pass, shaderSortID, materialSortID, depth);
         commands.push_back(cmd);
     }

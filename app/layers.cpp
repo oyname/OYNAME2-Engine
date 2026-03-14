@@ -74,21 +74,21 @@ public:
         {
             MaterialResource mat = MaterialResource::FlatColor(1.0f, 1.0f, 1.0f);
             if (hTexCube1.IsValid())
-                mat.albedoTex = hTexCube1;
+                mat.SetTexture(MaterialTextureSlot::Albedo, hTexCube1);
             m_hMatCube1 = m_renderer.CreateMaterial(mat);
         }
 
         {
             MaterialResource mat = MaterialResource::FlatColor(1.0f, 1.0f, 1.0f);
             if (hTexCube2.IsValid())
-                mat.albedoTex = hTexCube2;
+                mat.SetTexture(MaterialTextureSlot::Albedo, hTexCube2);
             m_hMatCube2 = m_renderer.CreateMaterial(mat);
         }
 
         {
             MaterialResource mat = MaterialResource::FlatColor(1.0f, 1.0f, 1.0f);
             if (hTexFloor.IsValid())
-                mat.albedoTex = hTexFloor;
+                mat.SetTexture(MaterialTextureSlot::Albedo, hTexFloor);
             m_hMatFloor = m_renderer.CreateMaterial(mat);
         }
 
@@ -360,6 +360,10 @@ public:
                         ToggleActive(m_cube2);
                         break;
 
+                    case Key::G:
+                        ToggleActive(m_cube1);
+                        break;
+                    
                     default:
                         break;
                     }

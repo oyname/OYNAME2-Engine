@@ -118,7 +118,7 @@ public:
         {
             TransformComponent tc;
             tc.localPosition = { 0.0f, 0.0f, 0.0f };
-            tc.SetEulerDeg(-45.0f, 100.0f, 0.0f);
+            tc.SetEulerDeg(-45.0f, 180.0f, 0.0f);
             reg.Add<TransformComponent>(m_light, tc);
         }
         reg.Add<WorldTransformComponent>(m_light);
@@ -128,10 +128,10 @@ public:
             { 0.0f, -1.5f, 2.0f }, { 10.0f, 0.4f, 10.0f }, true);
 
         m_cutout = MakeEntity("CutoutQuad", m_hQuad, m_hCutout,
-            { 0.0f, -1.0f, 2.3f }, { 1.0f, 1.0f, 1.0f }, true);
+            { 0.0f, -0.5f, 1.3f }, { 1.0f, 1.0f, 1.0f }, true);
 
         m_cube = MakeEntity("OpaqueCube", m_hCube, m_hRed,
-            { 0.0f, 0.0f, 4.2f }, { 1.5f, 1.5f, 1.5f }, true);
+            { 0.0f, 2.0f, 4.2f }, { 3.5f, 3.5f, 3.5f }, true);
 
         Debug::Log("alphatest_shadow_test: alpha_mask.png in ..//media legen; ESC beendet");
     }
@@ -142,7 +142,7 @@ public:
         m_spin += 20.0f * dt;
         Wrap(m_spin);
         if (auto* tc = reg.Get<TransformComponent>(m_cutout))
-            tc->SetEulerDeg(0.0f, m_spin, 0.0f);
+            tc->SetEulerDeg(0.0f, 160, 0.0f);
     }
 
     void OnEvent(const Event& e, GDXEngine& engine)

@@ -6,6 +6,8 @@
 #include "GDXDX11LightSystem.h"
 #include "GDXSamplerCache.h"
 #include "GDXShadowMap.h"
+#include "ResourceStore.h"
+#include "GDXRenderTargetResource.h"
 
 #include <memory>
 
@@ -33,12 +35,19 @@ public:
                               const std::wstring& vsFile,
                               const std::wstring& psFile,
                               uint32_t vertexFlags,
+                              const GDXShaderLayout& layout,
                               const std::wstring& debugName) override;
 
     TextureHandle CreateTexture(ResourceStore<GDXTextureResource, TextureTag>& texStore,
                                 const std::wstring& filePath,
                                 bool isSRGB,
                                 TextureHandle fallbackOnFailure) override;
+
+    TextureHandle CreateTextureFromImage(ResourceStore<GDXTextureResource, TextureTag>& texStore,
+                                         const ImageBuffer& image,
+                                         bool isSRGB,
+                                         const std::wstring& debugName,
+                                         TextureHandle fallbackOnFailure) override;
 
     bool UploadMesh(MeshAssetResource& mesh) override;
     bool CreateMaterialGpu(MaterialResource& mat) override;
@@ -61,9 +70,25 @@ public:
                           ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
                           ResourceStore<GDXTextureResource, TextureTag>& texStore) override;
 
+    void* ExecuteMainPassToTarget(GDXRenderTargetResource& rt,
+                                  const RenderPassClearDesc& clearDesc,
+                                  Registry& registry,
+                                  const RenderQueue& opaqueQueue,
+                                  ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+                                  ResourceStore<MaterialResource, MaterialTag>& matStore,
+                                  ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+                                  ResourceStore<GDXTextureResource, TextureTag>& texStore) override;
+
     uint32_t GetDrawCallCount() const override;
     bool HasShadowResources() const override;
     const DefaultTextureSet& GetDefaultTextures() const override;
+
+    // Render-Target-Erstellung (Offscreen RTT)
+    RenderTargetHandle CreateRenderTarget(
+        ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore,
+        ResourceStore<GDXTextureResource,      TextureTag>&      texStore,
+        uint32_t width, uint32_t height,
+        const std::wstring& debugName) override;
 
     void SetShadowMapSize(uint32_t size) { m_shadowMapSize = size; }
 
@@ -86,5 +111,7 @@ private:
 
     ID3D11RasterizerState*   m_rasterizerState   = nullptr;
     ID3D11DepthStencilState* m_depthStencilState = nullptr;
+    ID3D11DepthStencilState* m_depthStateNoWrite = nullptr;
     ID3D11BlendState*        m_blendState        = nullptr;
+    ID3D11BlendState*        m_blendStateAlpha   = nullptr;
 };

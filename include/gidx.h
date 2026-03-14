@@ -1,7 +1,7 @@
 #pragma once
 
 // ---------------------------------------------------------------------------
-// gidx.h — flacher API-Wrapper für die OYNAME2 Engine.
+// gidx.h  flacher API-Wrapper fr die OYNAME2 Engine.
 //
 // Typische Nutzung (main.cpp):
 //
@@ -45,7 +45,7 @@
 #include <string>
 
 // ---------------------------------------------------------------------------
-// Typ-Aliase — identisches Nutzungsgefühl wie OYNAME
+// Typ-Aliase  identisches Nutzungsgefhl wie OYNAME
 // ---------------------------------------------------------------------------
 using LPENTITY = EntityID;
 using LPMATERIAL = MaterialHandle;
@@ -69,7 +69,7 @@ namespace Engine
         inline GDXEngine* engine = nullptr;
         inline bool            running = false;
 
-        // Ownership — lebt so lange die App läuft
+        // Ownership  lebt so lange die App luft
         inline std::unique_ptr<GDXEventQueue>  eventQueue;
         inline std::unique_ptr<GDXEngine>      engineOwned;
         inline GDXECSRenderer* rendererRaw = nullptr;
@@ -92,11 +92,11 @@ namespace Engine
     }
 
     // ---------------------------------------------------------------------------
-    // Graphics — startet Fenster + gewähltes Backend + Engine in einer Zeile.
+    // Graphics  startet Fenster + gewhltes Backend + Engine in einer Zeile.
     //
     //   Engine::Graphics(Renderer::DX11, 1280, 720, "Mein Spiel")
     //
-    // Gibt false zurück wenn die Initialisierung fehlschlägt.
+    // Gibt false zurck wenn die Initialisierung fehlschlgt.
     // ---------------------------------------------------------------------------
     inline bool Graphics(
         int         backend,
@@ -184,7 +184,7 @@ namespace Engine
                     {
                         if (ev.key == Key::Escape)
                         {
-                            DBLOG(GDX_SRC_LOC, "Engine: ESC — beende Anwendung");
+                            DBLOG(GDX_SRC_LOC, "Engine: ESC  beende Anwendung");
                             _::running = false;
                             if (_::engine) _::engine->Shutdown();
                         }
@@ -202,7 +202,7 @@ namespace Engine
     }
 
     // ---------------------------------------------------------------------------
-    // Bind — alternativ zu Graphics(), wenn Fenster/Engine extern erstellt wurden.
+    // Bind  alternativ zu Graphics(), wenn Fenster/Engine extern erstellt wurden.
     // ---------------------------------------------------------------------------
     inline void Bind(GDXECSRenderer& r, GDXEngine& e)
     {
@@ -212,7 +212,7 @@ namespace Engine
     }
 
     // ---------------------------------------------------------------------------
-    // OnUpdate / OnEvent — Callbacks registrieren, dann Run() aufrufen.
+    // OnUpdate / OnEvent  Callbacks registrieren, dann Run() aufrufen.
     //
     //   int main()
     //   {
@@ -257,7 +257,7 @@ namespace Engine
     inline bool AppRunning() { return _::running; }
 
     // ---------------------------------------------------------------------------
-    // Frame / DeltaTime — OYNAME-Stil: eigene while-Schleife in main()
+    // Frame / DeltaTime  OYNAME-Stil: eigene while-Schleife in main()
     //
     //   Init();
     //   while (Engine::Frame())
@@ -373,7 +373,7 @@ namespace Engine
     }
 
     // ---------------------------------------------------------------------------
-    // CreateMesh — erstellt eine Mesh-Entity und weist optional ein Mesh zu.
+    // CreateMesh  erstellt eine Mesh-Entity und weist optional ein Mesh zu.
     // ---------------------------------------------------------------------------
     inline void CreateMesh(LPENTITY* out, LPMESH mesh = NULL_MESH, const char* tag = "")
     {
@@ -391,7 +391,7 @@ namespace Engine
     }
 
     // ---------------------------------------------------------------------------
-    // CreateCamera — erstellt eine Kamera-Entity und macht sie aktiv.
+    // CreateCamera  erstellt eine Kamera-Entity und macht sie aktiv.
     // ---------------------------------------------------------------------------
     inline void CreateCamera(LPENTITY* out,
         float fovDeg = 60.0f,
@@ -414,7 +414,7 @@ namespace Engine
     }
 
     // ---------------------------------------------------------------------------
-    // CreateLight — erstellt eine Licht-Entity.
+    // CreateLight  erstellt eine Licht-Entity.
     // ---------------------------------------------------------------------------
     inline void CreateLight(LPENTITY* out,
         LightKind kind = LightKind::Directional,
@@ -455,7 +455,7 @@ namespace Engine
         tc->SetEulerDeg(pitchDeg, yawDeg, rollDeg);
     }
 
-    // TurnEntity — dreht relativ zur aktuellen Rotation (akkumuliert).
+    // TurnEntity  dreht relativ zur aktuellen Rotation (akkumuliert).
     inline void TurnEntity(LPENTITY e, float pitchDeg, float yawDeg, float rollDeg)
     {
         if (!_::renderer) return;
@@ -480,7 +480,7 @@ namespace Engine
         tc->dirty = true;
     }
 
-    // LookAt — dreht die Entity so dass sie auf ein Ziel zeigt.
+    // LookAt  dreht die Entity so dass sie auf ein Ziel zeigt.
     inline void LookAt(LPENTITY e, float tx, float ty, float tz)
     {
         if (!_::renderer) return;
@@ -574,7 +574,7 @@ namespace Engine
     {
         if (!_::renderer) return;
         auto* m = _::renderer->GetMatStore().Get(mat);
-        if (!m) { DBERROR(GDX_SRC_LOC, "Engine::MaterialColor: ungültiger Handle"); return; }
+        if (!m) { DBERROR(GDX_SRC_LOC, "Engine::MaterialColor: ungltiger Handle"); return; }
         m->data.baseColor = { r, g, b, a };
         m->cpuDirty = true;
     }
@@ -662,8 +662,7 @@ namespace Engine
         if (!_::renderer) return;
         auto* m = _::renderer->GetMatStore().Get(mat);
         if (!m) return;
-        m->albedoTex = tex;
-        m->cpuDirty = true;
+        m->SetTexture(MaterialTextureSlot::Albedo, tex, MaterialTextureUVSet::UV0);
     }
 
     inline void MaterialSetNormal(LPMATERIAL mat, LPTEXTURE tex)
@@ -671,9 +670,7 @@ namespace Engine
         if (!_::renderer) return;
         auto* m = _::renderer->GetMatStore().Get(mat);
         if (!m) return;
-        m->normalTex = tex;
-        m->SetFlag(MF_USE_NORMAL_MAP, true);
-        m->cpuDirty = true;
+        m->SetTexture(MaterialTextureSlot::Normal, tex, MaterialTextureUVSet::UV0);
     }
 
     inline void MaterialSetORM(LPMATERIAL mat, LPTEXTURE tex)
@@ -681,9 +678,7 @@ namespace Engine
         if (!_::renderer) return;
         auto* m = _::renderer->GetMatStore().Get(mat);
         if (!m) return;
-        m->ormTex = tex;
-        m->SetFlag(MF_USE_ORM_MAP, true);
-        m->cpuDirty = true;
+        m->SetTexture(MaterialTextureSlot::ORM, tex, MaterialTextureUVSet::UV0);
     }
 
     inline void MaterialSetEmissiveTex(LPMATERIAL mat, LPTEXTURE tex)
@@ -691,9 +686,7 @@ namespace Engine
         if (!_::renderer) return;
         auto* m = _::renderer->GetMatStore().Get(mat);
         if (!m) return;
-        m->emissiveTex = tex;
-        m->SetFlag(MF_USE_EMISSIVE, true);
-        m->cpuDirty = true;
+        m->SetTexture(MaterialTextureSlot::Emissive, tex, MaterialTextureUVSet::UV0);
     }
 
 
@@ -812,3 +805,4 @@ namespace Engine
     }
 
 } // namespace Engine
+#include "GDXDX12RenderBackend.h"

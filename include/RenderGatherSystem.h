@@ -10,11 +10,19 @@
 #include "CameraSystem.h"
 #include <functional>
 
+struct RenderGatherOptions
+{
+    bool gatherOpaque = true;
+    bool gatherTransparent = true;
+    bool gatherShadows = true;
+    bool skipSelfReferentialDraws = false;
+    TextureHandle forbiddenShaderReadTexture = TextureHandle::Invalid();
+    uint32_t visibilityLayerMask = 0xFFFFFFFFu;
+    uint32_t shadowCasterLayerMask = 0xFFFFFFFFu;
+};
+
 // ---------------------------------------------------------------------------
 // RenderGatherSystem — baut RenderQueue aus ECS-Komponenten.
-//
-// Liest ShaderHandle aus MaterialResource und schreibt ihn in den
-// RenderCommand → Executor kann pro Draw-Call den richtigen Shader binden.
 // ---------------------------------------------------------------------------
 class RenderGatherSystem
 {
@@ -29,7 +37,8 @@ public:
         ResourceStore<MeshAssetResource, MeshTag>&            meshStore,
         ResourceStore<MaterialResource,  MaterialTag>&        matStore,
         const ShaderResolver&                                 resolveShader,
-        RenderQueue&                                          outQueue) const;
+        RenderQueue&                                          outQueue,
+        const RenderGatherOptions*                            options = nullptr) const;
 
     void GatherShadow(
         Registry&                                             registry,
@@ -37,5 +46,6 @@ public:
         ResourceStore<MeshAssetResource, MeshTag>&            meshStore,
         ResourceStore<MaterialResource,  MaterialTag>&        matStore,
         const ShaderResolver&                                 resolveShader,
-        RenderQueue&                                          outShadowQueue) const;
+        RenderQueue&                                          outShadowQueue,
+        const RenderGatherOptions*                            options = nullptr) const;
 };

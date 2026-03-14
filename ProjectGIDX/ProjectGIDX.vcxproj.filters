@@ -10,35 +10,14 @@
     <Filter Include="engine">
       <UniqueIdentifier>{ebec8464-7600-4367-a8ab-31ea673946ad}</UniqueIdentifier>
     </Filter>
-    <Filter Include="platform">
-      <UniqueIdentifier>{3350e22c-68bc-4730-ad8a-023454723ec4}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="renderer">
-      <UniqueIdentifier>{3f383499-72fc-4f87-9e41-6cbfa5e509e0}</UniqueIdentifier>
-    </Filter>
     <Filter Include="util">
       <UniqueIdentifier>{90464515-0a60-4d47-8e5a-60969e5f1c35}</UniqueIdentifier>
     </Filter>
     <Filter Include="engine\core">
       <UniqueIdentifier>{e1ce0925-f4f2-4772-89c7-497a4c1ccc9d}</UniqueIdentifier>
     </Filter>
-    <Filter Include="engine\platform">
-      <UniqueIdentifier>{19afa6f9-fe29-47b7-8b42-93c829b7845f}</UniqueIdentifier>
-    </Filter>
     <Filter Include="engine\renderer">
       <UniqueIdentifier>{4ad48df7-4d30-4004-8bb7-6068c0fb9562}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="renderer\dx11">
-      <UniqueIdentifier>{e0dd5aec-c3e2-4488-9e8c-5e19e8845195}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="renderer\null">
-      <UniqueIdentifier>{f9b5ad7f-53db-44bf-8815-83b75f242181}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="renderer\opengl">
-      <UniqueIdentifier>{1b46a7a7-d0fb-4ac0-869f-1caa8a4f9fea}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="platform\windows">
-      <UniqueIdentifier>{753e534a-1b0d-42cb-8ce4-fcbb576e8035}</UniqueIdentifier>
     </Filter>
     <Filter Include="ecs">
       <UniqueIdentifier>{e3f763e3-d1ce-4b09-ba58-13a40277cec7}</UniqueIdentifier>
@@ -70,9 +49,6 @@
     <Filter Include="app\SnakeGame">
       <UniqueIdentifier>{13c2d461-dbf0-403a-865c-760dd9d91a17}</UniqueIdentifier>
     </Filter>
-    <Filter Include="engine\renderer\shader">
-      <UniqueIdentifier>{2a2135da-620b-456d-829a-f964d42162f1}</UniqueIdentifier>
-    </Filter>
     <Filter Include="app\shader satic opaque">
       <UniqueIdentifier>{7b6db410-f1f6-4614-b47f-3dc8cc534737}</UniqueIdentifier>
     </Filter>
@@ -94,61 +70,28 @@
     <Filter Include="app\MeshBuilder">
       <UniqueIdentifier>{f944617f-68eb-4179-8a2b-b9886c030f56}</UniqueIdentifier>
     </Filter>
+    <Filter Include="engine\renderer\dx11">
+      <UniqueIdentifier>{d322e014-198d-4d94-bd2b-168dbc724d69}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="engine\renderer\opengl">
+      <UniqueIdentifier>{f2613657-ad82-4bd5-b4b2-380134e49fdd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="engine\renderer\dx12">
+      <UniqueIdentifier>{85d83fb6-a8df-471a-867e-adbf9cbdb476}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="engine\renderer\null">
+      <UniqueIdentifier>{f9b5ad7f-53db-44bf-8815-83b75f242181}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="engine\platform">
+      <UniqueIdentifier>{3350e22c-68bc-4730-ad8a-023454723ec4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="engine\platform\windows">
+      <UniqueIdentifier>{753e534a-1b0d-42cb-8ce4-fcbb576e8035}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\src\GDXEngine.cpp">
-      <Filter>engine\core</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\GDXWin32DX11ContextFactory.cpp">
-      <Filter>platform\windows</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\GDXWin32OpenGLContextFactory.cpp">
-      <Filter>platform\windows</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\GDXWin32Platform.cpp">
-      <Filter>platform\windows</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\GDXWin32Window.cpp">
-      <Filter>platform\windows</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\GDXOpenGLRenderer.cpp">
-      <Filter>renderer\opengl</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\CameraSystem.cpp">
-      <Filter>ecs</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\TransformSystem.cpp">
-      <Filter>ecs</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\RenderGatherSystem.cpp">
-      <Filter>ecs</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\GDXECSRenderer.cpp">
-      <Filter>engine\renderer</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\GDXDX11RenderExecutor.cpp">
-      <Filter>renderer\dx11</Filter>
-    </ClCompile>
     <ClCompile Include="..\app\AdapterEnum.cpp">
       <Filter>samples</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\GDXTextureLoader.cpp">
-      <Filter>engine\assets</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\GDXSamplerCache.cpp">
-      <Filter>renderer\dx11</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\GDXShadowMap.cpp">
-      <Filter>renderer\dx11</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\GDXDX11LightSystem.cpp">
-      <Filter>ecs</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\GDXDX11RenderBackend.cpp">
-      <Filter>renderer\dx11</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\GDXInput.cpp">
-      <Filter>engine\core</Filter>
     </ClCompile>
     <ClCompile Include="..\app\ECSGame.cpp">
       <Filter>app\ESC Main</Filter>
@@ -192,81 +135,126 @@
     <ClCompile Include="..\app\uv1_detail_cube.cpp">
       <Filter>app\uv dateil cube</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\HierarchySystem.cpp">
-      <Filter>engine\core</Filter>
-    </ClCompile>
     <ClCompile Include="..\app\parenting_showcase.cpp">
       <Filter>app\parenting showcase</Filter>
     </ClCompile>
     <ClCompile Include="..\app\meshbuilder.cpp">
       <Filter>app\MeshBuilder</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\GDXECSRenderer.cpp">
+      <Filter>engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXWin32Platform.cpp">
+      <Filter>engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXShadowMap.cpp">
+      <Filter>engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXSamplerCache.cpp">
+      <Filter>engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\CameraSystem.cpp">
+      <Filter>ecs</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\HierarchySystem.cpp">
+      <Filter>ecs</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\TransformSystem.cpp">
+      <Filter>ecs</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\RenderGatherSystem.cpp">
+      <Filter>ecs</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXEngine.cpp">
+      <Filter>engine\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXWin32Window.cpp">
+      <Filter>engine\platform\windows</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXWin32DX11ContextFactory.cpp">
+      <Filter>engine\platform\windows</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXWin32OpenGLContextFactory.cpp">
+      <Filter>engine\platform\windows</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXInput.cpp">
+      <Filter>engine\platform</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXDX11RenderBackend.cpp">
+      <Filter>engine\renderer\dx11</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXDX11RenderExecutor.cpp">
+      <Filter>engine\renderer\dx11</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXDX11LightSystem.cpp">
+      <Filter>engine\renderer\dx11</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXDX11Renderer.cpp">
+      <Filter>engine\renderer\dx11</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXOpenGLRenderBackend.cpp">
+      <Filter>engine\renderer\opengl</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXOpenGLRenderer.cpp">
+      <Filter>engine\renderer\opengl</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXDX12RenderBackend.cpp">
+      <Filter>engine\renderer\dx12</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXTextureLoader.cpp">
+      <Filter>util</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\include\Events.h">
-      <Filter>engine\core</Filter>
+    <ClInclude Include="..\third_party\stb_image.h">
+      <Filter>third_party</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\GDXEngine.h">
-      <Filter>engine\core</Filter>
+    <ClInclude Include="..\app\ECSGame.h">
+      <Filter>app\ESC Main</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\GDXEventQueue.h">
-      <Filter>engine\core</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\IGDXDXGIContext.h">
-      <Filter>engine\platform</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\IGDXOpenGLContext.h">
-      <Filter>engine\platform</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\IGDXPlatform.h">
-      <Filter>engine\renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\IGDXWindow.h">
-      <Filter>engine\renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\WindowDesc.h">
-      <Filter>engine\renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\GDXWin32DX11ContextFactory.h">
-      <Filter>platform\windows</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\GDXWin32NativeHandles.h">
-      <Filter>platform\windows</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\GDXWin32OpenGLContextFactory.h">
-      <Filter>platform\windows</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\GDXWin32Platform.h">
-      <Filter>platform\windows</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\GDXWin32Window.h">
-      <Filter>platform\windows</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\IGDXWin32NativeAccess.h">
-      <Filter>platform\windows</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\GDXNullRenderer.h">
-      <Filter>renderer\null</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\GDXOpenGLRenderer.h">
-      <Filter>renderer\opengl</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\Debug.h">
-      <Filter>util</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\ComponentPool.h">
-      <Filter>ecs</Filter>
+    <ClInclude Include="..\app\SnakeGame.h">
+      <Filter>app\SnakeGame</Filter>
     </ClInclude>
     <ClInclude Include="..\include\Components.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXPipelineState.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXShaderLayout.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXTextureSlots.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\MeshAssetResource.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXLightSystem.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXECSRenderer.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\ShaderVariant.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXShadowMap.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\CameraSystem.h">
       <Filter>ecs</Filter>
     </ClInclude>
     <ClInclude Include="..\include\ECSTypes.h">
       <Filter>ecs</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\ComponentPool.h">
+      <Filter>ecs</Filter>
+    </ClInclude>
     <ClInclude Include="..\include\Registry.h">
       <Filter>ecs</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\CameraSystem.h">
+    <ClInclude Include="..\include\HierarchySystem.h">
       <Filter>ecs</Filter>
     </ClInclude>
     <ClInclude Include="..\include\TransformSystem.h">
@@ -275,101 +263,161 @@
     <ClInclude Include="..\include\RenderGatherSystem.h">
       <Filter>ecs</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\GDXECSRenderer.h">
-      <Filter>engine\renderer</Filter>
+    <ClInclude Include="..\include\GDXEngine.h">
+      <Filter>engine\core</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\RenderCommand.h">
-      <Filter>engine\renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\RenderQueue.h">
-      <Filter>engine\renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\MaterialResource.h">
-      <Filter>engine\renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\MeshAssetResource.h">
-      <Filter>engine\renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\Handle.h">
-      <Filter>util</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\SubmeshData.h">
-      <Filter>engine\assets</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\ResourceStore.h">
-      <Filter>engine\renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\GDXDX11RenderExecutor.h">
-      <Filter>renderer\dx11</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\GDXShaderResource.h">
-      <Filter>engine\renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\GDXTextureResource.h">
-      <Filter>engine\assets</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\GDXVertexFlags.h">
-      <Filter>engine\assets</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\GDXShadowMap.h">
-      <Filter>renderer\dx11</Filter>
-    </ClInclude>
-    <ClInclude Include="..\third_party\stb_image.h">
-      <Filter>third_party</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\IGDXRenderBackend.h">
-      <Filter>engine\renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\IGDXLightSystem.h">
-      <Filter>engine\renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\GDXDX11LightSystem.h">
-      <Filter>ecs</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\gidx.h">
-      <Filter>engine</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\IGDXRenderer.h">
-      <Filter>engine\renderer</Filter>
+    <ClInclude Include="..\include\GDXEventQueue.h">
+      <Filter>engine\core</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXFrameTimer.h">
+      <Filter>engine\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Events.h">
+      <Filter>engine\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\WindowDesc.h">
+      <Filter>engine\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXRenderer.h">
+      <Filter>engine\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXRenderBackend.h">
+      <Filter>engine\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\ICommandList.h">
+      <Filter>engine\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\FrameContext.h">
       <Filter>engine\core</Filter>
     </ClInclude>
     <ClInclude Include="..\include\FrameData.h">
       <Filter>engine\core</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\GDXInput.h">
+    <ClInclude Include="..\include\FrameTransientResources.h">
+      <Filter>engine\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\RenderCommand.h">
+      <Filter>engine\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\RenderQueue.h">
+      <Filter>engine\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\RenderPassClearDesc.h">
+      <Filter>engine\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\RenderPassTargetDesc.h">
       <Filter>engine\core</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXRenderTargetResource.h">
-      <Filter>engine\renderer</Filter>
+      <Filter>engine\assets</Filter>
     </ClInclude>
-    <ClInclude Include="..\app\ECSGame.h">
-      <Filter>app\ESC Main</Filter>
+    <ClInclude Include="..\include\GDXShaderResource.h">
+      <Filter>engine\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXTextureResource.h">
+      <Filter>engine\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\MaterialResource.h">
+      <Filter>engine\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\ResourceStore.h">
+      <Filter>engine\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\ImageBuffer.h">
+      <Filter>engine\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXWin32Platform.h">
+      <Filter>engine\platform\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXWin32Window.h">
+      <Filter>engine\platform\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXWin32DX11ContextFactory.h">
+      <Filter>engine\platform\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXWin32OpenGLContextFactory.h">
+      <Filter>engine\platform\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXInput.h">
+      <Filter>engine\platform</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXWin32NativeHandles.h">
+      <Filter>engine\platform</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXPlatform.h">
+      <Filter>engine\platform</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXWin32NativeAccess.h">
+      <Filter>engine\platform</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXWindow.h">
+      <Filter>engine\platform</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXOpenGLContext.h">
+      <Filter>engine\platform\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXDXGIContext.h">
+      <Filter>engine\platform\windows</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXDX11RenderBackend.h">
-      <Filter>renderer\dx11</Filter>
+      <Filter>engine\renderer\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\RenderPassClearDesc.h">
-      <Filter>engine\renderer</Filter>
+    <ClInclude Include="..\include\GDXDX11RenderExecutor.h">
+      <Filter>engine\renderer\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="..\app\SnakeGame.h">
-      <Filter>app\SnakeGame</Filter>
+    <ClInclude Include="..\include\GDXDX11LightSystem.h">
+      <Filter>engine\renderer\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\ShaderVariant.h">
-      <Filter>engine\renderer\shader</Filter>
+    <ClInclude Include="..\include\GDXDX11Renderer.h">
+      <Filter>engine\renderer\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\HierarchySystem.h">
-      <Filter>engine\core</Filter>
+    <ClInclude Include="..\include\GDXOpenGLRenderBackend.h">
+      <Filter>engine\renderer\opengl</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXOpenGLRenderer.h">
+      <Filter>engine\renderer\opengl</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXOpenGLIncludes.h">
+      <Filter>engine\renderer\opengl</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXDX12RenderBackend.h">
+      <Filter>engine\renderer\dx12</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXNullRenderer.h">
+      <Filter>engine\renderer\null</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\BasicMeshGenerator.h">
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\MeshProcessor.h">
-      <Filter>engine\assets</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\MeshUtilities.h">
-      <Filter>engine\assets</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\SubmeshBuilder.h">
-      <Filter>engine\assets</Filter>
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\SubmeshData.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXTextureLoader.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXVertexFlags.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXVertexFormat.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Handle.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Debug.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\gidx.h">
+      <Filter>util</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

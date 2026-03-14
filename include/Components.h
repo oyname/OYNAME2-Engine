@@ -23,7 +23,7 @@
 
 #include "Handle.h"
 #include "ECSTypes.h"   // EntityID, NULL_ENTITY
-
+#include "RenderPassClearDesc.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -278,6 +278,32 @@ struct CameraComponent
 struct ActiveCameraTag {};
 
 // ===========================================================================
+// RenderTargetCameraComponent — rendert diese Kamera zuerst in ein Offscreen-
+// Target. Die erzeugte Farbausgabe kann über exposedTexture im Materialsystem
+// wieder gelesen werden.
+// ===========================================================================
+struct RenderTargetCameraComponent
+{
+    RenderTargetHandle target = RenderTargetHandle::Invalid();
+    bool enabled = true;
+    bool autoAspectFromTarget = true;
+
+    // Pass-Filter für diese Kamera. Standard = altes Verhalten.
+    bool renderShadows = true;
+    bool renderOpaque = true;
+    bool renderTransparent = true;
+
+    // Sicherheitsnetz für RTT: Draws überspringen, die dieselbe RTT-Textur
+    // im selben Pass wieder als Shader-Resource lesen würden.
+    bool skipSelfReferentialDraws = true;
+
+    RenderPassClearDesc clear;
+
+    RenderTargetCameraComponent() = default;
+    explicit RenderTargetCameraComponent(RenderTargetHandle h) : target(h) {}
+};
+
+// ===========================================================================
 // LightKind — Lichttyp.
 // ===========================================================================
 enum class LightKind : uint8_t
@@ -308,6 +334,12 @@ struct LightComponent
     float shadowOrthoSize = 50.0f;
     float shadowNear = 0.1f;
     float shadowFar = 1000.0f;
+
+    // Layer-/Affect-Masken.
+    // affectLayerMask: Welche sichtbaren Layer dieses Licht grundsätzlich beleuchtet.
+    // shadowLayerMask: Welche Layer in den Shadow-Pass dieses Lichts aufgenommen werden.
+    uint32_t affectLayerMask = 0xFFFFFFFFu;
+    uint32_t shadowLayerMask = 0xFFFFFFFFu;
 
     LightComponent() = default;
 };

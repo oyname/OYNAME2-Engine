@@ -63,9 +63,13 @@ void ECSGame::Init()
             TextureHandle hORM = m_renderer.LoadTexture(ormPath, false);
 
             MaterialResource mat;
-            mat.albedoTex = hAlbedo;
-            mat.normalTex = hNormal;
-            mat.ormTex = hORM;
+            //mat.albedoTex = hAlbedo;
+            //mat.normalTex = hNormal;
+            //mat.ormTex = hORM;
+
+            mat.SetTexture(MaterialTextureSlot::Albedo, hAlbedo);
+            mat.SetTexture(MaterialTextureSlot::Normal, hNormal);
+            mat.SetTexture(MaterialTextureSlot::ORM, hORM);
 
             mat.data.baseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
             mat.data.metallic = 0.0f;   // Fallback wenn keine ORM

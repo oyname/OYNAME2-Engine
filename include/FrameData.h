@@ -59,6 +59,8 @@ struct FrameData
     // --- Shadow (Directional Light) ---
     DirectX::XMFLOAT4X4 shadowViewProjMatrix = {};
     bool                 hasShadowPass        = false;
+    uint32_t             shadowCasterMask     = 0xFFFFFFFFu;
+    uint32_t             lightAffectMask      = 0xFFFFFFFFu;
 
     // Viewport
     float viewportWidth  = 1280.0f;

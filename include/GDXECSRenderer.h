@@ -9,6 +9,7 @@
 #include "MaterialResource.h"
 #include "GDXShaderResource.h"
 #include "GDXTextureResource.h"
+#include "GDXRenderTargetResource.h"
 #include "GDXVertexFlags.h"
 #include "FrameData.h"
 #include "RenderQueue.h"
@@ -16,6 +17,9 @@
 #include "CameraSystem.h"
 #include "RenderGatherSystem.h"
 #include "ShaderVariant.h"
+#include "ImageBuffer.h"
+#include "FrameTransientResources.h"
+#include "FrameContext.h"
 
 #include <unordered_map>
 
@@ -47,6 +51,7 @@ public:
         uint32_t vertexFlags = GDX_VERTEX_DEFAULT);
 
     TextureHandle  LoadTexture(const std::wstring& filePath, bool isSRGB = true);
+    TextureHandle  CreateTexture(const ImageBuffer& image, const std::wstring& debugName, bool isSRGB = true);
 
     MeshHandle     UploadMesh(MeshAssetResource mesh);
     MaterialHandle CreateMaterial(MaterialResource mat);
@@ -63,6 +68,10 @@ public:
     ResourceStore<MaterialResource, MaterialTag>& GetMatStore() { return m_matStore; }
     ResourceStore<GDXShaderResource, ShaderTag>& GetShaderStore() { return m_shaderStore; }
     ResourceStore<GDXTextureResource, TextureTag>& GetTextureStore() { return m_texStore; }
+
+    // Render-Target (Offscreen RTT)
+    RenderTargetHandle CreateRenderTarget(uint32_t w, uint32_t h, const std::wstring& name);
+    TextureHandle      GetRenderTargetTexture(RenderTargetHandle h);
 
     struct FrameStats
     {
@@ -94,6 +103,7 @@ private:
     ResourceStore<MaterialResource, MaterialTag> m_matStore;
     ResourceStore<GDXShaderResource, ShaderTag>   m_shaderStore;
     ResourceStore<GDXTextureResource, TextureTag>  m_texStore;
+    ResourceStore<GDXRenderTargetResource, RenderTargetTag> m_rtStore;
 
     TransformSystem    m_transformSystem;
     CameraSystem       m_cameraSystem;
@@ -115,6 +125,11 @@ private:
     float      m_clearColor[4] = { 0.05f, 0.05f, 0.12f, 1.0f };
     FrameStats m_stats;
     bool       m_initialized = false;
+
+    FrameContextRing m_frameContexts{};
+    std::array<FrameTransientResources, GDXMaxFramesInFlight> m_frameTransients{};
+    uint32_t m_currentFrameIndex = 0u;
+    uint64_t m_frameNumber = 0ull;
 
     TickFn m_tickCallback;
 

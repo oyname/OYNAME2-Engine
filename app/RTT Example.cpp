@@ -17,6 +17,12 @@
 #include <filesystem>
 #include <cmath>
 
+// -----------------------------------------------------------------------------
+// Layer-Bits für diese Demo
+// -----------------------------------------------------------------------------
+static constexpr uint32_t LAYER_RTT = 1u << 0;
+static constexpr uint32_t LAYER_MAIN = 1u << 1;
+
 static bool FileExists(const std::wstring& path)
 {
     std::error_code ec;
@@ -64,7 +70,7 @@ public:
             mat.data.flags = MF_NONE;
 
             if (hFaceTex.IsValid())
-                mat.albedoTex = hFaceTex;
+                mat.SetTexture(MaterialTextureSlot::Albedo, hFaceTex, MaterialTextureUVSet::UV1);
 
             m_hMatLeft = m_renderer.CreateMaterial(mat);
         }
@@ -83,13 +89,14 @@ public:
             mat.data.baseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
             mat.data.receiveShadows = 1.0f;
             mat.data.flags = MF_NONE;
-            mat.albedoTex = hRTTTexture;
+            mat.SetTexture(MaterialTextureSlot::Albedo, hRTTTexture, MaterialTextureUVSet::UV1);
 
             m_hMatRight = m_renderer.CreateMaterial(mat);
         }
 
         // ================================================================
         // Hauptkamera
+        // Sie sieht beide Layer.
         // ================================================================
         m_mainCamera = reg.CreateEntity();
         reg.Add<TagComponent>(m_mainCamera, "Main Camera");
@@ -107,15 +114,14 @@ public:
             cam.nearPlane = 0.1f;
             cam.farPlane = 200.0f;
             cam.aspectRatio = 16.0f / 9.0f;
+            cam.cullMask = LAYER_RTT | LAYER_MAIN;
             reg.Add<CameraComponent>(m_mainCamera, cam);
         }
         reg.Add<ActiveCameraTag>(m_mainCamera);
 
         // ================================================================
         // RTT-Kamera
-        //
-        // Blickt auf den linken Würfel.
-        // So platziert, dass der rechte Würfel nicht sinnvoll ins Bild kommt.
+        // Sie sieht nur den RTT-Layer.
         // ================================================================
         m_rttCamera = reg.CreateEntity();
         reg.Add<TagComponent>(m_rttCamera, "RTT Camera");
@@ -123,17 +129,18 @@ public:
         {
             TransformComponent tc;
             tc.localPosition = { -4.0f, 0.0f, 4.0f };
-            tc.SetEulerDeg(0.0f, 0.0f, 0.0f); // Blick entlang +Z
+            tc.SetEulerDeg(0.0f, 0.0f, 0.0f);
             reg.Add<TransformComponent>(m_rttCamera, tc);
         }
         reg.Add<WorldTransformComponent>(m_rttCamera);
 
         {
             CameraComponent cam;
-            cam.fovDeg = 35.0f;       // enger als 55
+            cam.fovDeg = 35.0f;
             cam.nearPlane = 0.1f;
-            cam.farPlane = 30.0f;     // reicht locker
+            cam.farPlane = 30.0f;
             cam.aspectRatio = 1.0f;
+            cam.cullMask = LAYER_RTT;
             reg.Add<CameraComponent>(m_rttCamera, cam);
         }
 
@@ -154,6 +161,9 @@ public:
 
             rtc.clear.clearStencilEnabled = false;
             rtc.clear.clearStencilValue = 0;
+
+            // optionaler Guard kann anbleiben
+            rtc.skipSelfReferentialDraws = true;
 
             reg.Add<RenderTargetCameraComponent>(m_rttCamera, rtc);
         }
@@ -210,7 +220,8 @@ public:
         m_renderer.SetSceneAmbient(0.9f, 0.9f, 0.9f);
 
         // ================================================================
-        // Linker Würfel — dreht sich, wird in RTT aufgenommen
+        // Linker Würfel — wird in RTT aufgenommen
+        // Layer: RTT
         // ================================================================
         m_cubeLeft = reg.CreateEntity();
         reg.Add<TagComponent>(m_cubeLeft, "Cube Left");
@@ -224,11 +235,22 @@ public:
         reg.Add<WorldTransformComponent>(m_cubeLeft);
         reg.Add<MeshRefComponent>(m_cubeLeft, m_hCube, 0u);
         reg.Add<MaterialRefComponent>(m_cubeLeft, m_hMatLeft);
-        reg.Add<VisibilityComponent>(m_cubeLeft);
+
+        {
+            VisibilityComponent vis;
+            vis.visible = true;
+            vis.active = true;
+            vis.layerMask = LAYER_RTT;
+            vis.castShadows = true;
+            reg.Add<VisibilityComponent>(m_cubeLeft, vis);
+        }
+
         reg.Add<ShadowCasterTag>(m_cubeLeft);
 
         // ================================================================
         // Rechter Würfel — zeigt RTT-Textur
+        // Layer: MAIN
+        // -> RTT-Kamera sieht ihn nicht mehr
         // ================================================================
         m_cubeRight = reg.CreateEntity();
         reg.Add<TagComponent>(m_cubeRight, "Cube Right");
@@ -243,7 +265,16 @@ public:
         reg.Add<WorldTransformComponent>(m_cubeRight);
         reg.Add<MeshRefComponent>(m_cubeRight, m_hCube, 0u);
         reg.Add<MaterialRefComponent>(m_cubeRight, m_hMatRight);
-        reg.Add<VisibilityComponent>(m_cubeRight);
+
+        {
+            VisibilityComponent vis;
+            vis.visible = true;
+            vis.active = true;
+            vis.layerMask = LAYER_MAIN;
+            vis.castShadows = true;
+            reg.Add<VisibilityComponent>(m_cubeRight, vis);
+        }
+
         reg.Add<ShadowCasterTag>(m_cubeRight);
 
         Debug::Log("RTTDemo: Szene initialisiert.");
@@ -253,7 +284,6 @@ public:
     {
         Registry& reg = m_renderer.GetRegistry();
 
-        // Linken Würfel drehen
         if (auto* tc = reg.Get<TransformComponent>(m_cubeLeft))
         {
             m_leftPitch += 60.0f * dt;

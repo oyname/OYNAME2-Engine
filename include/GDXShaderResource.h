@@ -1,6 +1,7 @@
 #pragma once
 #include "GDXVertexFlags.h"
 #include "ShaderVariant.h"
+#include "GDXShaderLayout.h"
 #include <cstdint>
 #include <string>
 
@@ -24,6 +25,7 @@ struct GDXShaderResource
 {
     // Vertex-Format-Flags (steuern InputLayout + Upload + Binding)
     uint32_t vertexFlags = GDX_VERTEX_DEFAULT;
+    GDXShaderLayout layout;
 
     // GPU-Handles (backend-agnostisch, hinter void*)
     void* vertexShader = nullptr;   // ID3D11VertexShader*
