@@ -1,5 +1,11 @@
 #pragma once
 
+//
+// GDXDX11LightSystem ist direkt in GDXDX11RenderBackend eingebettet (m_lightSystem). 
+// Das IGDXLightSystem-Interface existiert, wird aber von keinem anderen Backend implementiert.
+// Es ist also ein Interface ohne zweite Implementierung 
+//
+
 #include "IGDXLightSystem.h"
 #include "Components.h"
 

@@ -97,7 +97,8 @@ namespace
 
         bool Create(HWND hwnd, IDXGIAdapter* adapter,
                     int width, int height,
-                    const GDXDXGIAdapterInfo& adapterInfo);
+                    const GDXDXGIAdapterInfo& adapterInfo,
+                    bool borderless);
 
         // IGDXDXGIContext
         bool              IsValid()          const override { return m_device != nullptr; }
@@ -130,16 +131,19 @@ namespace
         int                m_width        = 0;
         int                m_height       = 0;
         HWND               m_hwnd         = nullptr;
+        bool               m_borderless   = true;
     };
 
     bool Win32DXGIContext::Create(HWND hwnd, IDXGIAdapter* adapter,
                                    int width, int height,
-                                   const GDXDXGIAdapterInfo& adapterInfo)
+                                   const GDXDXGIAdapterInfo& adapterInfo,
+                                   bool borderless)
     {
         m_hwnd        = hwnd;
         m_width       = width;
         m_height      = height;
         m_adapterInfo = adapterInfo;
+        m_borderless  = borderless;
 
         // --- Device + context -----------------------------------------------
         const D3D_FEATURE_LEVEL levels[] =
@@ -203,6 +207,17 @@ namespace
             Debug::LogError("gdxwin32dx11contextfactory.cpp: CreateSwapChain failed 0x",
                             static_cast<unsigned long>(hr));
             return false;
+        }
+
+        // DXGI::CreateSwapChain entfernt intern WS_CAPTION / WS_THICKFRAME.
+        // Bei borderless == false den Rahmen explizit wiederherstellen.
+        if (!m_borderless)
+        {
+            LONG style = GetWindowLong(hwnd, GWL_STYLE);
+            style |= WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_THICKFRAME;
+            SetWindowLong(hwnd, GWL_STYLE, style);
+            SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
         }
 
         // --- RTV + depth + rasterizer + DS state ----------------------------
@@ -422,7 +437,8 @@ unsigned int GDXWin32DX11ContextFactory::FindBestAdapter(
 std::unique_ptr<IGDXDXGIContext>
 GDXWin32DX11ContextFactory::Create(
     IGDXWin32NativeAccess& nativeAccess,
-    unsigned int           adapterIndex) const
+    unsigned int           adapterIndex,
+    bool                   borderless) const
 {
     Debug::Log("gdxwin32dx11contextfactory.cpp: Create START  adapter=", adapterIndex);
 
@@ -470,7 +486,7 @@ GDXWin32DX11ContextFactory::Create(
     const int h = rc.bottom - rc.top;
 
     auto ctx = std::make_unique<Win32DXGIContext>();
-    if (!ctx->Create(hwnd, adapter, w, h, adapterInfo))
+    if (!ctx->Create(hwnd, adapter, w, h, adapterInfo, borderless))
     {
         adapter->Release();
         return nullptr;

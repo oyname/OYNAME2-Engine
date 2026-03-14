@@ -1,4 +1,4 @@
-#include "GDXEngine.h"
+ï»¿#include "GDXEngine.h"
 #include "GDXEventQueue.h"
 #include "WindowDesc.h"
 #include "GDXWin32Window.h"
@@ -56,7 +56,7 @@ static SubmeshData BuildTailSubmesh()
     {
         const float t = static_cast<float>(r) * 0.5f;
         const float y = t * SEG_H;
-        const float gradient = y / (2 * SEG_H);  // 0..1 — nur noch für Farbe
+        const float gradient = y / (2 * SEG_H);  // 0..1 â€” nur noch fÃ¼r Farbe
 
         const float cr = (20.0f + 30.0f * gradient) / 255.0f;
         const float cg = (60.0f + 195.0f * gradient) / 255.0f;
@@ -117,7 +117,7 @@ static SubmeshData BuildTailSubmesh()
         {
             const int nf = (f + 1) % VERTS_RING;
 
-            // außen
+            // auÃŸen
             s.indices.push_back(b + f);
             s.indices.push_back(t + f);
             s.indices.push_back(b + nf);
@@ -126,7 +126,7 @@ static SubmeshData BuildTailSubmesh()
             s.indices.push_back(t + nf);
             s.indices.push_back(b + nf);
 
-            // innen / Rückseite, damit es von mehreren Blickrichtungen sichtbar bleibt
+            // innen / RÃ¼ckseite, damit es von mehreren Blickrichtungen sichtbar bleibt
             s.indices.push_back(b + f);
             s.indices.push_back(b + nf);
             s.indices.push_back(t + f);
@@ -214,10 +214,10 @@ public:
             mat.data.baseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
             mat.data.metallic = 0.0f;   // Fallback wenn keine ORM
             mat.data.roughness = 0.8f;   // Fallback wenn keine ORM
-            mat.data.normalScale = 3.0f;
+            mat.data.normalScale = 1.0f;
             mat.data.occlusionStrength = 1.0f;
             mat.data.receiveShadows = 1.0f;
-            mat.data.uvTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f };
+            mat.data.uvTilingOffset = { 0.5f, 0.5f, 0.0f, 0.0f };
 
             mat.data.flags =
                 MF_SHADING_PBR |

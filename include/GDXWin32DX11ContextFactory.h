@@ -27,8 +27,11 @@ public:
 
     // Create a DX11 context for the given window and adapter.
     // adapterIndex comes from EnumerateAdapters() / FindBestAdapter().
+    // borderless = true  → kein Fensterrahmen (Standard).
+    // borderless = false → normales Fenster mit Titelleiste und Rahmen.
     // Returns nullptr on failure (logs via Debug::LogError).
     std::unique_ptr<IGDXDXGIContext> Create(
         IGDXWin32NativeAccess& nativeAccess,
-        unsigned int           adapterIndex) const;
+        unsigned int           adapterIndex,
+        bool                   borderless = true) const;
 };

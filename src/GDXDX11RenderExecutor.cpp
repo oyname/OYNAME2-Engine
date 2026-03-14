@@ -17,9 +17,9 @@ static ID3D11Buffer* CreateBuffer(ID3D11Device* device,
     const void* data, uint32_t bytes, D3D11_BIND_FLAG bind, bool dynamic = false)
 {
     D3D11_BUFFER_DESC desc = {};
-    desc.ByteWidth      = bytes;
-    desc.Usage          = dynamic ? D3D11_USAGE_DYNAMIC : D3D11_USAGE_DEFAULT;
-    desc.BindFlags      = bind;
+    desc.ByteWidth = bytes;
+    desc.Usage = dynamic ? D3D11_USAGE_DYNAMIC : D3D11_USAGE_DEFAULT;
+    desc.BindFlags = bind;
     desc.CPUAccessFlags = dynamic ? D3D11_CPU_ACCESS_WRITE : 0u;
 
     D3D11_SUBRESOURCE_DATA init = {};
@@ -64,45 +64,45 @@ bool GDXDX11MeshUploader::UploadSubmesh(SubmeshData& cpu, GpuMeshBuffer& gpu)
     gpu.vertexCount = cpu.VertexCount();
 
     auto upload = [&](const void* data, uint32_t stride, uint32_t count,
-                      void*& outBuf, uint32_t& outStride) -> bool
-    {
-        auto* buf = CreateBuffer(m_device, data, stride * count, D3D11_BIND_VERTEX_BUFFER);
-        if (!buf) return false;
-        outBuf    = buf;
-        outStride = stride;
-        return true;
-    };
+        void*& outBuf, uint32_t& outStride) -> bool
+        {
+            auto* buf = CreateBuffer(m_device, data, stride * count, D3D11_BIND_VERTEX_BUFFER);
+            if (!buf) return false;
+            outBuf = buf;
+            outStride = stride;
+            return true;
+        };
 
     if (!upload(cpu.positions.data(), sizeof(DirectX::XMFLOAT3),
-                cpu.VertexCount(), gpu.positionBuffer, gpu.stridePosition))
+        cpu.VertexCount(), gpu.positionBuffer, gpu.stridePosition))
         return false;
 
     if (cpu.HasNormals())
         upload(cpu.normals.data(), sizeof(DirectX::XMFLOAT3),
-               cpu.VertexCount(), gpu.normalBuffer, gpu.strideNormal);
+            cpu.VertexCount(), gpu.normalBuffer, gpu.strideNormal);
 
     if (!cpu.colors.empty() && cpu.colors.size() == cpu.positions.size())
         upload(cpu.colors.data(), sizeof(DirectX::XMFLOAT4),
-               cpu.VertexCount(), gpu.colorBuffer, gpu.strideColor);
+            cpu.VertexCount(), gpu.colorBuffer, gpu.strideColor);
 
     if (cpu.HasUV0())
         upload(cpu.uv0.data(), sizeof(DirectX::XMFLOAT2),
-               cpu.VertexCount(), gpu.uv1Buffer, gpu.strideUV1);
+            cpu.VertexCount(), gpu.uv1Buffer, gpu.strideUV1);
 
     if (cpu.HasUV1())
         upload(cpu.uv1.data(), sizeof(DirectX::XMFLOAT2),
-               cpu.VertexCount(), gpu.uv2Buffer, gpu.strideUV2);
+            cpu.VertexCount(), gpu.uv2Buffer, gpu.strideUV2);
 
     if (cpu.HasTangents())
         upload(cpu.tangents.data(), sizeof(DirectX::XMFLOAT4),
-               cpu.VertexCount(), gpu.tangentBuffer, gpu.strideTangent);
+            cpu.VertexCount(), gpu.tangentBuffer, gpu.strideTangent);
 
     if (cpu.HasSkinning())
     {
         upload(cpu.boneIndices.data(), sizeof(DirectX::XMUINT4),
-               cpu.VertexCount(), gpu.boneIndexBuffer, gpu.strideBoneIndex);
+            cpu.VertexCount(), gpu.boneIndexBuffer, gpu.strideBoneIndex);
         upload(cpu.boneWeights.data(), sizeof(DirectX::XMFLOAT4),
-               cpu.VertexCount(), gpu.boneWeightBuffer, gpu.strideBoneWeight);
+            cpu.VertexCount(), gpu.boneWeightBuffer, gpu.strideBoneWeight);
     }
 
     if (!cpu.indices.empty())
@@ -112,7 +112,7 @@ bool GDXDX11MeshUploader::UploadSubmesh(SubmeshData& cpu, GpuMeshBuffer& gpu)
             D3D11_BIND_INDEX_BUFFER);
         if (!ib) return false;
         gpu.indexBuffer = ib;
-        gpu.indexCount  = static_cast<uint32_t>(cpu.indices.size());
+        gpu.indexCount = static_cast<uint32_t>(cpu.indices.size());
     }
 
     gpu.ready = true;
@@ -123,7 +123,7 @@ void GDXDX11MeshUploader::Release(MeshAssetResource& mesh)
 {
     for (auto& gpu : mesh.gpuBuffers)
     {
-        auto sr = [](void*& p){ if(p){ static_cast<ID3D11Buffer*>(p)->Release(); p=nullptr; } };
+        auto sr = [](void*& p) { if (p) { static_cast<ID3D11Buffer*>(p)->Release(); p = nullptr; } };
         sr(gpu.positionBuffer);  sr(gpu.normalBuffer);    sr(gpu.colorBuffer);
         sr(gpu.uv1Buffer);       sr(gpu.uv2Buffer);       sr(gpu.tangentBuffer);
         sr(gpu.boneIndexBuffer); sr(gpu.boneWeightBuffer); sr(gpu.indexBuffer);
@@ -136,7 +136,7 @@ void GDXDX11MeshUploader::Release(MeshAssetResource& mesh)
 // ===========================================================================
 bool GDXDX11RenderExecutor::Init(const InitParams& p)
 {
-    m_device  = p.device;
+    m_device = p.device;
     m_context = p.context;
     if (!m_device || !m_context) return false;
     CreateConstantBuffers();
@@ -148,17 +148,17 @@ void GDXDX11RenderExecutor::CreateConstantBuffers()
 {
     m_entityCB = CreateBuffer(m_device, nullptr,
         sizeof(Dx11EntityConstants), D3D11_BIND_CONSTANT_BUFFER, true);
-    m_frameCB  = CreateBuffer(m_device, nullptr,
-        sizeof(Dx11FrameConstants),  D3D11_BIND_CONSTANT_BUFFER, true);
-    m_skinCB   = CreateBuffer(m_device, nullptr,
+    m_frameCB = CreateBuffer(m_device, nullptr,
+        sizeof(Dx11FrameConstants), D3D11_BIND_CONSTANT_BUFFER, true);
+    m_skinCB = CreateBuffer(m_device, nullptr,
         sizeof(Dx11SkinConstants), D3D11_BIND_CONSTANT_BUFFER, true);
 }
 
 void GDXDX11RenderExecutor::Shutdown()
 {
     if (m_entityCB) { m_entityCB->Release(); m_entityCB = nullptr; }
-    if (m_frameCB)  { m_frameCB->Release();  m_frameCB  = nullptr; }
-    if (m_skinCB)   { m_skinCB->Release();   m_skinCB   = nullptr; }
+    if (m_frameCB) { m_frameCB->Release();  m_frameCB = nullptr; }
+    if (m_skinCB) { m_skinCB->Release();   m_skinCB = nullptr; }
     m_textureStates.clear();
 }
 
@@ -167,9 +167,9 @@ void GDXDX11RenderExecutor::UpdateFrameConstants(const FrameData& frame)
     if (!m_frameCB) return;
 
     Dx11FrameConstants fc = {};
-    std::memcpy(fc.viewMatrix,     &frame.viewMatrix,           64);
-    std::memcpy(fc.projMatrix,     &frame.projMatrix,           64);
-    std::memcpy(fc.viewProjMatrix, &frame.viewProjMatrix,       64);
+    std::memcpy(fc.viewMatrix, &frame.viewMatrix, 64);
+    std::memcpy(fc.projMatrix, &frame.projMatrix, 64);
+    std::memcpy(fc.viewProjMatrix, &frame.viewProjMatrix, 64);
     std::memcpy(fc.shadowViewProj, &frame.shadowViewProjMatrix, 64);
     fc.cameraPos[0] = frame.cameraPos.x;
     fc.cameraPos[1] = frame.cameraPos.y;
@@ -197,32 +197,32 @@ bool GDXDX11RenderExecutor::BindVertexStreams(const GpuMeshBuffer& gpu, uint32_t
     UINT          slot = 0u;
 
     auto bind = [&](bool needed, void* buf, uint32_t stride) -> bool
-    {
-        if (!needed) return true;
-        if (!buf || stride == 0) return false;
-        buffers[slot] = static_cast<ID3D11Buffer*>(buf);
-        strides[slot] = stride;
-        offsets[slot] = 0u;
-        ++slot;
-        return true;
-    };
+        {
+            if (!needed) return true;
+            if (!buf || stride == 0) return false;
+            buffers[slot] = static_cast<ID3D11Buffer*>(buf);
+            strides[slot] = stride;
+            offsets[slot] = 0u;
+            ++slot;
+            return true;
+        };
 
-    if (!bind(flags & GDX_VERTEX_POSITION,     gpu.positionBuffer,   gpu.stridePosition))   return false;
-    if (!bind(flags & GDX_VERTEX_NORMAL,       gpu.normalBuffer,     gpu.strideNormal))     return false;
-    if (!bind(flags & GDX_VERTEX_COLOR,        gpu.colorBuffer,      gpu.strideColor))      return false;
+    if (!bind(flags & GDX_VERTEX_POSITION, gpu.positionBuffer, gpu.stridePosition))   return false;
+    if (!bind(flags & GDX_VERTEX_NORMAL, gpu.normalBuffer, gpu.strideNormal))     return false;
+    if (!bind(flags & GDX_VERTEX_COLOR, gpu.colorBuffer, gpu.strideColor))      return false;
     if (!bind(flags & GDX_VERTEX_TEX1, gpu.uv1Buffer, gpu.strideUV1)) return false;
     // UV1-Slot: echter UV1-Buffer wenn vorhanden, sonst UV0 aliasieren.
     // Garantiert valide Daten in TEXCOORD1 ohne Shader-Variante.
     // MF_USE_DETAIL_MAP im Material entscheidet ob UV1 genutzt wird.
     if (flags & GDX_VERTEX_TEX1)
     {
-        const bool hasUV1  = (flags & GDX_VERTEX_TEX2) && gpu.uv2Buffer;
-        void*     uv1Buf   = hasUV1 ? gpu.uv2Buffer  : gpu.uv1Buffer;
-        uint32_t  uv1Str   = hasUV1 ? gpu.strideUV2  : gpu.strideUV1;
+        const bool hasUV1 = (flags & GDX_VERTEX_TEX2) && gpu.uv2Buffer;
+        void* uv1Buf = hasUV1 ? gpu.uv2Buffer : gpu.uv1Buffer;
+        uint32_t  uv1Str = hasUV1 ? gpu.strideUV2 : gpu.strideUV1;
         if (!bind(true, uv1Buf, uv1Str)) return false;
     }
-    if (!bind(flags & GDX_VERTEX_TANGENT,      gpu.tangentBuffer,    gpu.strideTangent))    return false;
-    if (!bind(flags & GDX_VERTEX_BONE_INDICES, gpu.boneIndexBuffer,  gpu.strideBoneIndex))  return false;
+    if (!bind(flags & GDX_VERTEX_TANGENT, gpu.tangentBuffer, gpu.strideTangent))    return false;
+    if (!bind(flags & GDX_VERTEX_BONE_INDICES, gpu.boneIndexBuffer, gpu.strideBoneIndex))  return false;
     if (!bind(flags & GDX_VERTEX_BONE_WEIGHTS, gpu.boneWeightBuffer, gpu.strideBoneWeight)) return false;
 
     if (slot > 0u)
@@ -236,8 +236,8 @@ bool GDXDX11RenderExecutor::BindVertexStreams(const GpuMeshBuffer& gpu, uint32_t
 // sonst Fallback auf den Materialzustand. Trackt ShaderRead-Nutzung pro Textur.
 // ---------------------------------------------------------------------------
 void GDXDX11RenderExecutor::BindMaterialTextures(
-    const RenderCommand&                    cmd,
-    const MaterialResource&                 mat,
+    const RenderCommand& cmd,
+    const MaterialResource& mat,
     ResourceStore<GDXTextureResource, TextureTag>& texStore,
     TextureHandle defaultWhite,
     TextureHandle defaultNormal,
@@ -245,46 +245,46 @@ void GDXDX11RenderExecutor::BindMaterialTextures(
     TextureHandle defaultBlack)
 {
     auto resolveTexture = [&](ShaderResourceSemantic semantic, TextureHandle fallback) -> TextureHandle
-    {
-        if (const ShaderResourceBindingDesc* binding = cmd.resourceBindings.FindTextureBinding(semantic))
         {
-            if (binding->enabled && binding->texture.IsValid())
-                return binding->texture;
-        }
+            if (const ShaderResourceBindingDesc* binding = cmd.resourceBindings.FindTextureBinding(semantic))
+            {
+                if (binding->enabled && binding->texture.IsValid())
+                    return binding->texture;
+            }
 
-        switch (semantic)
-        {
-        case ShaderResourceSemantic::Albedo:
-            return mat.GetTexture(MaterialTextureSlot::Albedo).IsValid() ? mat.GetTexture(MaterialTextureSlot::Albedo) : fallback;
-        case ShaderResourceSemantic::Normal:
-            return mat.GetTexture(MaterialTextureSlot::Normal).IsValid() ? mat.GetTexture(MaterialTextureSlot::Normal) : fallback;
-        case ShaderResourceSemantic::ORM:
-            return mat.GetTexture(MaterialTextureSlot::ORM).IsValid() ? mat.GetTexture(MaterialTextureSlot::ORM) : fallback;
-        case ShaderResourceSemantic::Emissive:
-            return mat.GetTexture(MaterialTextureSlot::Emissive).IsValid() ? mat.GetTexture(MaterialTextureSlot::Emissive) : fallback;
-        case ShaderResourceSemantic::Detail:
-            return mat.GetTexture(MaterialTextureSlot::Detail).IsValid() ? mat.GetTexture(MaterialTextureSlot::Detail) : fallback;
-        case ShaderResourceSemantic::ShadowMap:
-        default:
-            return fallback;
-        }
-    };
+            switch (semantic)
+            {
+            case ShaderResourceSemantic::Albedo:
+                return mat.GetTexture(MaterialTextureSlot::Albedo).IsValid() ? mat.GetTexture(MaterialTextureSlot::Albedo) : fallback;
+            case ShaderResourceSemantic::Normal:
+                return mat.GetTexture(MaterialTextureSlot::Normal).IsValid() ? mat.GetTexture(MaterialTextureSlot::Normal) : fallback;
+            case ShaderResourceSemantic::ORM:
+                return mat.GetTexture(MaterialTextureSlot::ORM).IsValid() ? mat.GetTexture(MaterialTextureSlot::ORM) : fallback;
+            case ShaderResourceSemantic::Emissive:
+                return mat.GetTexture(MaterialTextureSlot::Emissive).IsValid() ? mat.GetTexture(MaterialTextureSlot::Emissive) : fallback;
+            case ShaderResourceSemantic::Detail:
+                return mat.GetTexture(MaterialTextureSlot::Detail).IsValid() ? mat.GetTexture(MaterialTextureSlot::Detail) : fallback;
+            case ShaderResourceSemantic::ShadowMap:
+            default:
+                return fallback;
+            }
+        };
 
     auto getSRV = [&](TextureHandle handle, const char* reason) -> ID3D11ShaderResourceView*
-    {
-        if (handle.IsValid())
-            ValidateShaderReadState(handle, reason);
+        {
+            if (handle.IsValid())
+                ValidateShaderReadState(handle, reason);
 
-        const GDXTextureResource* tex = texStore.Get(handle);
-        if (!tex || !tex->srv) return nullptr;
-        return static_cast<ID3D11ShaderResourceView*>(tex->srv);
-    };
+            const GDXTextureResource* tex = texStore.Get(handle);
+            if (!tex || !tex->srv) return nullptr;
+            return static_cast<ID3D11ShaderResourceView*>(tex->srv);
+        };
 
-    const TextureHandle albedo   = resolveTexture(ShaderResourceSemantic::Albedo,   defaultWhite);
-    const TextureHandle normal   = resolveTexture(ShaderResourceSemantic::Normal,   defaultNormal);
-    const TextureHandle orm      = resolveTexture(ShaderResourceSemantic::ORM,      defaultORM);
+    const TextureHandle albedo = resolveTexture(ShaderResourceSemantic::Albedo, defaultWhite);
+    const TextureHandle normal = resolveTexture(ShaderResourceSemantic::Normal, defaultNormal);
+    const TextureHandle orm = resolveTexture(ShaderResourceSemantic::ORM, defaultORM);
     const TextureHandle emissive = resolveTexture(ShaderResourceSemantic::Emissive, defaultBlack);
-    const TextureHandle detail   = resolveTexture(ShaderResourceSemantic::Detail,   defaultWhite);
+    const TextureHandle detail = resolveTexture(ShaderResourceSemantic::Detail, defaultWhite);
 
     ID3D11ShaderResourceView* srvs[5] =
     {
@@ -400,14 +400,14 @@ void GDXDX11RenderExecutor::ResetTrackedResourceStates()
 // cmd.material == Invalid() → mat == nullptr → continue.
 // ---------------------------------------------------------------------------
 void GDXDX11RenderExecutor::ExecuteShadowQueue(
-    Registry&                                     registry,
-    const RenderQueue&                            queue,
-    ResourceStore<MeshAssetResource, MeshTag>&    meshStore,
+    Registry& registry,
+    const RenderQueue& queue,
+    ResourceStore<MeshAssetResource, MeshTag>& meshStore,
     ResourceStore<MaterialResource, MaterialTag>& matStore,
-    ResourceStore<GDXShaderResource, ShaderTag>&  shaderStore,
+    ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
     ResourceStore<GDXTextureResource, TextureTag>& texStore)
 {
-    m_drawCalls  = 0u;
+    m_drawCalls = 0u;
     m_lastShader = ShaderHandle::Invalid();
     m_lastMaterial = MaterialHandle::Invalid();
 
@@ -418,8 +418,8 @@ void GDXDX11RenderExecutor::ExecuteShadowQueue(
 
     for (const RenderCommand& cmd : queue.commands)
     {
-        MeshAssetResource* mesh   = meshStore.Get(cmd.mesh);
-        MaterialResource*  mat    = matStore.Get(cmd.material);
+        MeshAssetResource* mesh = meshStore.Get(cmd.mesh);
+        MaterialResource* mat = matStore.Get(cmd.material);
         GDXShaderResource* shader = shaderStore.Get(cmd.shader);
 
         if (!mesh || !mat || !shader || !shader->IsValid())      continue;
@@ -476,6 +476,15 @@ void GDXDX11RenderExecutor::ExecuteShadowQueue(
             m_context->VSSetConstantBuffers(0, 1, &m_entityCB);
         }
 
+        // --- Rasterizer State: nur MF_DOUBLE_SIDED schaltet CULL_NONE ---
+        // MF_ALPHA_TEST ist unabhängig – Alpha-Discard passiert im PS,
+        // das Culling bleibt davon unberührt.
+        {
+            const bool noCull = mat->IsDoubleSided();
+            ID3D11RasterizerState* rs = noCull ? m_rsNoCull : m_rsCull;
+            if (rs) m_context->RSSetState(rs);
+        }
+
         if (!BindVertexStreams(gpu, shader->vertexFlags)) continue;
 
         if (gpu.indexBuffer)
@@ -495,16 +504,16 @@ void GDXDX11RenderExecutor::ExecuteShadowQueue(
 // ExecuteQueue
 // ---------------------------------------------------------------------------
 void GDXDX11RenderExecutor::ExecuteQueue(
-    Registry&                                       registry,
-    const RenderQueue&                              queue,
-    ResourceStore<MeshAssetResource, MeshTag>&     meshStore,
-    ResourceStore<MaterialResource,  MaterialTag>& matStore,
-    ResourceStore<GDXShaderResource, ShaderTag>&   shaderStore,
-    ResourceStore<GDXTextureResource,TextureTag>&  texStore,
+    Registry& registry,
+    const RenderQueue& queue,
+    ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+    ResourceStore<MaterialResource, MaterialTag>& matStore,
+    ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+    ResourceStore<GDXTextureResource, TextureTag>& texStore,
     void* shadowSRV)
 {
-    m_drawCalls    = 0u;
-    m_lastShader   = ShaderHandle::Invalid();
+    m_drawCalls = 0u;
+    m_lastShader = ShaderHandle::Invalid();
     m_lastMaterial = MaterialHandle::Invalid();
 
     m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -517,8 +526,8 @@ void GDXDX11RenderExecutor::ExecuteQueue(
 
     for (const RenderCommand& cmd : queue.commands)
     {
-        MeshAssetResource* mesh   = meshStore.Get(cmd.mesh);
-        MaterialResource*  mat    = matStore.Get(cmd.material);
+        MeshAssetResource* mesh = meshStore.Get(cmd.mesh);
+        MaterialResource* mat = matStore.Get(cmd.material);
         GDXShaderResource* shader = shaderStore.Get(cmd.shader);
 
         if (!mesh || !mat || !shader || !shader->IsValid()) continue;
@@ -531,9 +540,9 @@ void GDXDX11RenderExecutor::ExecuteQueue(
         if (cmd.shader != m_lastShader)
         {
             m_context->VSSetShader(static_cast<ID3D11VertexShader*>(shader->vertexShader), nullptr, 0);
-            m_context->PSSetShader(static_cast<ID3D11PixelShader*> (shader->pixelShader),  nullptr, 0);
+            m_context->PSSetShader(static_cast<ID3D11PixelShader*> (shader->pixelShader), nullptr, 0);
             m_context->IASetInputLayout(static_cast<ID3D11InputLayout*>(shader->inputLayout));
-            m_lastShader   = cmd.shader;
+            m_lastShader = cmd.shader;
             m_lastMaterial = MaterialHandle::Invalid();
         }
 
@@ -562,7 +571,7 @@ void GDXDX11RenderExecutor::ExecuteQueue(
             // Texturen t0-t3
             BindMaterialTextures(cmd, *mat, texStore,
                 defaultWhiteTex, defaultNormalTex,
-                defaultORMTex,   defaultBlackTex);
+                defaultORMTex, defaultBlackTex);
 
             m_lastMaterial = cmd.material;
         }
@@ -572,7 +581,7 @@ void GDXDX11RenderExecutor::ExecuteQueue(
             Dx11EntityConstants ec = {};
             std::memcpy(ec.worldMatrix, &cmd.worldMatrix, 64);
 
-            DirectX::XMMATRIX w   = DirectX::XMLoadFloat4x4(&cmd.worldMatrix);
+            DirectX::XMMATRIX w = DirectX::XMLoadFloat4x4(&cmd.worldMatrix);
             DirectX::XMMATRIX wIT = DirectX::XMMatrixTranspose(
                 DirectX::XMMatrixInverse(nullptr, w));
             DirectX::XMFLOAT4X4 witF;
@@ -586,6 +595,15 @@ void GDXDX11RenderExecutor::ExecuteQueue(
                 m_context->Unmap(m_entityCB, 0);
             }
             m_context->VSSetConstantBuffers(0, 1, &m_entityCB);
+        }
+
+        // --- Rasterizer State: nur MF_DOUBLE_SIDED schaltet CULL_NONE ---
+        // MF_ALPHA_TEST ist unabhängig – Alpha-Discard passiert im PS,
+        // das Culling bleibt davon unberührt.
+        {
+            const bool noCull = mat->IsDoubleSided();
+            ID3D11RasterizerState* rs = noCull ? m_rsNoCull : m_rsCull;
+            if (rs) m_context->RSSetState(rs);
         }
 
         // --- Vertex Streams --------------------------------------------------

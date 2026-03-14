@@ -1,4 +1,4 @@
-#include "GDXEngine.h"
+﻿#include "GDXEngine.h"
 #include "GDXEventQueue.h"
 #include "WindowDesc.h"
 #include "GDXWin32Window.h"
@@ -74,15 +74,15 @@ public:
         }
 
         m_hFloor = m_renderer.CreateMaterial(MaterialResource::FlatColor(0.42f, 0.42f, 0.45f));
-        m_hRed   = m_renderer.CreateMaterial(MaterialResource::FlatColor(0.82f, 0.18f, 0.14f));
+        m_hRed = m_renderer.CreateMaterial(MaterialResource::FlatColor(0.82f, 0.18f, 0.14f));
 
         MaterialResource cutout = MaterialResource::FlatColor(1.0f, 1.0f, 1.0f, 1.0f);
-        cutout.data.flags = MF_ALPHA_TEST;
+        cutout.data.flags = MF_ALPHA_TEST | MF_DOUBLE_SIDED;
         cutout.data.alphaCutoff = 0.5f;
         cutout.data.receiveShadows = 1.0f;
         const std::wstring maskPath = L"..//media//alpha_mask.png";
         if (FileExists(maskPath))
-            cutout.albedoTex = m_renderer.LoadTexture(maskPath, true);
+            cutout.SetTexture(MaterialTextureSlot::Albedo, m_renderer.LoadTexture(maskPath, true));
         m_hCutout = m_renderer.CreateMaterial(cutout);
 
         m_camera = reg.CreateEntity();
@@ -142,24 +142,24 @@ public:
         m_spin += 20.0f * dt;
         Wrap(m_spin);
         if (auto* tc = reg.Get<TransformComponent>(m_cutout))
-            tc->SetEulerDeg(0.0f, 160, 0.0f);
+            tc->SetEulerDeg(0.0f, m_spin, 0.0f);
     }
 
     void OnEvent(const Event& e, GDXEngine& engine)
     {
         std::visit([&](auto&& ev)
-        {
-            using T = std::decay_t<decltype(ev)>;
-            if constexpr (std::is_same_v<T, KeyPressedEvent>)
-                if (!ev.repeat && ev.key == Key::Escape)
-                    engine.Shutdown();
-        }, e);
+            {
+                using T = std::decay_t<decltype(ev)>;
+                if constexpr (std::is_same_v<T, KeyPressedEvent>)
+                    if (!ev.repeat && ev.key == Key::Escape)
+                        engine.Shutdown();
+            }, e);
     }
 
 private:
     EntityID MakeEntity(const char* name, MeshHandle mesh, MaterialHandle mat,
-                        const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& scale,
-                        bool castShadows)
+        const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& scale,
+        bool castShadows)
     {
         Registry& reg = m_renderer.GetRegistry();
         EntityID e = reg.CreateEntity();
@@ -227,8 +227,8 @@ int main()
 
     AlphaTestShadowTest app(*renderer);
     app.Init();
-    renderer->SetTickCallback([&](float dt){ app.Update(dt); });
-    engine.SetEventCallback([&](const Event& e){ app.OnEvent(e, engine); });
+    renderer->SetTickCallback([&](float dt) { app.Update(dt); });
+    engine.SetEventCallback([&](const Event& e) { app.OnEvent(e, engine); });
     engine.Run();
     engine.Shutdown();
     return 0;

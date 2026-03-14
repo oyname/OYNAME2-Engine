@@ -9,6 +9,8 @@
 #include "GDXDX11RenderBackend.h"
 #include "ECSGame.h"
 
+#include <windows.h>
+
 #include <memory>
 
 int main()
@@ -16,9 +18,9 @@ int main()
     GDXEventQueue events;
 
     WindowDesc desc;
-    desc.width = 1280;
-    desc.height = 720;
-    desc.title = "GIDX - ECS Render Test | ESC: Beenden | C: Kamera-Orbit";
+    desc.width = 1024;
+    desc.height = 768;
+    desc.title = "OYNAME2 Engine - ECS Render Test | ESC: Beenden | C: Kamera-Orbit";
     desc.resizable = true;
 
     auto windowOwned = std::make_unique<GDXWin32Window>(desc, events);
@@ -50,6 +52,10 @@ int main()
         Debug::LogError("main.cpp: DX11 Context konnte nicht erstellt werden");
         return 3;
     }
+
+    GDXWin32NativeHandles handles;
+    windowOwned->QueryNativeHandles(handles);
+    HWND hwnd = static_cast<HWND>(handles.hwnd);
 
     auto backendOwned = std::make_unique<GDXDX11RenderBackend>(std::move(dxContext));
     auto rendererOwned = std::make_unique<GDXECSRenderer>(std::move(backendOwned));

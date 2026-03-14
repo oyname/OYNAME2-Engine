@@ -1,5 +1,9 @@
 #pragma once
 
+//
+// Interface ohne zweite Implementierung ersetzt später GDXDX11LightSystem !
+//
+
 #include "Registry.h"
 #include "FrameData.h"
 

@@ -59,13 +59,13 @@ namespace
         samplerCache.BindAll(ctx);
         if (!solidQueue.Empty())
             executor.ExecuteQueue(registry, solidQueue, meshStore, matStore, shaderStore, texStore,
-                                  shadowMap.IsReady() ? shadowMap.GetSRV() : nullptr);
+                shadowMap.IsReady() ? shadowMap.GetSRV() : nullptr);
 
         ctx->OMSetDepthStencilState(depthStateNoWrite, 0u);
         ctx->OMSetBlendState(blendStateAlpha, bf, 0xFFFFFFFF);
         if (!transparentQueue.Empty())
             executor.ExecuteQueue(registry, transparentQueue, meshStore, matStore, shaderStore, texStore,
-                                  shadowMap.IsReady() ? shadowMap.GetSRV() : nullptr);
+                shadowMap.IsReady() ? shadowMap.GetSRV() : nullptr);
 
         ctx->OMSetDepthStencilState(depthStencilState, 0u);
         ctx->OMSetBlendState(blendState, bf, 0xFFFFFFFF);
@@ -108,9 +108,9 @@ namespace
         *out = nullptr;
 
         UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
-    #if defined(_DEBUG)
+#if defined(_DEBUG)
         flags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-    #endif
+#endif
         ID3DBlob* err = nullptr;
         const HRESULT hr = D3DCompileFromFile(
             path.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE,
@@ -143,9 +143,9 @@ namespace
         UINT slot = 0u;
 
         auto add = [&](const char* sem, UINT idx, DXGI_FORMAT fmt)
-        {
-            elems.push_back({ sem, idx, fmt, slot++, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 });
-        };
+            {
+                elems.push_back({ sem, idx, fmt, slot++, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 });
+            };
 
         if (flags & GDX_VERTEX_POSITION)     add("POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT);
         if (flags & GDX_VERTEX_NORMAL)       add("NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT);
@@ -197,6 +197,9 @@ bool GDXDX11RenderBackend::Initialize(ResourceStore<GDXTextureResource, TextureT
     m_executor.defaultNormalTex = m_defaultTextures.normal;
     m_executor.defaultORMTex = m_defaultTextures.orm;
     m_executor.defaultBlackTex = m_defaultTextures.black;
+
+    // Rasterizer States nach Init() übergeben (CreateRenderStates läuft vorher)
+    m_executor.SetRasterizerStates(m_rasterizerState, m_rasterizerStateNoCull);
     return true;
 }
 
@@ -547,6 +550,11 @@ bool GDXDX11RenderBackend::CreateRenderStates()
     rd.DepthClipEnable = TRUE;
     if (FAILED(m_device->CreateRasterizerState(&rd, &m_rasterizerState))) return false;
 
+    // CULL_NONE für MF_DOUBLE_SIDED / MF_ALPHA_TEST – gleiche Bias-/Clip-Einstellungen
+    D3D11_RASTERIZER_DESC rdNoCull = rd;
+    rdNoCull.CullMode = D3D11_CULL_NONE;
+    if (FAILED(m_device->CreateRasterizerState(&rdNoCull, &m_rasterizerStateNoCull))) return false;
+
     D3D11_DEPTH_STENCIL_DESC dsd = {};
     dsd.DepthEnable = TRUE;
     dsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
@@ -588,13 +596,13 @@ bool GDXDX11RenderBackend::InitDefaultTextures(ResourceStore<GDXTextureResource,
 {
     auto make1x1 = [&](uint8_t r, uint8_t g, uint8_t b, uint8_t a,
         TextureHandle& handle, const wchar_t* name) -> bool
-    {
-        GDXTextureResource res;
-        res.debugName = name;
-        if (!GDXTextureLoader_Create1x1(m_device, r, g, b, a, res)) return false;
-        handle = texStore.Add(std::move(res));
-        return handle.IsValid();
-    };
+        {
+            GDXTextureResource res;
+            res.debugName = name;
+            if (!GDXTextureLoader_Create1x1(m_device, r, g, b, a, res)) return false;
+            handle = texStore.Add(std::move(res));
+            return handle.IsValid();
+        };
 
     return make1x1(255, 255, 255, 255, m_defaultTextures.white, L"Default_White")
         && make1x1(128, 128, 255, 255, m_defaultTextures.normal, L"Default_FlatNormal")
@@ -639,7 +647,8 @@ void GDXDX11RenderBackend::Shutdown(
     if (m_blendState) { m_blendState->Release(); m_blendState = nullptr; }
     if (m_depthStateNoWrite) { m_depthStateNoWrite->Release(); m_depthStateNoWrite = nullptr; }
     if (m_depthStencilState) { m_depthStencilState->Release(); m_depthStencilState = nullptr; }
-    if (m_rasterizerState) { m_rasterizerState->Release(); m_rasterizerState = nullptr; }
+    if (m_rasterizerState) { m_rasterizerState->Release();       m_rasterizerState = nullptr; }
+    if (m_rasterizerStateNoCull) { m_rasterizerStateNoCull->Release(); m_rasterizerStateNoCull = nullptr; }
 
     m_shadowMap.Release();
     m_samplerCache.Shutdown();
@@ -654,7 +663,7 @@ void GDXDX11RenderBackend::Shutdown(
 // ---------------------------------------------------------------------------
 RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
     ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore,
-    ResourceStore<GDXTextureResource,      TextureTag>&      texStore,
+    ResourceStore<GDXTextureResource, TextureTag>& texStore,
     uint32_t width, uint32_t height,
     const std::wstring& debugName)
 {
@@ -664,14 +673,14 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
 
     // --- Farb-Textur (RGBA8) ---
     D3D11_TEXTURE2D_DESC texDesc = {};
-    texDesc.Width            = width;
-    texDesc.Height           = height;
-    texDesc.MipLevels        = 1;
-    texDesc.ArraySize        = 1;
-    texDesc.Format           = DXGI_FORMAT_R8G8B8A8_UNORM;
+    texDesc.Width = width;
+    texDesc.Height = height;
+    texDesc.MipLevels = 1;
+    texDesc.ArraySize = 1;
+    texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     texDesc.SampleDesc.Count = 1;
-    texDesc.Usage            = D3D11_USAGE_DEFAULT;
-    texDesc.BindFlags        = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    texDesc.Usage = D3D11_USAGE_DEFAULT;
+    texDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
 
     ID3D11Texture2D* colorTex = nullptr;
     hr = m_device->CreateTexture2D(&texDesc, nullptr, &colorTex);
@@ -687,14 +696,14 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
 
     // --- Depth-Textur ---
     D3D11_TEXTURE2D_DESC depthDesc = {};
-    depthDesc.Width            = width;
-    depthDesc.Height           = height;
-    depthDesc.MipLevels        = 1;
-    depthDesc.ArraySize        = 1;
-    depthDesc.Format           = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    depthDesc.Width = width;
+    depthDesc.Height = height;
+    depthDesc.MipLevels = 1;
+    depthDesc.ArraySize = 1;
+    depthDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
     depthDesc.SampleDesc.Count = 1;
-    depthDesc.Usage            = D3D11_USAGE_DEFAULT;
-    depthDesc.BindFlags        = D3D11_BIND_DEPTH_STENCIL;
+    depthDesc.Usage = D3D11_USAGE_DEFAULT;
+    depthDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
 
     ID3D11Texture2D* depthTex = nullptr;
     hr = m_device->CreateTexture2D(&depthDesc, nullptr, &depthTex);
@@ -706,12 +715,12 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
 
     // --- SRV als Engine-Textur registrieren ---
     GDXTextureResource texRes;
-    texRes.srv       = srv;
-    texRes.width     = width;
-    texRes.height    = height;
-    texRes.ready     = true;
-    texRes.isSRGB    = false;
-    texRes.semantic  = GDXTextureSemantic::RenderTarget;
+    texRes.srv = srv;
+    texRes.width = width;
+    texRes.height = height;
+    texRes.ready = true;
+    texRes.isSRGB = false;
+    texRes.semantic = GDXTextureSemantic::RenderTarget;
     texRes.debugName = debugName + L"_Tex";
     TextureHandle exposedTex = texStore.Add(std::move(texRes));
     if (exposedTex.IsValid())
@@ -719,16 +728,16 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
 
     // --- RenderTargetResource anlegen ---
     GDXRenderTargetResource rt;
-    rt.colorTexture  = colorTex;
-    rt.rtv           = rtv;
-    rt.srv           = srv;
-    rt.depthTexture  = depthTex;
-    rt.dsv           = dsv;
-    rt.width         = width;
-    rt.height        = height;
-    rt.ready         = true;
+    rt.colorTexture = colorTex;
+    rt.rtv = rtv;
+    rt.srv = srv;
+    rt.depthTexture = depthTex;
+    rt.dsv = dsv;
+    rt.width = width;
+    rt.height = height;
+    rt.ready = true;
     rt.exposedTexture = exposedTex;
-    rt.debugName     = debugName;
+    rt.debugName = debugName;
 
     return rtStore.Add(std::move(rt));
 }

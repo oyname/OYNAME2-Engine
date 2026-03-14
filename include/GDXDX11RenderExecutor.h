@@ -17,6 +17,7 @@
 struct ID3D11Device;
 struct ID3D11DeviceContext;
 struct ID3D11Buffer;
+struct ID3D11RasterizerState;
 
 struct alignas(16) Dx11EntityConstants
 {
@@ -122,10 +123,20 @@ private:
     ShaderHandle   m_lastShader   = ShaderHandle::Invalid();
     MaterialHandle m_lastMaterial = MaterialHandle::Invalid();
 
+    // Rasterizer states – nicht owned, werden vom Backend gesetzt
+    ID3D11RasterizerState* m_rsCull   = nullptr;  // CULL_BACK (default)
+    ID3D11RasterizerState* m_rsNoCull = nullptr;  // CULL_NONE (double-sided / alpha-test)
+
     uint32_t m_drawCalls = 0u;
     std::unordered_map<TextureHandle, ResourceState> m_textureStates;
 
 public:
+    // Wird vom Backend nach CreateRenderStates() aufgerufen
+    void SetRasterizerStates(ID3D11RasterizerState* cull, ID3D11RasterizerState* noCull)
+    {
+        m_rsCull   = cull;
+        m_rsNoCull = noCull;
+    }
     TextureHandle defaultWhiteTex;
     TextureHandle defaultNormalTex;
     TextureHandle defaultORMTex;
