@@ -140,20 +140,3 @@ shaders/        — HLSL vertex + pixel shaders
 
 ---
 
-## Roadmap
-
-- [ ] HDR pipeline + Tone Mapping (ACES Filmic / Reinhard)
-- [ ] Image-Based Lighting (IBL) — irradiance, prefiltered env map, BRDF-LUT
-- [ ] Cascaded Shadow Maps
-- [ ] Frustum Culling (AABB vs frustum)
-- [ ] SSAO
-- [ ] Bloom
-- [ ] FXAA
-- [ ] OpenGL backend
-- [ ] ECS full migration (RenderSystem, ResourceManager)
-
----
-
-## License
-
-Private project. All rights reserved.
