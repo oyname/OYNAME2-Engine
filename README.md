@@ -1,4 +1,4 @@
-# GIDX³ Engine
+# OYNAME2 Engine
 
 A custom C++ 3D game engine built on **DirectX 11**, designed with clean architecture, backend abstraction, and a modern ECS-based rendering pipeline.
 
