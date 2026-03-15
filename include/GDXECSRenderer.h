@@ -49,6 +49,10 @@ public:
     ShaderHandle   CreateShader(const std::wstring& vsFile,
         const std::wstring& psFile,
         uint32_t vertexFlags = GDX_VERTEX_DEFAULT);
+    ShaderHandle   CreateShader(const std::wstring& vsFile,
+        const std::wstring& psFile,
+        uint32_t vertexFlags,
+        const GDXShaderLayout& layout);
 
     TextureHandle  LoadTexture(const std::wstring& filePath, bool isSRGB = true);
     TextureHandle  CreateTexture(const ImageBuffer& image, const std::wstring& debugName, bool isSRGB = true);
@@ -86,7 +90,8 @@ private:
     ShaderHandle LoadShaderInternal(const std::wstring& vsFile,
         const std::wstring& psFile,
         uint32_t vertexFlags,
-        const std::wstring& debugName);
+        const std::wstring& debugName,
+        const GDXShaderLayout* customLayout = nullptr);
 
     bool LoadDefaultShaders();
 

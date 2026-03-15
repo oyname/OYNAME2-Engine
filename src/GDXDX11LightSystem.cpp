@@ -61,11 +61,15 @@ void GDXDX11LightSystem::Update(Registry& registry, FrameData& frame, void* ctxP
             else if (lc.kind == LightKind::Spot)  le.position.w = 2.0f;
             else                                   le.position.w = 0.0f; // Directional
 
-            // --- Richtung: -Z Achse der World-Matrix ---
-            le.direction.x = -wt.matrix._31;
-            le.direction.y = -wt.matrix._32;
-            le.direction.z = -wt.matrix._33;
-            le.direction.w = 0.0f;
+            // --- Richtung: +Z Achse der World-Matrix ---
+            // Muss zur alten OYNAME-Logik passen:
+            // Transform::LookAt() erzeugt forward = target - position,
+            // und Light::Update() übernimmt genau diesen forward-Vektor
+            // als Licht-Richtung. Keine Negierung.
+            le.direction.x = wt.matrix._31;
+            le.direction.y = wt.matrix._32;
+            le.direction.z = wt.matrix._33;
+            le.direction.w = lc.castShadows ? 1.0f : 0.0f;
 
             // --- Farbe * Intensität ---
             le.diffuse.x = lc.diffuseColor.x * lc.intensity;
@@ -81,6 +85,8 @@ void GDXDX11LightSystem::Update(Registry& registry, FrameData& frame, void* ctxP
             le.outerCosAngle = cosf(lc.outerConeAngle * DEG2RAD);
 
             // --- Shadow: erstes Directional mit castShadows ---
+            // Wichtig: Die Licht-Richtung kommt direkt aus dem Transform.
+            // Die Shadow-Kamera ist davon getrennt und wird kamera-relativ erzeugt.
             if (!frame.hasShadowPass
                 && lc.kind == LightKind::Directional
                 && lc.castShadows)
@@ -88,15 +94,31 @@ void GDXDX11LightSystem::Update(Registry& registry, FrameData& frame, void* ctxP
                 const XMVECTOR lightDir = XMVector3Normalize(
                     XMVectorSet(le.direction.x, le.direction.y, le.direction.z, 0.0f));
 
-                const XMVECTOR lightPos = XMVectorScale(
-                    XMVectorNegate(lightDir), 100.0f);
+                const XMVECTOR cameraPos = XMVectorSet(
+                    frame.cameraPos.x, frame.cameraPos.y, frame.cameraPos.z, 1.0f);
+                const XMVECTOR cameraForward = XMVector3Normalize(XMVectorSet(
+                    frame.cameraForward.x, frame.cameraForward.y, frame.cameraForward.z, 0.0f));
+
+                // Shadow-Zentrum leicht vor die aktive Kamera legen, nicht stumpf auf den Ursprung.
+                const float focusDistance = lc.shadowOrthoSize * 0.5f;
+                const XMVECTOR focusPoint = XMVectorAdd(
+                    cameraPos,
+                    XMVectorScale(cameraForward, focusDistance));
+
+                // Directional Light hat keine echte Position.
+                // Für Shadow Mapping bauen wir eine temporäre Licht-Kamera entlang der Licht-Richtung.
+                const float shadowDistance = (lc.shadowFar > lc.shadowNear)
+                    ? (lc.shadowFar * 0.5f)
+                    : 100.0f;
+                const XMVECTOR lightPos = XMVectorSubtract(
+                    focusPoint,
+                    XMVectorScale(lightDir, shadowDistance));
 
                 const XMVECTOR up = (fabsf(XMVectorGetY(lightDir)) > 0.99f)
                     ? XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f)
                     : XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
 
-                const XMMATRIX lightView = XMMatrixLookAtLH(
-                    lightPos, XMVectorZero(), up);
+                const XMMATRIX lightView = XMMatrixLookAtLH(lightPos, focusPoint, up);
                 const XMMATRIX lightProj = XMMatrixOrthographicLH(
                     lc.shadowOrthoSize, lc.shadowOrthoSize,
                     lc.shadowNear, lc.shadowFar);
@@ -137,7 +159,7 @@ void GDXDX11LightSystem::UploadBuffer(ID3D11DeviceContext* ctx, const FrameData&
         dst.direction[0] = src.direction.x;
         dst.direction[1] = src.direction.y;
         dst.direction[2] = src.direction.z;
-        dst.direction[3] = 0.0f;
+        dst.direction[3] = src.direction.w;
 
         dst.diffuse[0] = src.diffuse.x;
         dst.diffuse[1] = src.diffuse.y;

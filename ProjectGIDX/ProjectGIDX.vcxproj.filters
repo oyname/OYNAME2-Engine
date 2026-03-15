@@ -88,6 +88,12 @@
     <Filter Include="engine\platform\windows">
       <UniqueIdentifier>{753e534a-1b0d-42cb-8ce4-fcbb576e8035}</UniqueIdentifier>
     </Filter>
+    <Filter Include="app\RTT NeonShader">
+      <UniqueIdentifier>{35dee395-5f6e-4c59-bcbe-3ea7504d9649}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\_bugtest">
+      <UniqueIdentifier>{f58953c2-bc76-4248-ab17-0782a79de059}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\app\AdapterEnum.cpp">
@@ -203,6 +209,18 @@
     </ClCompile>
     <ClCompile Include="..\src\GDXTextureLoader.cpp">
       <Filter>util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\RTT Shader Example\0_example_Multishaderexample_GIDX.cpp">
+      <Filter>app\RTT NeonShader</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\RTT Shader Example\1_example_MultitexturRTTExample_GIDX.cpp">
+      <Filter>app\RTT NeonShader</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\RTT Shader Example\NeonTimeBuffer.cpp">
+      <Filter>app\RTT NeonShader</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\SchattenBugTest.cpp">
+      <Filter>app\_bugtest</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -419,6 +437,9 @@
     <ClInclude Include="..\include\gidx.h">
       <Filter>util</Filter>
     </ClInclude>
+    <ClInclude Include="..\app\RTT Shader Example\NeonTimeBuffer.h">
+      <Filter>app\RTT NeonShader</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Text Include="..\shader\ECSPixelShader.hlsl">
@@ -455,6 +476,12 @@
       <Filter>shader</Filter>
     </Text>
     <Text Include="..\shader\ECSVertexShader_Skinned.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\VertexShaderNeon_GIDX.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\PixelShaderNeon_GIDX.hlsl">
       <Filter>shader</Filter>
     </Text>
   </ItemGroup>

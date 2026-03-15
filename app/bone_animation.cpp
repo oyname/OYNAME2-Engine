@@ -270,7 +270,7 @@ public:
         {
             TransformComponent tc;
             tc.localPosition = { 0.0f, 0.0f, 0.0f };
-            tc.SetEulerDeg(-55.0f, 100.0f, 0.0f);
+            tc.SetEulerDeg(55.0f, 0.0f, 0.0f);
             reg.Add<TransformComponent>(m_light, tc);
         }
         reg.Add<WorldTransformComponent>(m_light);

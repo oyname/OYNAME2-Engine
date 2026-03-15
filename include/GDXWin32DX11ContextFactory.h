@@ -32,6 +32,5 @@ public:
     // Returns nullptr on failure (logs via Debug::LogError).
     std::unique_ptr<IGDXDXGIContext> Create(
         IGDXWin32NativeAccess& nativeAccess,
-        unsigned int           adapterIndex,
-        bool                   borderless = true) const;
+        unsigned int           adapterIndex) const;
 };

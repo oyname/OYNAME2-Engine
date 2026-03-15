@@ -53,7 +53,7 @@ private:
 struct alignas(16) GDXDX11LightCBufferEntry
 {
     float position[4];   // xyz=pos,  w: 0=directional, 1=point, 2=spot
-    float direction[4];  // xyz=dir (world space, normalized), w=unused
+    float direction[4];  // xyz=dir (world space, normalized), w=castShadows(0/1)
     float diffuse[4];    // rgb=color*intensity, a=radius
     float innerCosAngle;
     float outerCosAngle;

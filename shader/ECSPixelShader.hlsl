@@ -262,7 +262,9 @@ float4 main(PS_INPUT input) : SV_TARGET
     float3 shadowDir = float3(0, -1, 0);
     [loop] for (uint s = 0; s < lightCount; ++s)
     {
-        if (lights[s].position.w < 0.5f)
+        const bool isDirectional = (lights[s].position.w < 0.5f);
+        const bool castsShadows  = (lights[s].direction.w > 0.5f);
+        if (isDirectional && castsShadows)
         {
             shadowIdx = (int)s;
             shadowDir = normalize(lights[s].direction.xyz);
@@ -308,7 +310,7 @@ float4 main(PS_INPUT input) : SV_TARGET
         if (attenuation <= 0.0f) continue;
 
         float shadow = 1.0f;
-        if (gReceiveShadows > 0.5f && (int)i == shadowIdx)
+        if (shadowIdx >= 0 && gReceiveShadows > 0.5f && (int)i == shadowIdx)
             shadow = CalculateShadow(input.positionLightSpace, N, shadowDir);
 
         float NdotL = max(dot(N, -lightDir), 0.0f);

@@ -17,5 +17,6 @@ public:
     virtual bool        ShouldClose() const = 0;
     virtual int         GetWidth()    const = 0;
     virtual int         GetHeight()   const = 0;
+    virtual bool        GetBorderless() const = 0;
     virtual const char* GetTitle()    const = 0;
 };

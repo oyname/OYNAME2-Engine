@@ -106,17 +106,29 @@ bool GDXECSRenderer::LoadDefaultShaders()
 ShaderHandle GDXECSRenderer::CreateShader(
     const std::wstring& vsFile, const std::wstring& psFile, uint32_t vertexFlags)
 {
-    return LoadShaderInternal(vsFile, psFile, vertexFlags, vsFile + L" / " + psFile);
+    return LoadShaderInternal(vsFile, psFile, vertexFlags, vsFile + L" / " + psFile, nullptr);
+}
+
+ShaderHandle GDXECSRenderer::CreateShader(
+    const std::wstring& vsFile,
+    const std::wstring& psFile,
+    uint32_t vertexFlags,
+    const GDXShaderLayout& layout)
+{
+    return LoadShaderInternal(vsFile, psFile, vertexFlags, vsFile + L" / " + psFile, &layout);
 }
 
 ShaderHandle GDXECSRenderer::LoadShaderInternal(
     const std::wstring& vsFile,
     const std::wstring& psFile,
     uint32_t vertexFlags,
-    const std::wstring& debugName)
+    const std::wstring& debugName,
+    const GDXShaderLayout* customLayout)
 {
     if (!m_backend) return ShaderHandle::Invalid();
-    const GDXShaderLayout layout = GDXShaderLayouts::BuildMain(vertexFlags, (vertexFlags & GDX_VERTEX_BONE_WEIGHTS) != 0u);
+    const GDXShaderLayout layout = customLayout
+        ? *customLayout
+        : GDXShaderLayouts::BuildMain(vertexFlags, (vertexFlags & GDX_VERTEX_BONE_WEIGHTS) != 0u);
     return m_backend->CreateShader(m_shaderStore, vsFile, psFile, vertexFlags, layout, debugName);
 }
 

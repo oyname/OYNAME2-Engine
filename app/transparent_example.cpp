@@ -82,8 +82,8 @@ public:
 
         {
             TransformComponent tc;
-            tc.localPosition = { 0.0f, 10.0f, -5.0f };
-            tc.SetEulerDeg(-45.0f, -35.0f, 0.0f);
+            tc.localPosition = { 0.0f, 0.0f, 0.0f };
+            tc.SetEulerDeg(45.0f, 35.0f, 0.0f);
             reg.Add<TransformComponent>(m_light, tc);
         }
         reg.Add<WorldTransformComponent>(m_light);
@@ -343,6 +343,7 @@ int main()
     desc.height = 720;
     desc.title = "GIDX - Transparency Example";
     desc.resizable = true;
+    desc.borderless = false;
 
     auto windowOwned = std::make_unique<GDXWin32Window>(desc, events);
     if (!windowOwned->Create())
@@ -352,6 +353,7 @@ int main()
     }
 
     GDXWin32Window* windowRaw = windowOwned.get();
+
 
     auto adapters = GDXWin32DX11ContextFactory::EnumerateAdapters();
     if (adapters.empty())

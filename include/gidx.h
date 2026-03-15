@@ -115,6 +115,7 @@ namespace Engine
         desc.height = height;
         desc.title = title;
         desc.resizable = resizable;
+        desc.borderless = false;
 
         auto window = std::make_unique<GDXWin32Window>(desc, *_::eventQueue);
         if (!window->Create())

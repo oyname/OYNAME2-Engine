@@ -17,7 +17,7 @@ void SnakeGame::Init()
     cubeAsset.AddSubmesh(BuiltinMeshes::Cube());
     m_cubeMesh = m_renderer.UploadMesh(std::move(cubeAsset));
 
-    m_boardMat    = m_renderer.CreateMaterial(MaterialResource::FlatColor(0.10f, 0.10f, 0.12f));
+    m_boardMat    = m_renderer.CreateMaterial(MaterialResource::FlatColor(0.1f, 0.1f, 0.1f));
     m_wallMat     = m_renderer.CreateMaterial(MaterialResource::FlatColor(0.24f, 0.24f, 0.28f));
     m_headMat     = m_renderer.CreateMaterial(MaterialResource::FlatColor(0.22f, 0.92f, 0.30f));
     m_bodyMat     = m_renderer.CreateMaterial(MaterialResource::FlatColor(0.10f, 0.62f, 0.18f));
@@ -56,7 +56,7 @@ void SnakeGame::CreateBoard()
     {
         TransformComponent tc;
         tc.localPosition = { 0.0f, -0.65f, 0.0f };
-        tc.localScale = { BOARD_W * CELL_SIZE * 0.5f + 1.0f, 0.25f, BOARD_H * CELL_SIZE * 0.5f + 1.0f };
+        tc.localScale = { 20.0f, 0.25f, 20.0f };
         reg.Add<TransformComponent>(m_board, tc);
     }
     reg.Add<WorldTransformComponent>(m_board);
@@ -130,7 +130,7 @@ void SnakeGame::CreateLight()
     reg.Add<LightComponent>(m_light, lc);
 
     TransformComponent tc;
-    tc.SetEulerDeg(-65.0f, 35.0f, 0.0f);
+    tc.SetEulerDeg(65.0f, -35.0f, 0.0f);
     reg.Add<TransformComponent>(m_light, tc);
     reg.Add<WorldTransformComponent>(m_light);
 }

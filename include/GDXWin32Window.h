@@ -23,10 +23,12 @@ public:
     bool        ShouldClose() const override;
     int         GetWidth()    const override;
     int         GetHeight()   const override;
+    bool        GetBorderless() const override;
     const char* GetTitle()    const override;
 
     // IGDXWin32NativeAccess
     bool QueryNativeHandles(GDXWin32NativeHandles& outHandles) const override;
+    bool IsBorderless() const override { return m_borderless; }
 
 private:
     static long long __stdcall StaticWndProc(
@@ -51,4 +53,5 @@ private:
     bool m_shouldClose = false;
     int  m_width = 0;
     int  m_height = 0;
+    bool m_borderless = true;
 };

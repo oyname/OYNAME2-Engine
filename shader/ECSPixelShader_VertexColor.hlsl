@@ -65,7 +65,7 @@ cbuffer MaterialConstants : register(b2)
 struct LightData
 {
     float4 position;      // xyz=pos,  w=typ (0=dir, 1=point, 2=spot)
-    float4 direction;     // xyz=dir (world, normalized), w=unused
+    float4 direction;     // xyz=dir (world, normalized), w=castShadows(0/1)
     float4 diffuse;       // rgb=color*intensity, a=radius
     float  innerCosAngle;
     float  outerCosAngle;
@@ -300,7 +300,7 @@ float4 main(PS_INPUT input) : SV_TARGET
 
         // Shadow nur für erstes Directional-Licht
         float shadow = 1.0f;
-        if (gReceiveShadows > 0.5f && (int)i == shadowIdx)
+        if (shadowIdx >= 0 && gReceiveShadows > 0.5f && (int)i == shadowIdx)
             shadow = CalculateShadow(input.positionLightSpace, N, shadowDir);
 
         float NdotL = max(dot(N, -lightDir), 0.0f);

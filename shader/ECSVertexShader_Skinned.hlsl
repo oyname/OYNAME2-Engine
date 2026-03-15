@@ -23,7 +23,6 @@ struct VS_INPUT
     float3 position    : POSITION;
     float3 normal      : NORMAL;
     float2 texCoord    : TEXCOORD0;
-    float2 texCoord1   : TEXCOORD1;
     uint4  boneIndices : BLENDINDICES0;
     float4 boneWeights : BLENDWEIGHT0;
 };
@@ -62,7 +61,7 @@ VS_OUTPUT main(VS_INPUT input)
     o.position = mul(worldPos, gViewProj);
     o.normal = normalize(mul(skinnedN, (float3x3)gWorldInverseTranspose));
     o.texCoord  = input.texCoord;
-    o.texCoord1 = input.texCoord1;
+    o.texCoord1 = input.texCoord;
     o.positionLightSpace = mul(worldPos, gShadowViewProj);
     o.viewDirection = normalize(gCameraPos.xyz - worldPos.xyz);
     o.vertexColor = float4(1.0f, 1.0f, 1.0f, 1.0f);

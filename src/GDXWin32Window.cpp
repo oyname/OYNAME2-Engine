@@ -80,6 +80,7 @@ GDXWin32Window::GDXWin32Window(const WindowDesc& desc, GDXEventQueue& events)
     , m_events(events)
     , m_width(desc.width)
     , m_height(desc.height)
+    , m_borderless(desc.borderless)
 {
 }
 
@@ -146,6 +147,15 @@ bool GDXWin32Window::Create()
         return false;
     }
 
+    //if (!m_desc.borderless)
+    //{
+    //    LONG style = GetWindowLong(hwnd, GWL_STYLE);
+    //    style |= WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_THICKFRAME;
+    //    SetWindowLong(hwnd, GWL_STYLE, style);
+    //    SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+    //        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+    //}
+
     m_handles.hwnd = reinterpret_cast<HWND__*>(hwnd);
     m_handles.hinstance = reinterpret_cast<HINSTANCE__*>(GetModuleHandleW(nullptr));
 
@@ -169,6 +179,7 @@ void GDXWin32Window::PollEvents()
 bool        GDXWin32Window::ShouldClose() const { return m_shouldClose; }
 int         GDXWin32Window::GetWidth()    const { return m_width; }
 int         GDXWin32Window::GetHeight()   const { return m_height; }
+bool        GDXWin32Window::GetBorderless() const{ return m_borderless; }
 const char* GDXWin32Window::GetTitle()    const { return m_desc.title.c_str(); }
 
 bool GDXWin32Window::QueryNativeHandles(GDXWin32NativeHandles& outHandles) const

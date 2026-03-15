@@ -34,6 +34,7 @@ namespace
         GDXSamplerCache& samplerCache,
         GDXDX11RenderExecutor& executor,
         GDXShadowMap& shadowMap,
+        bool hasShadowPass,
         Registry& registry,
         const RenderQueue& opaqueQueue,
         ResourceStore<MeshAssetResource, MeshTag>& meshStore,
@@ -53,19 +54,21 @@ namespace
             else solidQueue.commands.push_back(cmd);
         }
 
+        void* shadowSrv = (hasShadowPass && shadowMap.IsReady()) ? shadowMap.GetSRV() : nullptr;
+
         ctx->RSSetState(rasterizerState);
         ctx->OMSetDepthStencilState(depthStencilState, 0u);
         ctx->OMSetBlendState(blendState, bf, 0xFFFFFFFF);
         samplerCache.BindAll(ctx);
         if (!solidQueue.Empty())
             executor.ExecuteQueue(registry, solidQueue, meshStore, matStore, shaderStore, texStore,
-                shadowMap.IsReady() ? shadowMap.GetSRV() : nullptr);
+                shadowSrv);
 
         ctx->OMSetDepthStencilState(depthStateNoWrite, 0u);
         ctx->OMSetBlendState(blendStateAlpha, bf, 0xFFFFFFFF);
         if (!transparentQueue.Empty())
             executor.ExecuteQueue(registry, transparentQueue, meshStore, matStore, shaderStore, texStore,
-                shadowMap.IsReady() ? shadowMap.GetSRV() : nullptr);
+                shadowSrv);
 
         ctx->OMSetDepthStencilState(depthStencilState, 0u);
         ctx->OMSetBlendState(blendState, bf, 0xFFFFFFFF);
@@ -150,11 +153,8 @@ namespace
         if (flags & GDX_VERTEX_POSITION)     add("POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT);
         if (flags & GDX_VERTEX_NORMAL)       add("NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT);
         if (flags & GDX_VERTEX_COLOR)        add("COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT);
-        if (flags & GDX_VERTEX_TEX1)
-        {
-            add("TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT);
-            add("TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT);
-        }
+        if (flags & GDX_VERTEX_TEX1)        add("TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT);
+        if (flags & GDX_VERTEX_TEX2)        add("TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT);
         if (flags & GDX_VERTEX_TANGENT)      add("TANGENT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT);
         if (flags & GDX_VERTEX_BONE_INDICES) add("BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_UINT);
         if (flags & GDX_VERTEX_BONE_WEIGHTS) add("BLENDWEIGHT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT);
@@ -168,6 +168,8 @@ namespace
 GDXDX11RenderBackend::GDXDX11RenderBackend(std::unique_ptr<IGDXDXGIContext> context)
     : m_context(std::move(context))
 {
+    m_backbufferWidth = 1200;
+    m_backbufferHeight = 650;
 }
 
 GDXDX11RenderBackend::~GDXDX11RenderBackend() = default;
@@ -228,6 +230,8 @@ void GDXDX11RenderBackend::Present(bool vsync)
 
 void GDXDX11RenderBackend::Resize(int w, int h)
 {
+    m_backbufferWidth = w;
+    m_backbufferHeight = h;
     if (m_context) m_context->Resize(w, h);
 }
 
@@ -389,6 +393,7 @@ void GDXDX11RenderBackend::UpdateLights(Registry& registry, FrameData& frame)
 
 void GDXDX11RenderBackend::UpdateFrameConstants(const FrameData& frame)
 {
+    m_hasShadowPass = frame.hasShadowPass;
     m_executor.UpdateFrameConstants(frame);
 }
 
@@ -444,6 +449,7 @@ void* GDXDX11RenderBackend::ExecuteMainPass(
         m_samplerCache,
         m_executor,
         m_shadowMap,
+        m_hasShadowPass,
         registry,
         opaqueQueue,
         meshStore,
@@ -503,6 +509,7 @@ void* GDXDX11RenderBackend::ExecuteMainPassToTarget(
         m_samplerCache,
         m_executor,
         m_shadowMap,
+        m_hasShadowPass,
         registry,
         opaqueQueue,
         meshStore,
@@ -520,6 +527,15 @@ void* GDXDX11RenderBackend::ExecuteMainPassToTarget(
         auto* backbufferRTV = static_cast<ID3D11RenderTargetView*>(m_context->GetRenderTarget());
         auto* backbufferDSV = static_cast<ID3D11DepthStencilView*>(m_context->GetDepthStencil());
         m_ctx->OMSetRenderTargets(1, &backbufferRTV, backbufferDSV);
+
+        D3D11_VIEWPORT vp = {};
+        vp.TopLeftX = 0.0f;
+        vp.TopLeftY = 0.0f;
+        vp.Width = static_cast<float>(m_backbufferWidth);
+        vp.Height = static_cast<float>(m_backbufferHeight);
+        vp.MinDepth = 0.0f;
+        vp.MaxDepth = 1.0f;
+        m_ctx->RSSetViewports(1, &vp);
     }
     return nullptr;
 }

@@ -27,6 +27,8 @@ void CameraSystem::Update(Registry& registry, FrameData& frame) const
             const XMVECTOR up = XMVector3Normalize(
                 XMVector3TransformNormal(baseUp, rot));
 
+            XMStoreFloat3(&frame.cameraForward, forward);
+
             const XMVECTOR target = XMVectorAdd(position, forward);
 
             // WICHTIG: View wie in der alten Engine per LookAtLH bauen,

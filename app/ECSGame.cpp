@@ -188,7 +188,7 @@ void ECSGame::Init()
     {
         TransformComponent tc;
         tc.localPosition = { -5.0f, 0.0f, 0.0f };
-        tc.SetEulerDeg(0.0f, -90.0f, 0.0f);
+        tc.SetEulerDeg(0.0f, 90.0f, 0.0f);
         reg.Add<TransformComponent>(m_sun, tc);
     }
     reg.Add<WorldTransformComponent>(m_sun);

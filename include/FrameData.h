@@ -25,7 +25,7 @@ static constexpr uint32_t MAX_LIGHTS = 32u;
 struct LightEntry
 {
     DirectX::XMFLOAT4 position  = { 0.0f, 0.0f, 0.0f, 0.0f }; // xyz=pos, w: 0=dir, 1=point, 2=spot
-    DirectX::XMFLOAT4 direction = { 0.0f,-1.0f, 0.0f, 0.0f }; // Directional + Spot
+    DirectX::XMFLOAT4 direction = { 0.0f,-1.0f, 0.0f, 0.0f }; // xyz=Richtung, w=castShadows(0/1)
     DirectX::XMFLOAT4 diffuse   = { 1.0f, 1.0f, 1.0f, 1.0f }; // rgb*intensity, a=radius
     float             radius         = 0.0f;
     float             intensity      = 1.0f;
@@ -44,6 +44,8 @@ struct FrameData
     DirectX::XMFLOAT4X4 projMatrix     = {};
     DirectX::XMFLOAT4X4 viewProjMatrix = {};  // view * proj
     DirectX::XMFLOAT3   cameraPos      = {};
+    float               _padCameraPos  = 0.0f;
+    DirectX::XMFLOAT3   cameraForward  = { 0.0f, 0.0f, 1.0f };
     uint32_t            cullMask       = 0xFFFFFFFFu;
 
     // --- Lights ---

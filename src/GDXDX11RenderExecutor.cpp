@@ -211,14 +211,10 @@ bool GDXDX11RenderExecutor::BindVertexStreams(const GpuMeshBuffer& gpu, uint32_t
     if (!bind(flags & GDX_VERTEX_NORMAL, gpu.normalBuffer, gpu.strideNormal))     return false;
     if (!bind(flags & GDX_VERTEX_COLOR, gpu.colorBuffer, gpu.strideColor))      return false;
     if (!bind(flags & GDX_VERTEX_TEX1, gpu.uv1Buffer, gpu.strideUV1)) return false;
-    // UV1-Slot: echter UV1-Buffer wenn vorhanden, sonst UV0 aliasieren.
-    // Garantiert valide Daten in TEXCOORD1 ohne Shader-Variante.
-    // MF_USE_DETAIL_MAP im Material entscheidet ob UV1 genutzt wird.
-    if (flags & GDX_VERTEX_TEX1)
+    if (flags & GDX_VERTEX_TEX2)
     {
-        const bool hasUV1 = (flags & GDX_VERTEX_TEX2) && gpu.uv2Buffer;
-        void* uv1Buf = hasUV1 ? gpu.uv2Buffer : gpu.uv1Buffer;
-        uint32_t  uv1Str = hasUV1 ? gpu.strideUV2 : gpu.strideUV1;
+        void* uv1Buf = gpu.uv2Buffer ? gpu.uv2Buffer : gpu.uv1Buffer;
+        uint32_t uv1Str = gpu.uv2Buffer ? gpu.strideUV2 : gpu.strideUV1;
         if (!bind(true, uv1Buf, uv1Str)) return false;
     }
     if (!bind(flags & GDX_VERTEX_TANGENT, gpu.tangentBuffer, gpu.strideTangent))    return false;
@@ -244,56 +240,56 @@ void GDXDX11RenderExecutor::BindMaterialTextures(
     TextureHandle defaultORM,
     TextureHandle defaultBlack)
 {
-    auto resolveTexture = [&](ShaderResourceSemantic semantic, TextureHandle fallback) -> TextureHandle
-        {
-            if (const ShaderResourceBindingDesc* binding = cmd.resourceBindings.FindTextureBinding(semantic))
-            {
-                if (binding->enabled && binding->texture.IsValid())
-                    return binding->texture;
-            }
+    TextureHandle albedo = mat.GetTexture(MaterialTextureSlot::Albedo).IsValid()
+        ? mat.GetTexture(MaterialTextureSlot::Albedo) : defaultWhite;
+    TextureHandle normal = mat.GetTexture(MaterialTextureSlot::Normal).IsValid()
+        ? mat.GetTexture(MaterialTextureSlot::Normal) : defaultNormal;
+    TextureHandle orm = mat.GetTexture(MaterialTextureSlot::ORM).IsValid()
+        ? mat.GetTexture(MaterialTextureSlot::ORM) : defaultORM;
+    TextureHandle emissive = mat.GetTexture(MaterialTextureSlot::Emissive).IsValid()
+        ? mat.GetTexture(MaterialTextureSlot::Emissive) : defaultBlack;
+    TextureHandle detail = mat.GetTexture(MaterialTextureSlot::Detail).IsValid()
+        ? mat.GetTexture(MaterialTextureSlot::Detail) : defaultWhite;
 
-            switch (semantic)
-            {
-            case ShaderResourceSemantic::Albedo:
-                return mat.GetTexture(MaterialTextureSlot::Albedo).IsValid() ? mat.GetTexture(MaterialTextureSlot::Albedo) : fallback;
-            case ShaderResourceSemantic::Normal:
-                return mat.GetTexture(MaterialTextureSlot::Normal).IsValid() ? mat.GetTexture(MaterialTextureSlot::Normal) : fallback;
-            case ShaderResourceSemantic::ORM:
-                return mat.GetTexture(MaterialTextureSlot::ORM).IsValid() ? mat.GetTexture(MaterialTextureSlot::ORM) : fallback;
-            case ShaderResourceSemantic::Emissive:
-                return mat.GetTexture(MaterialTextureSlot::Emissive).IsValid() ? mat.GetTexture(MaterialTextureSlot::Emissive) : fallback;
-            case ShaderResourceSemantic::Detail:
-                return mat.GetTexture(MaterialTextureSlot::Detail).IsValid() ? mat.GetTexture(MaterialTextureSlot::Detail) : fallback;
-            case ShaderResourceSemantic::ShadowMap:
-            default:
-                return fallback;
-            }
-        };
-
-    auto getSRV = [&](TextureHandle handle, const char* reason) -> ID3D11ShaderResourceView*
-        {
-            if (handle.IsValid())
-                ValidateShaderReadState(handle, reason);
-
-            const GDXTextureResource* tex = texStore.Get(handle);
-            if (!tex || !tex->srv) return nullptr;
-            return static_cast<ID3D11ShaderResourceView*>(tex->srv);
-        };
-
-    const TextureHandle albedo = resolveTexture(ShaderResourceSemantic::Albedo, defaultWhite);
-    const TextureHandle normal = resolveTexture(ShaderResourceSemantic::Normal, defaultNormal);
-    const TextureHandle orm = resolveTexture(ShaderResourceSemantic::ORM, defaultORM);
-    const TextureHandle emissive = resolveTexture(ShaderResourceSemantic::Emissive, defaultBlack);
-    const TextureHandle detail = resolveTexture(ShaderResourceSemantic::Detail, defaultWhite);
-
-    ID3D11ShaderResourceView* srvs[5] =
+    if (const ShaderResourceBindingDesc* b = cmd.resourceBindings.FindTextureBinding(ShaderResourceSemantic::Albedo))
     {
-        getSRV(albedo,   "BindMaterialTextures Albedo"),
-        getSRV(normal,   "BindMaterialTextures Normal"),
-        getSRV(orm,      "BindMaterialTextures ORM"),
-        getSRV(emissive, "BindMaterialTextures Emissive"),
-        getSRV(detail,   "BindMaterialTextures Detail"),
-    };
+        if (b->enabled && b->texture.IsValid()) albedo = b->texture;
+    }
+    if (const ShaderResourceBindingDesc* b = cmd.resourceBindings.FindTextureBinding(ShaderResourceSemantic::Normal))
+    {
+        if (b->enabled && b->texture.IsValid()) normal = b->texture;
+    }
+    if (const ShaderResourceBindingDesc* b = cmd.resourceBindings.FindTextureBinding(ShaderResourceSemantic::ORM))
+    {
+        if (b->enabled && b->texture.IsValid()) orm = b->texture;
+    }
+    if (const ShaderResourceBindingDesc* b = cmd.resourceBindings.FindTextureBinding(ShaderResourceSemantic::Emissive))
+    {
+        if (b->enabled && b->texture.IsValid()) emissive = b->texture;
+    }
+    if (const ShaderResourceBindingDesc* b = cmd.resourceBindings.FindTextureBinding(ShaderResourceSemantic::Detail))
+    {
+        if (b->enabled && b->texture.IsValid()) detail = b->texture;
+    }
+
+    if (albedo.IsValid())   ValidateShaderReadState(albedo,   "BindMaterialTextures Albedo");
+    if (normal.IsValid())   ValidateShaderReadState(normal,   "BindMaterialTextures Normal");
+    if (orm.IsValid())      ValidateShaderReadState(orm,      "BindMaterialTextures ORM");
+    if (emissive.IsValid()) ValidateShaderReadState(emissive, "BindMaterialTextures Emissive");
+    if (detail.IsValid())   ValidateShaderReadState(detail,   "BindMaterialTextures Detail");
+
+    ID3D11ShaderResourceView* srvs[5] = {};
+
+    if (const GDXTextureResource* tex = texStore.Get(albedo))
+        srvs[0] = static_cast<ID3D11ShaderResourceView*>(tex->srv);
+    if (const GDXTextureResource* tex = texStore.Get(normal))
+        srvs[1] = static_cast<ID3D11ShaderResourceView*>(tex->srv);
+    if (const GDXTextureResource* tex = texStore.Get(orm))
+        srvs[2] = static_cast<ID3D11ShaderResourceView*>(tex->srv);
+    if (const GDXTextureResource* tex = texStore.Get(emissive))
+        srvs[3] = static_cast<ID3D11ShaderResourceView*>(tex->srv);
+    if (const GDXTextureResource* tex = texStore.Get(detail))
+        srvs[4] = static_cast<ID3D11ShaderResourceView*>(tex->srv);
 
     m_context->PSSetShaderResources(0, 5, srvs);
 }

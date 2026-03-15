@@ -76,9 +76,9 @@ namespace GDXShaderLayouts
     {
         GDXShaderLayout l{};
         l.vertexFormat = GDXVertexFormat::FromFlags(vertexFlags);
-        l.AddConstantBuffer(GDXShaderConstantBufferSlot::Entity, 0u, 0u);
+        l.AddConstantBuffer(GDXShaderConstantBufferSlot::Entity, 0u, 255u);
         l.AddConstantBuffer(GDXShaderConstantBufferSlot::Frame, 1u, 1u);
-        l.AddConstantBuffer(GDXShaderConstantBufferSlot::Material, 0u, 2u);
+        l.AddConstantBuffer(GDXShaderConstantBufferSlot::Material, 255u, 2u);
         if (supportsSkinning)
             l.AddConstantBuffer(GDXShaderConstantBufferSlot::Skin, 4u, 255u);
 
@@ -96,9 +96,9 @@ namespace GDXShaderLayouts
     {
         GDXShaderLayout l{};
         l.vertexFormat = GDXVertexFormat::FromFlags(vertexFlags);
-        l.AddConstantBuffer(GDXShaderConstantBufferSlot::Entity, 0u, 0u);
+        l.AddConstantBuffer(GDXShaderConstantBufferSlot::Entity, 0u, 255u);
         l.AddConstantBuffer(GDXShaderConstantBufferSlot::Frame, 1u, 1u);
-        l.AddConstantBuffer(GDXShaderConstantBufferSlot::Material, 0u, 2u);
+        l.AddConstantBuffer(GDXShaderConstantBufferSlot::Material, 255u, 2u);
         if (supportsSkinning)
             l.AddConstantBuffer(GDXShaderConstantBufferSlot::Skin, 4u, 255u);
         l.depthOnly = true;

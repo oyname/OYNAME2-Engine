@@ -29,4 +29,5 @@ public:
     // Returns false and leaves outHandles unchanged if the window has not
     // been successfully created yet (HWND is null).
     virtual bool QueryNativeHandles(GDXWin32NativeHandles& outHandles) const = 0;
+    virtual bool IsBorderless() const = 0;
 };

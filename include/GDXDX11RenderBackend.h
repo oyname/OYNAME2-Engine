@@ -115,4 +115,8 @@ private:
     ID3D11DepthStencilState* m_depthStateNoWrite = nullptr;
     ID3D11BlendState*        m_blendState        = nullptr;
     ID3D11BlendState*        m_blendStateAlpha   = nullptr;
+
+    bool m_hasShadowPass = false;
+    int m_backbufferWidth  = 1;
+    int m_backbufferHeight = 1;
 };

@@ -62,15 +62,15 @@ static void Init()
     Engine::CreateLight(&s_sun, LightKind::Directional, 0.8f, 0.8f, 1.0f, "Sonne");
     Engine::LightIntensity(s_sun, 2.0f);
     Engine::LightCastShadows(s_sun, true, 20.0f, 0.1f, 1000.0f);
-    Engine::PositionEntity(s_sun, -5.0f, 0.0f, 0.0f);
-    Engine::RotateEntity(s_sun, 0.0f, -90.0f, 0.0f);
+    Engine::PositionEntity(s_sun, 0.0f, 0.0f, 0.0f);
+    Engine::RotateEntity(s_sun, 0.0f, 90.0f, 0.0f);
 
     Engine::CreateLight(&s_spotlight, LightKind::Spot, 0.2f, 1.6f, 1.0f, "Spotlight");
     Engine::LightIntensity(s_spotlight, 25.0f);
     Engine::LightRadius(s_spotlight, 25.0f);
     Engine::LightSpotCone(s_spotlight, 2.0f, 10.0f);
     Engine::PositionEntity(s_spotlight, 0.0f, 20.0f, 3.0f);
-    Engine::RotateEntity(s_spotlight, -90.0f, 0.0f, 0.0f);
+    Engine::RotateEntity(s_spotlight, 090.0f, 0.0f, 0.0f);
 }
 
 // ---------------------------------------------------------------------------

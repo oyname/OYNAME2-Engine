@@ -437,24 +437,23 @@ unsigned int GDXWin32DX11ContextFactory::FindBestAdapter(
 std::unique_ptr<IGDXDXGIContext>
 GDXWin32DX11ContextFactory::Create(
     IGDXWin32NativeAccess& nativeAccess,
-    unsigned int           adapterIndex,
-    bool                   borderless) const
+    unsigned int adapterIndex) const
 {
     Debug::Log("gdxwin32dx11contextfactory.cpp: Create START  adapter=", adapterIndex);
 
     GDXWin32NativeHandles handles{};
     if (!nativeAccess.QueryNativeHandles(handles))
     {
-        Debug::LogError("gdxwin32dx11contextfactory.cpp: "
-                        "QueryNativeHandles failed — window not yet created?");
+        Debug::LogError("gdxwin32dx11contextfactory.cpp: QueryNativeHandles failed — window not yet created?");
         return nullptr;
     }
+
+    const bool borderless = nativeAccess.IsBorderless();
+
     HWND hwnd = reinterpret_cast<HWND>(handles.hwnd);
 
-    // Locate the chosen adapter.
     IDXGIFactory* factory = nullptr;
-    if (FAILED(CreateDXGIFactory(__uuidof(IDXGIFactory),
-                                  reinterpret_cast<void**>(&factory))))
+    if (FAILED(CreateDXGIFactory(__uuidof(IDXGIFactory), reinterpret_cast<void**>(&factory))))
     {
         Debug::LogError("gdxwin32dx11contextfactory.cpp: CreateDXGIFactory failed");
         return nullptr;
@@ -466,8 +465,7 @@ GDXWin32DX11ContextFactory::Create(
 
     if (FAILED(hr) || !adapter)
     {
-        Debug::LogError("gdxwin32dx11contextfactory.cpp: adapter ", adapterIndex,
-                        " not found");
+        Debug::LogError("gdxwin32dx11contextfactory.cpp: adapter ", adapterIndex, " not found");
         return nullptr;
     }
 
@@ -476,13 +474,12 @@ GDXWin32DX11ContextFactory::Create(
 
     GDXDXGIAdapterInfo adapterInfo;
     adapterInfo.index = adapterIndex;
-    adapterInfo.name  = adesc.Description;
+    adapterInfo.name = adesc.Description;
     adapterInfo.dedicatedVRAM = adesc.DedicatedVideoMemory;
 
-    // Retrieve window client size for swap chain dimensions.
     RECT rc = {};
     GetClientRect(hwnd, &rc);
-    const int w = rc.right  - rc.left;
+    const int w = rc.right - rc.left;
     const int h = rc.bottom - rc.top;
 
     auto ctx = std::make_unique<Win32DXGIContext>();
@@ -491,10 +488,10 @@ GDXWin32DX11ContextFactory::Create(
         adapter->Release();
         return nullptr;
     }
+
     adapter->Release();
 
     const auto info = ctx->QueryDeviceInfo();
-    Debug::Log("gdxwin32dx11contextfactory.cpp: Create END  ",
-               info.adapterName, "  FL ", info.featureLevelName);
+    Debug::Log("gdxwin32dx11contextfactory.cpp: Create END  ", info.adapterName, "  FL ", info.featureLevelName);
     return ctx;
 }
