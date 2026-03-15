@@ -306,7 +306,7 @@ public:
             skin.finalBoneMatrices.resize(N_BONES);
 
             for (int i = 0; i < N_BONES; ++i)
-                DirectX::XMStoreFloat4x4(&skin.finalBoneMatrices[i], DirectX::XMMatrixIdentity());
+                skin.finalBoneMatrices[i] = GIDX::Identity4x4();
 
             reg.Add<SkinComponent>(m_tail, std::move(skin));
         }
@@ -334,7 +334,7 @@ public:
         // ---------------------------------------------------------------------
         if (auto* tc = reg.Get<TransformComponent>(m_camera))
         {
-            const float camRad = m_camAngle * DirectX::XM_PI / 180.0f;
+            const float camRad = m_camAngle * GIDX::Pi / 180.0f;
             tc->localPosition.x = 10.0f * std::sin(camRad);
             tc->localPosition.y = 5.0f;
             tc->localPosition.z = -10.0f * std::cos(camRad);
@@ -357,10 +357,10 @@ public:
         constexpr float WAVE_FREQ = 1.8f;
         constexpr float WAVE_AMP_Z = 0.20f;
         constexpr float WAVE_FREQ_Z = 1.3f;
-        const float phaseStep = DirectX::XM_PI / static_cast<float>(N_BONES);
+        const float phaseStep = GIDX::Pi / static_cast<float>(N_BONES);
 
         const float ax0 = WAVE_AMP * std::sin(m_timeAcc * WAVE_FREQ);
-        const float az0 = WAVE_AMP_Z * std::sin(m_timeAcc * WAVE_FREQ_Z + DirectX::XM_PIDIV2);
+        const float az0 = WAVE_AMP_Z * std::sin(m_timeAcc * WAVE_FREQ_Z + (GIDX::Pi * 0.5f));
 
         boneWorld[0] =
             DirectX::XMMatrixRotationX(ax0) *
@@ -370,7 +370,7 @@ public:
         {
             const float phi = i * phaseStep;
             const float axi = WAVE_AMP * std::sin(m_timeAcc * WAVE_FREQ + phi);
-            const float azi = WAVE_AMP_Z * std::sin(m_timeAcc * WAVE_FREQ_Z + phi + DirectX::XM_PIDIV2);
+            const float azi = WAVE_AMP_Z * std::sin(m_timeAcc * WAVE_FREQ_Z + phi + (GIDX::Pi * 0.5f));
 
             boneWorld[i] =
                 DirectX::XMMatrixTranslation(0.0f, SEG_H, 0.0f) *
@@ -382,7 +382,7 @@ public:
         for (int i = 0; i < N_BONES; ++i)
         {
             finalMats[i] = m_invBind[i] * boneWorld[i];
-            DirectX::XMStoreFloat4x4(&skin->finalBoneMatrices[i], finalMats[i]);
+            GDXMathHelpers::StoreFloat4x4(skin->finalBoneMatrices[i], finalMats[i]);
         }
     }
 
@@ -405,8 +405,8 @@ private:
         const char* name,
         MeshHandle mesh,
         MaterialHandle mat,
-        const DirectX::XMFLOAT3& pos,
-        const DirectX::XMFLOAT3& scale,
+        const Float3& pos,
+        const Float3& scale,
         bool castShadows)
     {
         Registry& reg = m_renderer.GetRegistry();

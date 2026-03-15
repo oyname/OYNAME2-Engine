@@ -27,7 +27,8 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-#include <DirectXMath.h>
+#include "GDXMath.h"
+#include "GDXMathHelpers.h"
 
 // ===========================================================================
 // TagComponent — lesbarer Name einer Entity. Kein funktionaler Einfluss.
@@ -56,9 +57,9 @@ struct TagComponent
 // ===========================================================================
 struct TransformComponent
 {
-    DirectX::XMFLOAT3 localPosition = { 0.0f, 0.0f, 0.0f };
-    DirectX::XMFLOAT4 localRotation = { 0.0f, 0.0f, 0.0f, 1.0f }; // Quaternion (X,Y,Z,W)
-    DirectX::XMFLOAT3 localScale = { 1.0f, 1.0f, 1.0f };
+    GIDX::Float3 localPosition = { 0.0f, 0.0f, 0.0f };
+    GIDX::Float4 localRotation = { 0.0f, 0.0f, 0.0f, 1.0f }; // Quaternion (X,Y,Z,W)
+    GIDX::Float3 localScale = { 1.0f, 1.0f, 1.0f };
 
     bool dirty = true;  // true → WorldTransformComponent muss neu berechnet werden
 
@@ -73,15 +74,7 @@ struct TransformComponent
     // Reihenfolge: Pitch (X), Yaw (Y), Roll (Z).
     void SetEulerDeg(float pitchDeg, float yawDeg, float rollDeg)
     {
-        const float toRad = DirectX::XM_PI / 180.0f;
-        DirectX::XMStoreFloat4(
-            &localRotation,
-            DirectX::XMQuaternionRotationRollPitchYaw(
-                pitchDeg * toRad,
-                yawDeg * toRad,
-                rollDeg * toRad
-            )
-        );
+        localRotation = GIDX::QuaternionFromEulerDeg(pitchDeg, yawDeg, rollDeg);
         dirty = true;
     }
 };
@@ -97,13 +90,13 @@ struct TransformComponent
 // ===========================================================================
 struct WorldTransformComponent
 {
-    DirectX::XMFLOAT4X4 matrix = {};  // Weltmatrix
-    DirectX::XMFLOAT4X4 inverse = {};  // Inverse der Weltmatrix (für Beleuchtung)
+    GIDX::Float4x4 matrix = {};  // Weltmatrix
+    GIDX::Float4x4 inverse = {};  // Inverse der Weltmatrix (für Beleuchtung)
 
     WorldTransformComponent()
     {
-        DirectX::XMStoreFloat4x4(&matrix, DirectX::XMMatrixIdentity());
-        DirectX::XMStoreFloat4x4(&inverse, DirectX::XMMatrixIdentity());
+        matrix = GIDX::Identity4x4();
+        inverse = GIDX::Identity4x4();
     }
 };
 
@@ -217,7 +210,7 @@ struct SkinComponent
 {
     static constexpr uint32_t MaxBones = 64u;
 
-    std::vector<DirectX::XMFLOAT4X4> finalBoneMatrices;
+    std::vector<GIDX::Float4x4> finalBoneMatrices;
     bool enabled = true;
 
     SkinComponent() = default;
@@ -322,7 +315,7 @@ struct LightComponent
 {
     LightKind kind = LightKind::Directional;
 
-    DirectX::XMFLOAT4 diffuseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+    GIDX::Float4 diffuseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
 
     float radius = 10.0f;   // Point/Spot: Reichweite in Welteinheiten
     float intensity = 1.0f;

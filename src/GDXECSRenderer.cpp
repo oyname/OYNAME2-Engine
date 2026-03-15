@@ -5,7 +5,8 @@
 #include "GDXShaderLayout.h"
 #include "RenderPassTargetDesc.h"
 
-#include <DirectXMath.h>
+#include "GDXMath.h"
+#include "GDXMathHelpers.h"
 
 namespace
 {
@@ -20,9 +21,9 @@ namespace
         const auto* cam = registry.Get<CameraComponent>(cameraEntity);
         if (!wt || !cam) return false;
 
-        const XMMATRIX world = XMLoadFloat4x4(&wt->matrix);
+        const XMMATRIX world = GDXMathHelpers::LoadFloat4x4(wt->matrix);
         const XMVECTOR position = world.r[3];
-        XMStoreFloat3(&frame.cameraPos, position);
+        GDXMathHelpers::StoreFloat3(frame.cameraPos, position);
         frame.cullMask = cam->cullMask;
 
         XMMATRIX rot = world;
@@ -36,7 +37,7 @@ namespace
         const XMVECTOR target = XMVectorAdd(position, forward);
 
         const XMMATRIX view = XMMatrixLookAtLH(position, target, up);
-        XMStoreFloat4x4(&frame.viewMatrix, view);
+        GDXMathHelpers::StoreFloat4x4(frame.viewMatrix, view);
 
         XMMATRIX proj;
         if (cam->isOrtho)
@@ -45,12 +46,12 @@ namespace
         }
         else
         {
-            const float fovRad = cam->fovDeg * (XM_PI / 180.0f);
+            const float fovRad = GIDX::ToRadians(cam->fovDeg);
             proj = XMMatrixPerspectiveFovLH(fovRad, cam->aspectRatio, cam->nearPlane, cam->farPlane);
         }
 
-        XMStoreFloat4x4(&frame.projMatrix, proj);
-        XMStoreFloat4x4(&frame.viewProjMatrix, XMMatrixMultiply(view, proj));
+        GDXMathHelpers::StoreFloat4x4(frame.projMatrix, proj);
+        GDXMathHelpers::StoreFloat4x4(frame.viewProjMatrix, XMMatrixMultiply(view, proj));
         return true;
     }
 }
@@ -390,18 +391,18 @@ void GDXECSRenderer::EndFrame()
                     &rtGatherOptions);
 
                 if (!m_shadowQueue.Empty())
-                    m_backend->ExecuteShadowPass(m_registry, m_shadowQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore, rtFrame);
+                    m_backend->ExecuteRenderPass(BackendRenderPassDesc::Shadow(rtFrame), m_registry, m_shadowQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore, &m_rtStore);
             }
 
             m_gatherSystem.Gather(m_registry, rtFrame,
                 m_meshStore, m_matStore,
-                resolveShader, m_opaqueQueue,
+                resolveShader, m_opaqueQueue, m_transparentQueue,
                 &rtGatherOptions);
 
             RenderPassTargetDesc targetDesc = RenderPassTargetDesc::Offscreen(rtCam.target, rtCam.clear,
                 static_cast<float>(rt->width), static_cast<float>(rt->height), rt->debugName);
-            m_backend->ExecutePass(targetDesc, m_registry, m_opaqueQueue,
-                m_meshStore, m_matStore, m_shaderStore, m_texStore, &m_rtStore);
+            m_backend->ExecuteMainPassToTarget(*rt, rtCam.clear, m_registry, m_opaqueQueue, m_transparentQueue,
+                m_meshStore, m_matStore, m_shaderStore, m_texStore);
         });
 
     m_cameraSystem.Update(m_registry, m_frameData);
@@ -419,28 +420,28 @@ void GDXECSRenderer::EndFrame()
             &mainShadowOptions);
 
         if (!m_shadowQueue.Empty())
-            m_backend->ExecuteShadowPass(m_registry, m_shadowQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore, m_frameData);
+            m_backend->ExecuteRenderPass(BackendRenderPassDesc::Shadow(m_frameData), m_registry, m_shadowQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore, &m_rtStore);
     }
 
     m_gatherSystem.Gather(m_registry, m_frameData,
         m_meshStore, m_matStore,
-        resolveShader, m_opaqueQueue,
+        resolveShader, m_opaqueQueue, m_transparentQueue,
         nullptr);
 
     if (m_backend)
     {
-        RenderPassTargetDesc mainTarget = RenderPassTargetDesc::Backbuffer(m_frameData.viewportWidth, m_frameData.viewportHeight);
-        m_backend->ExecutePass(mainTarget, m_registry, m_opaqueQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore, &m_rtStore);
+        m_backend->ExecuteMainPass(m_registry, m_opaqueQueue, m_transparentQueue,
+            m_meshStore, m_matStore, m_shaderStore, m_texStore);
     }
 
     auto& frameTransient = m_frameTransients[m_currentFrameIndex];
     constexpr size_t kApproxFrameConstantsBytes = 272u;
     constexpr size_t kApproxEntityConstantsBytes = 128u;
     (void)frameTransient.uploadArena.Allocate(kApproxFrameConstantsBytes, 16u);
-    (void)frameTransient.uploadArena.Allocate(kApproxEntityConstantsBytes * (m_opaqueQueue.Count() + m_shadowQueue.Count()), 16u);
+    (void)frameTransient.uploadArena.Allocate(kApproxEntityConstantsBytes * (m_opaqueQueue.Count() + m_transparentQueue.Count() + m_shadowQueue.Count()), 16u);
 
     m_stats.drawCalls = m_backend ? m_backend->GetDrawCallCount() : 0u;
-    m_stats.renderCommands = static_cast<uint32_t>(m_opaqueQueue.Count());
+    m_stats.renderCommands = static_cast<uint32_t>(m_opaqueQueue.Count() + m_transparentQueue.Count());
     m_stats.lightCount = m_frameData.lightCount;
 
     if (m_backend) m_backend->Present(true);

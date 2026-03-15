@@ -13,6 +13,8 @@
 #include "RenderQueue.h"
 #include "RenderPassClearDesc.h"
 #include "RenderPassTargetDesc.h"
+#include "BackendRenderPassDesc.h"
+#include "ICommandList.h"
 
 #include <cstdint>
 #include <string>
@@ -61,6 +63,31 @@ public:
 
     virtual void UpdateLights(Registry& registry, FrameData& frame) = 0;
     virtual void UpdateFrameConstants(const FrameData& frame) = 0;
+    virtual void* ExecuteRenderPass(const BackendRenderPassDesc& passDesc,
+                                    Registry& registry,
+                                    const ICommandList& commandList,
+                                    ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+                                    ResourceStore<MaterialResource, MaterialTag>& matStore,
+                                    ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+                                    ResourceStore<GDXTextureResource, TextureTag>& texStore,
+                                    ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore = nullptr)
+    {
+        const auto* queue = dynamic_cast<const RenderQueue*>(&commandList);
+        if (!queue)
+            return nullptr;
+
+        if (passDesc.kind == BackendRenderPassDesc::Kind::Shadow)
+        {
+            if (!passDesc.frame)
+                return nullptr;
+
+            ExecuteShadowPass(registry, *queue, meshStore, matStore, shaderStore, texStore, *passDesc.frame);
+            return nullptr;
+        }
+
+        return ExecutePass(passDesc.target, registry, *queue, meshStore, matStore, shaderStore, texStore, rtStore);
+    }
+
 
     virtual void ExecuteShadowPass(Registry& registry,
                                    const RenderQueue& shadowQueue,
@@ -72,6 +99,7 @@ public:
 
     virtual void* ExecuteMainPass(Registry& registry,
                                   const RenderQueue& opaqueQueue,
+                                  const RenderQueue& transparentQueue,
                                   ResourceStore<MeshAssetResource, MeshTag>& meshStore,
                                   ResourceStore<MaterialResource, MaterialTag>& matStore,
                                   ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
@@ -81,6 +109,7 @@ public:
                                           const RenderPassClearDesc& clearDesc,
                                           Registry& registry,
                                           const RenderQueue& opaqueQueue,
+                                          const RenderQueue& transparentQueue,
                                           ResourceStore<MeshAssetResource, MeshTag>& meshStore,
                                           ResourceStore<MaterialResource, MaterialTag>& matStore,
                                           ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
@@ -88,7 +117,7 @@ public:
     {
         (void)rt;
         (void)clearDesc;
-        return ExecuteMainPass(registry, opaqueQueue, meshStore, matStore, shaderStore, texStore);
+        return ExecuteMainPass(registry, opaqueQueue, transparentQueue, meshStore, matStore, shaderStore, texStore);
     }
 
     virtual void* ExecutePass(const RenderPassTargetDesc& targetDesc,
@@ -101,13 +130,13 @@ public:
                               ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore = nullptr)
     {
         if (targetDesc.useBackbuffer || !targetDesc.renderTarget.IsValid() || !rtStore)
-            return ExecuteMainPass(registry, queue, meshStore, matStore, shaderStore, texStore);
+            return ExecuteMainPass(registry, queue, RenderQueue{}, meshStore, matStore, shaderStore, texStore);
 
         GDXRenderTargetResource* rt = rtStore->Get(targetDesc.renderTarget);
         if (!rt)
-            return ExecuteMainPass(registry, queue, meshStore, matStore, shaderStore, texStore);
+            return ExecuteMainPass(registry, queue, RenderQueue{}, meshStore, matStore, shaderStore, texStore);
 
-        return ExecuteMainPassToTarget(*rt, targetDesc.clear, registry, queue, meshStore, matStore, shaderStore, texStore);
+        return ExecuteMainPassToTarget(*rt, targetDesc.clear, registry, queue, RenderQueue{}, meshStore, matStore, shaderStore, texStore);
     }
 
 

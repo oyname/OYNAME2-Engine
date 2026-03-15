@@ -129,8 +129,8 @@ public:
         {
             SkinComponent skin;
             skin.finalBoneMatrices.resize(2);
-            DirectX::XMStoreFloat4x4(&skin.finalBoneMatrices[0], DirectX::XMMatrixIdentity());
-            DirectX::XMStoreFloat4x4(&skin.finalBoneMatrices[1], DirectX::XMMatrixIdentity());
+            skin.finalBoneMatrices[0] = GDXMath::Identity4x4();
+            skin.finalBoneMatrices[1] = GDXMath::Identity4x4();
             reg.Add<SkinComponent>(m_skinned, std::move(skin));
         }
 
@@ -149,12 +149,12 @@ public:
         if (!skin || skin->finalBoneMatrices.size() < 2)
             return;
 
-        DirectX::XMStoreFloat4x4(&skin->finalBoneMatrices[0], DirectX::XMMatrixIdentity());
+        skin->finalBoneMatrices[0] = GDXMath::Identity4x4();
 
         const float angle = std::sinf(m_time * 1.8f) * 0.85f;
         const DirectX::XMMATRIX bone1 =
             DirectX::XMMatrixRotationZ(angle);
-        DirectX::XMStoreFloat4x4(&skin->finalBoneMatrices[1], bone1);
+        GDXMathHelpers::StoreFloat4x4(skin->finalBoneMatrices[1], bone1);
     }
 
     void OnEvent(const Event& e, GDXEngine& engine)
@@ -170,7 +170,7 @@ public:
 
 private:
     EntityID MakeEntity(const char* name, MeshHandle mesh, MaterialHandle mat,
-                        const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& scale,
+                        const Float3& pos, const Float3& scale,
                         bool castShadows)
     {
         Registry& reg = m_renderer.GetRegistry();

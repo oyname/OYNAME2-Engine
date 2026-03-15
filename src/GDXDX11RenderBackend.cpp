@@ -36,7 +36,8 @@ namespace
         GDXShadowMap& shadowMap,
         bool hasShadowPass,
         Registry& registry,
-        const RenderQueue& opaqueQueue,
+        const ICommandList& opaqueQueue,
+        const ICommandList& transparentQueue,
         ResourceStore<MeshAssetResource, MeshTag>& meshStore,
         ResourceStore<MaterialResource, MaterialTag>& matStore,
         ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
@@ -45,30 +46,19 @@ namespace
         if (!ctx) return;
 
         const float bf[4] = { 0,0,0,0 };
-
-        RenderQueue solidQueue;
-        RenderQueue transparentQueue;
-        for (const auto& cmd : opaqueQueue.commands)
-        {
-            if (cmd.pass == RenderPass::Transparent) transparentQueue.commands.push_back(cmd);
-            else solidQueue.commands.push_back(cmd);
-        }
-
         void* shadowSrv = (hasShadowPass && shadowMap.IsReady()) ? shadowMap.GetSRV() : nullptr;
 
         ctx->RSSetState(rasterizerState);
         ctx->OMSetDepthStencilState(depthStencilState, 0u);
         ctx->OMSetBlendState(blendState, bf, 0xFFFFFFFF);
         samplerCache.BindAll(ctx);
-        if (!solidQueue.Empty())
-            executor.ExecuteQueue(registry, solidQueue, meshStore, matStore, shaderStore, texStore,
-                shadowSrv);
+        if (!opaqueQueue.Empty())
+            executor.ExecuteQueue(registry, opaqueQueue, meshStore, matStore, shaderStore, texStore, shadowSrv);
 
         ctx->OMSetDepthStencilState(depthStateNoWrite, 0u);
         ctx->OMSetBlendState(blendStateAlpha, bf, 0xFFFFFFFF);
         if (!transparentQueue.Empty())
-            executor.ExecuteQueue(registry, transparentQueue, meshStore, matStore, shaderStore, texStore,
-                shadowSrv);
+            executor.ExecuteQueue(registry, transparentQueue, meshStore, matStore, shaderStore, texStore, shadowSrv);
 
         ctx->OMSetDepthStencilState(depthStencilState, 0u);
         ctx->OMSetBlendState(blendState, bf, 0xFFFFFFFF);
@@ -439,6 +429,7 @@ void GDXDX11RenderBackend::ExecuteShadowPass(
 void* GDXDX11RenderBackend::ExecuteMainPass(
     Registry& registry,
     const RenderQueue& opaqueQueue,
+    const RenderQueue& transparentQueue,
     ResourceStore<MeshAssetResource, MeshTag>& meshStore,
     ResourceStore<MaterialResource, MaterialTag>& matStore,
     ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
@@ -463,6 +454,7 @@ void* GDXDX11RenderBackend::ExecuteMainPass(
         m_hasShadowPass,
         registry,
         opaqueQueue,
+        transparentQueue,
         meshStore,
         matStore,
         shaderStore,
@@ -476,6 +468,7 @@ void* GDXDX11RenderBackend::ExecuteMainPassToTarget(
     const RenderPassClearDesc& clearDesc,
     Registry& registry,
     const RenderQueue& opaqueQueue,
+    const RenderQueue& transparentQueue,
     ResourceStore<MeshAssetResource, MeshTag>& meshStore,
     ResourceStore<MaterialResource, MaterialTag>& matStore,
     ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
@@ -523,6 +516,7 @@ void* GDXDX11RenderBackend::ExecuteMainPassToTarget(
         m_hasShadowPass,
         registry,
         opaqueQueue,
+        transparentQueue,
         meshStore,
         matStore,
         shaderStore,

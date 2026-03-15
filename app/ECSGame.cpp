@@ -213,7 +213,7 @@ void ECSGame::Init()
         // Spotlight: Position über dem Würfel, zeigt nach unten
         TransformComponent tc;
         tc.localPosition = { 0.0f, 20.0f, 3.0f };  // über dem Würfel
-        tc.SetEulerDeg(-90.0f, 0.0f, 0.0f);       // zeigt nach unten (-Z → Y mit 90° Pitch)
+        tc.SetEulerDeg(90.0f, 0.0f, 0.0f);       // zeigt nach unten (-Z → Y mit 90° Pitch)
         reg.Add<TransformComponent>(m_spotlight, tc);
     }
     reg.Add<WorldTransformComponent>(m_spotlight);

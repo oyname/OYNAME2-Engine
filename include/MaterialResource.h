@@ -4,15 +4,15 @@
 
 #include <array>
 #include <cstdint>
-#include <DirectXMath.h>
+#include "GDXMath.h"
 
 struct MaterialData
 {
-    DirectX::XMFLOAT4 baseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-    DirectX::XMFLOAT4 specularColor = { 0.5f, 0.5f, 0.5f, 1.0f };
-    DirectX::XMFLOAT4 emissiveColor = { 0.0f, 0.0f, 0.0f, 1.0f };
-    DirectX::XMFLOAT4 uvTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f };
-    DirectX::XMFLOAT4 uvDetailTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f };
+    GIDX::Float4 baseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+    GIDX::Float4 specularColor = { 0.5f, 0.5f, 0.5f, 1.0f };
+    GIDX::Float4 emissiveColor = { 0.0f, 0.0f, 0.0f, 1.0f };
+    GIDX::Float4 uvTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f };
+    GIDX::Float4 uvDetailTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f };
     float metallic          = 0.0f;
     float roughness         = 0.5f;
     float normalScale       = 1.0f;

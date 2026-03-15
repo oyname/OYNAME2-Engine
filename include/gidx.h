@@ -38,6 +38,7 @@
 #include "WindowDesc.h"
 #include "Events.h"
 #include "Debug.h"
+#include "GDXMathHelpers.h"
 
 #include <functional>
 #include <variant>
@@ -463,12 +464,8 @@ namespace Engine
         auto* tc = _::renderer->GetRegistry().Get<TransformComponent>(e);
         if (!tc) { DBERROR(GDX_SRC_LOC, "Engine::TurnEntity: kein TransformComponent"); return; }
 
-        const float toRad = DirectX::XM_PI / 180.0f;
-        DirectX::XMVECTOR delta = DirectX::XMQuaternionRotationRollPitchYaw(
-            pitchDeg * toRad, yawDeg * toRad, rollDeg * toRad);
-        DirectX::XMVECTOR current = DirectX::XMLoadFloat4(&tc->localRotation);
-        DirectX::XMStoreFloat4(&tc->localRotation,
-            DirectX::XMQuaternionMultiply(current, delta));
+        const Float4 delta = GDXMath::QuaternionFromEulerDeg(pitchDeg, yawDeg, rollDeg);
+        tc->localRotation = GDXMath::QuaternionMultiply(tc->localRotation, delta);
         tc->dirty = true;
     }
 
@@ -488,24 +485,25 @@ namespace Engine
         auto* tc = _::renderer->GetRegistry().Get<TransformComponent>(e);
         if (!tc) { DBERROR(GDX_SRC_LOC, "Engine::LookAt: kein TransformComponent"); return; }
 
-        DirectX::XMVECTOR pos = DirectX::XMLoadFloat3(&tc->localPosition);
-        DirectX::XMVECTOR target = DirectX::XMVectorSet(tx, ty, tz, 1.0f);
-        DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+        const Float3 pos = tc->localPosition;
+        const Float3 target = { tx, ty, tz };
 
-        DirectX::XMVECTOR forward = DirectX::XMVector3Normalize(
-            DirectX::XMVectorSubtract(target, pos));
-        DirectX::XMVECTOR right = DirectX::XMVector3Normalize(
-            DirectX::XMVector3Cross(up, forward));
-        DirectX::XMVECTOR newUp = DirectX::XMVector3Cross(forward, right);
+        Float3 forward = GDXMath::Normalize3(
+            GDXMath::Subtract(target, pos),
+            { 0.0f, 0.0f, 1.0f });
 
-        DirectX::XMMATRIX rot;
-        rot.r[0] = right;
-        rot.r[1] = newUp;
-        rot.r[2] = forward;
-        rot.r[3] = DirectX::XMVectorSet(0, 0, 0, 1);
+        Float3 up = { 0.0f, 1.0f, 0.0f };
+        if (std::fabs(GDXMath::Dot3(forward, up)) > 0.999f)
+            up = { 0.0f, 0.0f, 1.0f };
 
-        DirectX::XMStoreFloat4(&tc->localRotation,
-            DirectX::XMQuaternionRotationMatrix(rot));
+        const Float3 right = GDXMath::Normalize3(
+            GDXMath::Cross(up, forward),
+            { 1.0f, 0.0f, 0.0f });
+        const Float3 newUp = GDXMath::Normalize3(
+            GDXMath::Cross(forward, right),
+            { 0.0f, 1.0f, 0.0f });
+
+        tc->localRotation = GDXMath::QuaternionFromBasis(right, newUp, forward);
         tc->dirty = true;
     }
 

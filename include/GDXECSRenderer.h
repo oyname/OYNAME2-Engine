@@ -115,6 +115,7 @@ private:
     RenderGatherSystem m_gatherSystem;
 
     RenderQueue m_opaqueQueue;
+    RenderQueue m_transparentQueue;
     RenderQueue m_shadowQueue;
     FrameData   m_frameData;
 

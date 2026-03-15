@@ -1,4 +1,5 @@
 #include "CameraSystem.h"
+#include "GDXMathHelpers.h"
 
 using namespace DirectX;
 
@@ -7,11 +8,11 @@ void CameraSystem::Update(Registry& registry, FrameData& frame) const
     registry.View<WorldTransformComponent, CameraComponent, ActiveCameraTag>(
         [&](EntityID, WorldTransformComponent& wt, CameraComponent& cam, ActiveCameraTag&)
         {
-            const XMMATRIX world = XMLoadFloat4x4(&wt.matrix);
+            const XMMATRIX world = GDXMathHelpers::LoadFloat4x4(wt.matrix);
 
             // Kameraposition aus Weltmatrix
             const XMVECTOR position = world.r[3];
-            XMStoreFloat3(&frame.cameraPos, position);
+            GDXMathHelpers::StoreFloat3(frame.cameraPos, position);
             frame.cullMask = cam.cullMask;
 
             // Rotationsteil aus Weltmatrix extrahieren
@@ -27,14 +28,14 @@ void CameraSystem::Update(Registry& registry, FrameData& frame) const
             const XMVECTOR up = XMVector3Normalize(
                 XMVector3TransformNormal(baseUp, rot));
 
-            XMStoreFloat3(&frame.cameraForward, forward);
+            GDXMathHelpers::StoreFloat3(frame.cameraForward, forward);
 
             const XMVECTOR target = XMVectorAdd(position, forward);
 
             // WICHTIG: View wie in der alten Engine per LookAtLH bauen,
             // nicht per inverse(world)
             const XMMATRIX view = XMMatrixLookAtLH(position, target, up);
-            XMStoreFloat4x4(&frame.viewMatrix, view);
+            GDXMathHelpers::StoreFloat4x4(frame.viewMatrix, view);
 
             // Projektion
             XMMATRIX proj;
@@ -48,7 +49,7 @@ void CameraSystem::Update(Registry& registry, FrameData& frame) const
             }
             else
             {
-                const float fovRad = cam.fovDeg * (XM_PI / 180.0f);
+                const float fovRad = GIDX::ToRadians(cam.fovDeg);
                 proj = XMMatrixPerspectiveFovLH(
                     fovRad,
                     cam.aspectRatio,
@@ -56,16 +57,16 @@ void CameraSystem::Update(Registry& registry, FrameData& frame) const
                     cam.farPlane);
             }
 
-            XMStoreFloat4x4(&frame.projMatrix, proj);
-            XMStoreFloat4x4(&frame.viewProjMatrix, XMMatrixMultiply(view, proj));
+            GDXMathHelpers::StoreFloat4x4(frame.projMatrix, proj);
+            GDXMathHelpers::StoreFloat4x4(frame.viewProjMatrix, XMMatrixMultiply(view, proj));
         });
 }
 
-float CameraSystem::ComputeNDCDepth(const XMFLOAT4X4& worldMatrix,
-    const XMFLOAT4X4& viewProjMatrix)
+float CameraSystem::ComputeNDCDepth(const GIDX::Float4x4& worldMatrix,
+    const GIDX::Float4x4& viewProjMatrix)
 {
-    const XMMATRIX world = XMLoadFloat4x4(&worldMatrix);
-    const XMMATRIX viewProj = XMLoadFloat4x4(&viewProjMatrix);
+    const XMMATRIX world = GDXMathHelpers::LoadFloat4x4(worldMatrix);
+    const XMMATRIX viewProj = GDXMathHelpers::LoadFloat4x4(viewProjMatrix);
 
     const XMVECTOR worldPos = world.r[3];
 

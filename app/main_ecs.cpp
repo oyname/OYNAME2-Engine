@@ -83,7 +83,7 @@ int main()
         game.Update(dt);
     });
 
-    // Events ans Spiel weitergeben — ESC, Fenster schliessen etc.
+    // Events ans Spiel weitergeben  ESC, Fenster schliessen etc.
     // Das Spiel entscheidet selbst ob es engine.Shutdown() aufruft.
     engine.SetEventCallback([&game, &engine](const Event& e)
     {

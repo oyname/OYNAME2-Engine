@@ -33,7 +33,7 @@ public:
                            ResourceStore<GDXShaderResource, ShaderTag>&,
                            ResourceStore<GDXTextureResource, TextureTag>&,
                            const FrameData&) override {}
-    void* ExecuteMainPass(Registry&, const RenderQueue&,
+    void* ExecuteMainPass(Registry&, const RenderQueue&, const RenderQueue&,
                           ResourceStore<MeshAssetResource, MeshTag>&,
                           ResourceStore<MaterialResource, MaterialTag>&,
                           ResourceStore<GDXShaderResource, ShaderTag>&,

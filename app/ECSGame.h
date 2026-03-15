@@ -5,7 +5,7 @@
 #include "SubmeshData.h"
 #include "Events.h"
 
-class GDXEngine; // forward — kein zirkulärer Include
+class GDXEngine; // forward  kein zirkulrer Include
 
 class ECSGame
 {
@@ -15,7 +15,7 @@ public:
     void Init();
     void Update(float deltaTime);
 
-    // Wird von main.cpp über engine.SetEventCallback() aufgerufen.
+    // Wird von main.cpp ber engine.SetEventCallback() aufgerufen.
     // Das Spiel entscheidet was bei ESC, Fenster schliessen etc. passiert.
     void OnEvent(const Event& e, GDXEngine& engine);
 

@@ -18,7 +18,6 @@
 #include <filesystem>
 #include <system_error>
 #include <type_traits>
-#include <DirectXMath.h>
 
 static bool FileExists(const std::wstring& path)
 {
@@ -27,23 +26,21 @@ static bool FileExists(const std::wstring& path)
 }
 
 // -----------------------------------------------------------------------------
-// Würfel mit uv0 + uv1 per SubmeshBuilder
+// Wrfel mit uv0 + uv1 per SubmeshBuilder
 //
 // uv0: normale Face-UVs 0..1
-// uv1: Detail-UVs stärker gekachelt
+// uv1: Detail-UVs strker gekachelt
 // -----------------------------------------------------------------------------
 static SubmeshData BuildCubeUV0UV1(float detailTile = 1.0f)
 {
-    using namespace DirectX;
-
-    SubmeshBuilder b;
+        SubmeshBuilder b;
     b.Reserve(24, 36);
 
-    auto addFace = [&](XMFLOAT3 bl,
-        XMFLOAT3 tl,
-        XMFLOAT3 tr,
-        XMFLOAT3 br,
-        XMFLOAT3 n)
+    auto addFace = [&](Float3 bl,
+        Float3 tl,
+        Float3 tr,
+        Float3 br,
+        Float3 n)
         {
             const uint32_t i0 = b.AddVertex(bl);
             const uint32_t i1 = b.AddVertex(tl);
@@ -55,13 +52,13 @@ static SubmeshData BuildCubeUV0UV1(float detailTile = 1.0f)
             b.SetNormal(i2, n);
             b.SetNormal(i3, n);
 
-            // uv0 — Basis-Textur (0..1 pro Face)
+            // uv0  Basis-Textur (0..1 pro Face)
             b.SetUV0(i0, { 0.0f, 1.0f });
             b.SetUV0(i1, { 0.0f, 0.0f });
             b.SetUV0(i2, { 1.0f, 0.0f });
             b.SetUV0(i3, { 1.0f, 1.0f });
 
-            // uv1 — Detail-Textur
+            // uv1  Detail-Textur
             b.SetUV1(i0, { 0.0f,       detailTile });
             b.SetUV1(i1, { 0.0f,       0.0f });
             b.SetUV1(i2, { detailTile, 0.0f });
@@ -208,7 +205,7 @@ public:
         m_renderer.SetSceneAmbient(0.08f, 0.08f, 0.10f);
 
         // ---------------------------------------------------------------------
-        // Würfel
+        // Wrfel
         // ---------------------------------------------------------------------
         m_cube = reg.CreateEntity();
         reg.Add<TagComponent>(m_cube, "UV1 Detail Cube");

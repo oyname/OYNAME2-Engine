@@ -4,7 +4,7 @@
 #include "GDXResourceBinding.h"
 
 #include <cstdint>
-#include <DirectXMath.h>
+#include "GDXMath.h"
 
 enum class RenderPass : uint8_t
 {
@@ -22,7 +22,7 @@ struct RenderCommand
     EntityID       ownerEntity = NULL_ENTITY;
     RenderPass     pass = RenderPass::Opaque;
 
-    DirectX::XMFLOAT4X4 worldMatrix = {};
+    GIDX::Float4x4 worldMatrix = {};
     ResourceBindingSet  resourceBindings{};
 
     uint64_t sortKey = 0ull;

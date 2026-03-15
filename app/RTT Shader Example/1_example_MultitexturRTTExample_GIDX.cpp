@@ -23,37 +23,27 @@ static constexpr uint32_t LAYER_FX      = 1u << 1;
 
 static void SetLookAt(
     TransformComponent& tc,
-    const DirectX::XMVECTOR& position,
-    const DirectX::XMVECTOR& target,
-    const DirectX::XMVECTOR& upVec = DirectX::XMVectorSet(0, 1, 0, 0))
+    const Float3& position,
+    const Float3& target,
+    const Float3& upVec = Float3{ 0.0f, 1.0f, 0.0f })
 {
-    using namespace DirectX;
+    Float3 forward = GIDX::Normalize3(GIDX::Subtract(target, position), { 0.0f, 0.0f, 1.0f });
+    Float3 up = GIDX::Normalize3(upVec, { 0.0f, 1.0f, 0.0f });
 
-    XMVECTOR forward = XMVector3Normalize(XMVectorSubtract(target, position));
-    XMVECTOR up = upVec;
-
-    float dot = fabsf(XMVectorGetX(XMVector3Dot(forward, up)));
+    float dot = std::fabs(GIDX::Dot3(forward, up));
     if (dot > 0.9999f)
     {
-        up = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
-        dot = fabsf(XMVectorGetX(XMVector3Dot(forward, up)));
+        up = { 0.0f, 0.0f, 1.0f };
+        dot = std::fabs(GIDX::Dot3(forward, up));
         if (dot > 0.9999f)
-            up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+            up = { 0.0f, 1.0f, 0.0f };
     }
 
-    XMVECTOR right = XMVector3Normalize(XMVector3Cross(up, forward));
-    up = XMVector3Cross(forward, right);
+    Float3 right = GIDX::Normalize3(GIDX::Cross(up, forward), { 1.0f, 0.0f, 0.0f });
+    up = GIDX::Cross(forward, right);
 
-    XMMATRIX rotMatrix;
-    rotMatrix.r[0] = XMVectorSetW(right,   0.0f);
-    rotMatrix.r[1] = XMVectorSetW(up,      0.0f);
-    rotMatrix.r[2] = XMVectorSetW(forward, 0.0f);
-    rotMatrix.r[3] = XMVectorSet(0.0f, 0.0f, 0.0f, 1.0f);
-
-    XMStoreFloat4(&tc.localRotation,
-        XMQuaternionNormalize(XMQuaternionRotationMatrix(rotMatrix)));
-
-    XMStoreFloat3(&tc.localPosition, position);
+    tc.localRotation = GIDX::QuaternionFromBasis(right, up, forward);
+    tc.localPosition = position;
     tc.dirty = true;
 }
 
@@ -161,8 +151,8 @@ int main()
     faceMatRes.SetTexture(MaterialTextureSlot::Albedo, faceTex, MaterialTextureUVSet::UV0);
     MaterialHandle materialFace = renderer->CreateMaterial(std::move(faceMatRes));
 
-    const DirectX::XMVECTOR sharedPos    = DirectX::XMVectorSet(10.0f, 0.0f, 10.0f, 1.0f);
-    const DirectX::XMVECTOR sharedTarget = DirectX::XMVectorSet(-20.0f, 0.0f, 0.0f, 1.0f);
+    const Float3 sharedPos    = { 5.0f, 0.0f, 10.0f };
+    const Float3 sharedTarget = { -20.0f, 0.0f, 0.0f };
     //-10.0f, 0.0f, 13.0f
 
     EntityID camera = reg.CreateEntity();
@@ -218,21 +208,21 @@ int main()
     {
         SetLookAt(
             *tc,
-            DirectX::XMVectorSet(7.0f, 0.0f, 3.0f, 1.0f),
-            DirectX::XMVectorSet(2.0f, 0.0f, 0.0f, 1.0f));
+            { 7.0f, 0.0f, 3.0f },
+            { 2.0f, 0.0f, 0.0f });
     }
 
     EntityID mesh1 = CreateCubeEntity(
         reg, cubeMesh, materialRTT, "MeshRTT",
-        -10.0f, 0.0f, 13.0f, 4.0f, 4.0f, 4.0f, 45.0f, 45.0f, 0.0f);
+        -10.0f, 0.0f, 13.0f, 8.0f, 8.0f, 8.0f, 45.0f, 45.0f, 0.0f);
 
     EntityID mesh2 = CreateCubeEntity(
         reg, cubeMesh, neonMaterial, "MeshNeon",
-        2.0f, 0.0f, 0.0f, 1.5f, 1.5f, 1.5f);
+        2.0f, 0.0f, 0.0f, 3.5f, 3.5f, 3.5f);
 
     EntityID mesh3 = CreateCubeEntity(
         reg, cubeMesh, materialFace, "MeshWall",
-        -15.0f, 0.0f, 0.0f, 5.0f, 20.0f, 20.0f);
+        -15.0f, 0.0f, 0.0f, 5.0f, 40.0f, 40.0f);
 
     if (auto* vc = reg.Get<VisibilityComponent>(mesh1))
         vc->layerMask = LAYER_FX;
@@ -263,20 +253,10 @@ int main()
 
     renderer->SetTickCallback([&](float dt)
     {
-        neonTime.Update(dt);
-
-        if (auto* tc = reg.Get<TransformComponent>(mesh2))
+        neonTime.Update(dt);        if (auto* tc = reg.Get<TransformComponent>(mesh2))
         {
-            const float toRad = DirectX::XM_PI / 180.0f;
-            DirectX::XMVECTOR delta = DirectX::XMQuaternionRotationRollPitchYaw(
-                50.0f * dt * toRad,
-                50.0f * dt * toRad,
-                0.0f);
-
-            DirectX::XMVECTOR current = DirectX::XMLoadFloat4(&tc->localRotation);
-            DirectX::XMStoreFloat4(
-                &tc->localRotation,
-                DirectX::XMQuaternionMultiply(current, delta));
+            const Float4 delta = GIDX::QuaternionFromEulerDeg(50.0f * dt, 50.0f * dt, 0.0f);
+            tc->localRotation = GIDX::QuaternionMultiply(tc->localRotation, delta);
             tc->dirty = true;
         }
     });

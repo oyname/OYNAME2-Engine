@@ -440,6 +440,12 @@
     <ClInclude Include="..\app\RTT Shader Example\NeonTimeBuffer.h">
       <Filter>app\RTT NeonShader</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\GDXMath.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXMathHelpers.h">
+      <Filter>util</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Text Include="..\shader\ECSPixelShader.hlsl">

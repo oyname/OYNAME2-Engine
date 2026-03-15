@@ -103,7 +103,7 @@ public:
             m_hMatFloor = m_renderer.CreateMaterial(mat);
         }
 
-        // Opaker Referenzwürfel: rot
+        // Opaker Referenzwrfel: rot
         {
             MaterialResource mat = MaterialResource::FlatColor(0.85f, 0.15f, 0.15f, 1.0f);
             mat.data.receiveShadows = 1.0f;
@@ -121,7 +121,7 @@ public:
             m_hMatFar = m_renderer.CreateMaterial(mat);
         }
 
-        // Transparent mitte: grün
+        // Transparent mitte: grn
         {
             MaterialResource mat = MaterialResource::FlatColor(0.2f, 0.9f, 0.3f, 0.50f);
             mat.data.receiveShadows = 1.0f;
@@ -166,7 +166,7 @@ public:
         reg.Add<ShadowCasterTag>(m_floor);
 
         // ============================================================
-        // Opaker Referenzwürfel hinten
+        // Opaker Referenzwrfel hinten
         // ============================================================
         m_solidCube = reg.CreateEntity();
         reg.Add<TagComponent>(m_solidCube, "Opaque Red Cube");
@@ -192,7 +192,7 @@ public:
         reg.Add<ShadowCasterTag>(m_solidCube);
 
         // ============================================================
-        // Transparente Würfel
+        // Transparente Wrfel
         // ============================================================
 
         // weit

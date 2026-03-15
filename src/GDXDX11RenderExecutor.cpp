@@ -7,7 +7,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <d3d11.h>
-#include <DirectXMath.h>
+#include "GDXMath.h"
 #include <cstring>
 
 // ---------------------------------------------------------------------------
@@ -73,35 +73,35 @@ bool GDXDX11MeshUploader::UploadSubmesh(SubmeshData& cpu, GpuMeshBuffer& gpu)
             return true;
         };
 
-    if (!upload(cpu.positions.data(), sizeof(DirectX::XMFLOAT3),
+    if (!upload(cpu.positions.data(), sizeof(Float3),
         cpu.VertexCount(), gpu.positionBuffer, gpu.stridePosition))
         return false;
 
     if (cpu.HasNormals())
-        upload(cpu.normals.data(), sizeof(DirectX::XMFLOAT3),
+        upload(cpu.normals.data(), sizeof(Float3),
             cpu.VertexCount(), gpu.normalBuffer, gpu.strideNormal);
 
     if (!cpu.colors.empty() && cpu.colors.size() == cpu.positions.size())
-        upload(cpu.colors.data(), sizeof(DirectX::XMFLOAT4),
+        upload(cpu.colors.data(), sizeof(Float4),
             cpu.VertexCount(), gpu.colorBuffer, gpu.strideColor);
 
     if (cpu.HasUV0())
-        upload(cpu.uv0.data(), sizeof(DirectX::XMFLOAT2),
+        upload(cpu.uv0.data(), sizeof(Float2),
             cpu.VertexCount(), gpu.uv1Buffer, gpu.strideUV1);
 
     if (cpu.HasUV1())
-        upload(cpu.uv1.data(), sizeof(DirectX::XMFLOAT2),
+        upload(cpu.uv1.data(), sizeof(Float2),
             cpu.VertexCount(), gpu.uv2Buffer, gpu.strideUV2);
 
     if (cpu.HasTangents())
-        upload(cpu.tangents.data(), sizeof(DirectX::XMFLOAT4),
+        upload(cpu.tangents.data(), sizeof(Float4),
             cpu.VertexCount(), gpu.tangentBuffer, gpu.strideTangent);
 
     if (cpu.HasSkinning())
     {
-        upload(cpu.boneIndices.data(), sizeof(DirectX::XMUINT4),
+        upload(cpu.boneIndices.data(), sizeof(UInt4),
             cpu.VertexCount(), gpu.boneIndexBuffer, gpu.strideBoneIndex);
-        upload(cpu.boneWeights.data(), sizeof(DirectX::XMFLOAT4),
+        upload(cpu.boneWeights.data(), sizeof(Float4),
             cpu.VertexCount(), gpu.boneWeightBuffer, gpu.strideBoneWeight);
     }
 
@@ -308,8 +308,7 @@ void GDXDX11RenderExecutor::BindSkinningPalette(
     Dx11SkinConstants sc = {};
     for (uint32_t i = 0; i < SkinComponent::MaxBones; ++i)
     {
-        DirectX::XMFLOAT4X4 ident;
-        DirectX::XMStoreFloat4x4(&ident, DirectX::XMMatrixIdentity());
+        Float4x4 ident = GIDX::Identity4x4();
         std::memcpy(sc.boneMatrices[i], &ident, 64);
     }
 
@@ -397,7 +396,7 @@ void GDXDX11RenderExecutor::ResetTrackedResourceStates()
 // ---------------------------------------------------------------------------
 void GDXDX11RenderExecutor::ExecuteShadowQueue(
     Registry& registry,
-    const RenderQueue& queue,
+    const ICommandList& queue,
     ResourceStore<MeshAssetResource, MeshTag>& meshStore,
     ResourceStore<MaterialResource, MaterialTag>& matStore,
     ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
@@ -412,7 +411,8 @@ void GDXDX11RenderExecutor::ExecuteShadowQueue(
     ID3D11ShaderResourceView* nullShadow = nullptr;
     m_context->PSSetShaderResources(16, 1, &nullShadow);
 
-    for (const RenderCommand& cmd : queue.commands)
+    const auto& commands = queue.GetCommands();
+    for (const RenderCommand& cmd : commands)
     {
         MeshAssetResource* mesh = meshStore.Get(cmd.mesh);
         MaterialResource* mat = matStore.Get(cmd.material);
@@ -501,7 +501,7 @@ void GDXDX11RenderExecutor::ExecuteShadowQueue(
 // ---------------------------------------------------------------------------
 void GDXDX11RenderExecutor::ExecuteQueue(
     Registry& registry,
-    const RenderQueue& queue,
+    const ICommandList& queue,
     ResourceStore<MeshAssetResource, MeshTag>& meshStore,
     ResourceStore<MaterialResource, MaterialTag>& matStore,
     ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
@@ -520,7 +520,8 @@ void GDXDX11RenderExecutor::ExecuteQueue(
         m_context->PSSetShaderResources(16, 1, &srv);
     }
 
-    for (const RenderCommand& cmd : queue.commands)
+    const auto& commands = queue.GetCommands();
+    for (const RenderCommand& cmd : commands)
     {
         MeshAssetResource* mesh = meshStore.Get(cmd.mesh);
         MaterialResource* mat = matStore.Get(cmd.material);
@@ -581,11 +582,11 @@ void GDXDX11RenderExecutor::ExecuteQueue(
             Dx11EntityConstants ec = {};
             std::memcpy(ec.worldMatrix, &cmd.worldMatrix, 64);
 
-            DirectX::XMMATRIX w = DirectX::XMLoadFloat4x4(&cmd.worldMatrix);
+            DirectX::XMMATRIX w = GDXMathHelpers::LoadFloat4x4(cmd.worldMatrix);
             DirectX::XMMATRIX wIT = DirectX::XMMatrixTranspose(
                 DirectX::XMMatrixInverse(nullptr, w));
-            DirectX::XMFLOAT4X4 witF;
-            DirectX::XMStoreFloat4x4(&witF, wIT);
+            GIDX::Float4x4 witF;
+            GDXMathHelpers::StoreFloat4x4(witF, wIT);
             std::memcpy(ec.worldInverseTranspose, &witF, 64);
 
             D3D11_MAPPED_SUBRESOURCE mapped = {};

@@ -118,7 +118,7 @@ public:
         reg.Add<ActiveCameraTag>(m_camera);
 
         // ============================================================
-        // Cube 1 — DEFAULT layer
+        // Cube 1  DEFAULT layer
         // ============================================================
         m_cube1 = reg.CreateEntity();
         reg.Add<TagComponent>(m_cube1, "Cube 1");
@@ -145,7 +145,7 @@ public:
         reg.Add<ShadowCasterTag>(m_cube1);
 
         // ============================================================
-        // Cube 2 — FX layer
+        // Cube 2  FX layer
         // ============================================================
         m_cube2 = reg.CreateEntity();
         reg.Add<TagComponent>(m_cube2, "Cube 2");
@@ -172,7 +172,7 @@ public:
         reg.Add<ShadowCasterTag>(m_cube2);
 
         // ============================================================
-        // Boden — DEFAULT | REFLECTION
+        // Boden  DEFAULT | REFLECTION
         // ============================================================
         m_floor = reg.CreateEntity();
         reg.Add<TagComponent>(m_floor, "Floor");
@@ -218,7 +218,7 @@ public:
         {
             TransformComponent tc;
             tc.localPosition = { 20.0f, 60.0f, -20.0f };
-            tc.SetEulerDeg(-45.0f, -45.0f, 0.0f);
+            tc.SetEulerDeg(45.0f, 45.0f, 0.0f);
             reg.Add<TransformComponent>(m_sun, tc);
         }
         reg.Add<WorldTransformComponent>(m_sun);

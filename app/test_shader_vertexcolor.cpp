@@ -22,13 +22,13 @@ static SubmeshData MakeVertexColorCube()
     SubmeshData s = BuiltinMeshes::Cube();
     s.colors.resize(s.positions.size());
 
-    static const std::array<DirectX::XMFLOAT4, 6> faceColors = {
-        DirectX::XMFLOAT4{1,0,0,1},
-        DirectX::XMFLOAT4{0,1,0,1},
-        DirectX::XMFLOAT4{0,0,1,1},
-        DirectX::XMFLOAT4{1,1,0,1},
-        DirectX::XMFLOAT4{1,0,1,1},
-        DirectX::XMFLOAT4{0,1,1,1}
+    static const std::array<Float4, 6> faceColors = {
+        Float4{1,0,0,1},
+        Float4{0,1,0,1},
+        Float4{0,0,1,1},
+        Float4{1,1,0,1},
+        Float4{1,0,1,1},
+        Float4{0,1,1,1}
     };
 
     for (size_t face = 0; face < 6; ++face)
@@ -146,7 +146,7 @@ public:
 
 private:
     EntityID MakeEntity(const char* name, MeshHandle mesh, MaterialHandle mat,
-                        const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& scale)
+                        const Float3& pos, const Float3& scale)
     {
         Registry& reg = m_renderer.GetRegistry();
         EntityID e = reg.CreateEntity();

@@ -37,7 +37,8 @@ public:
         ResourceStore<MeshAssetResource, MeshTag>&            meshStore,
         ResourceStore<MaterialResource,  MaterialTag>&        matStore,
         const ShaderResolver&                                 resolveShader,
-        RenderQueue&                                          outQueue,
+        RenderQueue&                                          outOpaqueQueue,
+        RenderQueue&                                          outTransparentQueue,
         const RenderGatherOptions*                            options = nullptr) const;
 
     void GatherShadow(

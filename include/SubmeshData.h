@@ -3,8 +3,10 @@
 #include <vector>
 #include <cstdint>
 #include <cmath>
-#include <DirectXMath.h>
+#include "GDXMath.h"
 #include "GDXVertexFlags.h"
+
+using namespace GIDX;
 
 // ---------------------------------------------------------------------------
 // SubmeshData — CPU-Geometrie für einen Sub-Mesh-Slot.
@@ -21,16 +23,16 @@
 // ---------------------------------------------------------------------------
 struct SubmeshData
 {
-    std::vector<DirectX::XMFLOAT3> positions;
-    std::vector<DirectX::XMFLOAT3> normals;
-    std::vector<DirectX::XMFLOAT2> uv0;
-    std::vector<DirectX::XMFLOAT2> uv1;
-    std::vector<DirectX::XMFLOAT4> tangents;
-    std::vector<DirectX::XMFLOAT4> colors;
+    std::vector<GIDX::Float3> positions;
+    std::vector<GIDX::Float3> normals;
+    std::vector<GIDX::Float2> uv0;
+    std::vector<GIDX::Float2> uv1;
+    std::vector<GIDX::Float4> tangents;
+    std::vector<GIDX::Float4> colors;
     std::vector<uint32_t>          indices;
 
-    std::vector<DirectX::XMUINT4>  boneIndices;
-    std::vector<DirectX::XMFLOAT4> boneWeights;
+    std::vector<GIDX::UInt4>  boneIndices;
+    std::vector<GIDX::Float4> boneWeights;
 
     uint32_t VertexCount() const noexcept
     {
@@ -260,10 +262,10 @@ namespace BuiltinMeshes
         const float r = radius;
         const float k = 1.0f / std::sqrt(3.0f);
 
-        auto addFace = [&](const DirectX::XMFLOAT3& a,
-            const DirectX::XMFLOAT3& b,
-            const DirectX::XMFLOAT3& c,
-            const DirectX::XMFLOAT3& n)
+        auto addFace = [&](const Float3& a,
+            const Float3& b,
+            const Float3& c,
+            const Float3& n)
             {
                 const uint32_t base = static_cast<uint32_t>(s.positions.size());
 
@@ -284,12 +286,12 @@ namespace BuiltinMeshes
                 s.indices.push_back(base + 2);
             };
 
-        const DirectX::XMFLOAT3 T = { 0.0f,  r,    0.0f };
-        const DirectX::XMFLOAT3 D = { 0.0f, -r,    0.0f };
-        const DirectX::XMFLOAT3 R = { r,    0.0f,  0.0f };
-        const DirectX::XMFLOAT3 L = { -r,   0.0f,  0.0f };
-        const DirectX::XMFLOAT3 F = { 0.0f, 0.0f,  r };
-        const DirectX::XMFLOAT3 Ba = { 0.0f, 0.0f, -r };
+        const Float3 T = { 0.0f,  r,    0.0f };
+        const Float3 D = { 0.0f, -r,    0.0f };
+        const Float3 R = { r,    0.0f,  0.0f };
+        const Float3 L = { -r,   0.0f,  0.0f };
+        const Float3 F = { 0.0f, 0.0f,  r };
+        const Float3 Ba = { 0.0f, 0.0f, -r };
 
         // Oben
         addFace(T, F, R, { k,  k,  k });
@@ -320,26 +322,26 @@ namespace BuiltinMeshes
         const float h = size * 0.5f;
         const float hy = size * 0.5f;
 
-        const DirectX::XMFLOAT3 top = { 0.0f,  hy, 0.0f };
-        const DirectX::XMFLOAT3 bl = { -h, -hy, -h };
-        const DirectX::XMFLOAT3 br = { h, -hy, -h };
-        const DirectX::XMFLOAT3 fr = { h, -hy,  h };
-        const DirectX::XMFLOAT3 fl = { -h, -hy,  h };
+        const Float3 top = { 0.0f,  hy, 0.0f };
+        const Float3 bl = { -h, -hy, -h };
+        const Float3 br = { h, -hy, -h };
+        const Float3 fr = { h, -hy,  h };
+        const Float3 fl = { -h, -hy,  h };
 
-        auto normalize = [](float x, float y, float z) -> DirectX::XMFLOAT3
+        auto normalize = [](float x, float y, float z) -> Float3
             {
                 const float len = std::sqrt(x * x + y * y + z * z);
                 if (len <= 0.000001f) return { 0.0f, 1.0f, 0.0f };
                 return { x / len, y / len, z / len };
             };
 
-        auto addFace = [&](const DirectX::XMFLOAT3& a,
-            const DirectX::XMFLOAT3& b,
-            const DirectX::XMFLOAT3& c,
-            const DirectX::XMFLOAT3& n,
-            const DirectX::XMFLOAT2& uvA,
-            const DirectX::XMFLOAT2& uvB,
-            const DirectX::XMFLOAT2& uvC)
+        auto addFace = [&](const Float3& a,
+            const Float3& b,
+            const Float3& c,
+            const Float3& n,
+            const Float2& uvA,
+            const Float2& uvB,
+            const Float2& uvC)
             {
                 const uint32_t base = static_cast<uint32_t>(s.positions.size());
 

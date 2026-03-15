@@ -1,5 +1,6 @@
 #pragma once
-#include <DirectXMath.h>
+#include "GDXMath.h"
+#include "GDXMathHelpers.h"
 #include <cstdint>
 #include <array>
 
@@ -24,9 +25,9 @@ static constexpr uint32_t MAX_LIGHTS = 32u;
 // ---------------------------------------------------------------------------
 struct LightEntry
 {
-    DirectX::XMFLOAT4 position  = { 0.0f, 0.0f, 0.0f, 0.0f }; // xyz=pos, w: 0=dir, 1=point, 2=spot
-    DirectX::XMFLOAT4 direction = { 0.0f,-1.0f, 0.0f, 0.0f }; // xyz=Richtung, w=castShadows(0/1)
-    DirectX::XMFLOAT4 diffuse   = { 1.0f, 1.0f, 1.0f, 1.0f }; // rgb*intensity, a=radius
+    GIDX::Float4 position  = { 0.0f, 0.0f, 0.0f, 0.0f }; // xyz=pos, w: 0=dir, 1=point, 2=spot
+    GIDX::Float4 direction = { 0.0f,-1.0f, 0.0f, 0.0f }; // xyz=Richtung, w=castShadows(0/1)
+    GIDX::Float4 diffuse   = { 1.0f, 1.0f, 1.0f, 1.0f }; // rgb*intensity, a=radius
     float             radius         = 0.0f;
     float             intensity      = 1.0f;
     float             innerCosAngle  = 0.9659f;  // cos(15°) — Spot inner cone
@@ -40,12 +41,12 @@ struct LightEntry
 struct FrameData
 {
     // --- Camera ---
-    DirectX::XMFLOAT4X4 viewMatrix     = {};
-    DirectX::XMFLOAT4X4 projMatrix     = {};
-    DirectX::XMFLOAT4X4 viewProjMatrix = {};  // view * proj
-    DirectX::XMFLOAT3   cameraPos      = {};
+    GIDX::Float4x4 viewMatrix     = {};
+    GIDX::Float4x4 projMatrix     = {};
+    GIDX::Float4x4 viewProjMatrix = {};  // view * proj
+    GIDX::Float3   cameraPos      = {};
     float               _padCameraPos  = 0.0f;
-    DirectX::XMFLOAT3   cameraForward  = { 0.0f, 0.0f, 1.0f };
+    GIDX::Float3   cameraForward  = { 0.0f, 0.0f, 1.0f };
     uint32_t            cullMask       = 0xFFFFFFFFu;
 
     // --- Lights ---
@@ -55,11 +56,11 @@ struct FrameData
     // --- Scene Ambient — globale Grundhelligkeit, unabhängig von Lichtern ---
     // Wird einmal pro Frame gesetzt (z.B. von GDXECSRenderer oder der App).
     // Im Shader: ambient * albedo * ao als Basis-Term.
-    DirectX::XMFLOAT3 sceneAmbient = { 0.08f, 0.08f, 0.12f }; // kühles Standard-Ambient
+    GIDX::Float3 sceneAmbient = { 0.08f, 0.08f, 0.12f }; // kühles Standard-Ambient
     float             _padAmbient  = 0.0f;
 
     // --- Shadow (Directional Light) ---
-    DirectX::XMFLOAT4X4 shadowViewProjMatrix = {};
+    GIDX::Float4x4 shadowViewProjMatrix = {};
     bool                 hasShadowPass        = false;
     uint32_t             shadowCasterMask     = 0xFFFFFFFFu;
     uint32_t             lightAffectMask      = 0xFFFFFFFFu;
@@ -70,9 +71,9 @@ struct FrameData
 
     FrameData()
     {
-        DirectX::XMStoreFloat4x4(&viewMatrix,     DirectX::XMMatrixIdentity());
-        DirectX::XMStoreFloat4x4(&projMatrix,     DirectX::XMMatrixIdentity());
-        DirectX::XMStoreFloat4x4(&viewProjMatrix, DirectX::XMMatrixIdentity());
-        DirectX::XMStoreFloat4x4(&shadowViewProjMatrix, DirectX::XMMatrixIdentity());
+        viewMatrix = GIDX::Identity4x4();
+        projMatrix = GIDX::Identity4x4();
+        viewProjMatrix = GIDX::Identity4x4();
+        shadowViewProjMatrix = GIDX::Identity4x4();
     }
 };

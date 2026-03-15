@@ -6,7 +6,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <d3d11.h>
-#include <DirectXMath.h>
+#include "GDXMath.h"
+#include "GDXMathHelpers.h"
 #include <cstring>
 #include <cmath>
 
@@ -15,7 +16,7 @@
 
 using namespace DirectX;
 
-static constexpr float DEG2RAD = 3.14159265f / 180.0f;
+static constexpr float DEG2RAD = GIDX::Pi / 180.0f;
 
 bool GDXDX11LightSystem::Init(void* devicePtr)
 {
@@ -123,7 +124,7 @@ void GDXDX11LightSystem::Update(Registry& registry, FrameData& frame, void* ctxP
                     lc.shadowOrthoSize, lc.shadowOrthoSize,
                     lc.shadowNear, lc.shadowFar);
 
-                XMStoreFloat4x4(&frame.shadowViewProjMatrix,
+                GDXMathHelpers::StoreFloat4x4(frame.shadowViewProjMatrix,
                     XMMatrixMultiply(lightView, lightProj));
 
                 frame.hasShadowPass = true;

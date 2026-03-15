@@ -2,7 +2,8 @@
 
 #include "Registry.h"
 #include "FrameData.h"
-#include "RenderQueue.h"
+#include "ICommandList.h"
+#include "RenderCommand.h"
 #include "ResourceStore.h"
 #include "MeshAssetResource.h"
 #include "MaterialResource.h"
@@ -73,16 +74,16 @@ public:
     void UpdateFrameConstants(const FrameData& frame);
     void ExecuteQueue(
         Registry&                                            registry,
-        const RenderQueue&                                   queue,
-        ResourceStore<MeshAssetResource,  MeshTag>&         meshStore,
+        const ICommandList&                                  queue,
+        ResourceStore<MeshAssetResource,  MeshTag>&          meshStore,
         ResourceStore<MaterialResource,   MaterialTag>&      matStore,
-        ResourceStore<GDXShaderResource,  ShaderTag>&       shaderStore,
-        ResourceStore<GDXTextureResource, TextureTag>&      texStore,
+        ResourceStore<GDXShaderResource,  ShaderTag>&        shaderStore,
+        ResourceStore<GDXTextureResource, TextureTag>&       texStore,
         void* shadowSRV = nullptr);
 
     void ExecuteShadowQueue(
         Registry&                                   registry,
-        const RenderQueue&                          queue,
+        const ICommandList&                         queue,
         ResourceStore<MeshAssetResource, MeshTag>&  meshStore,
         ResourceStore<MaterialResource, MaterialTag>& matStore,
         ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,

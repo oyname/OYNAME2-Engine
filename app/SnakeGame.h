@@ -50,7 +50,7 @@ private:
     bool IsCellOccupiedBySnake(const Cell& c) const;
     bool IsOpposite(Direction a, Direction b) const;
     Cell StepFrom(const Cell& c, Direction dir) const;
-    DirectX::XMFLOAT3 CellToWorld(const Cell& c, float y = 0.0f) const;
+    Float3 CellToWorld(const Cell& c, float y = 0.0f) const;
     uint32_t NextRandom();
 
 private:

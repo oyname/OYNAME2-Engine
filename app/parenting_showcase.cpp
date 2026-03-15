@@ -283,8 +283,8 @@ private:
     EntityID MakeEntity(const char* name,
         MeshHandle                   mesh,
         MaterialHandle               mat,
-        const DirectX::XMFLOAT3& pos,
-        const DirectX::XMFLOAT3& scale,
+        const Float3& pos,
+        const Float3& scale,
         bool                         castShadows)
     {
         Registry& reg = m_renderer.GetRegistry();

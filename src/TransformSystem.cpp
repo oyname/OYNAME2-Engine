@@ -1,5 +1,6 @@
 #include "TransformSystem.h"
 #include "Components.h"
+#include "GDXMathHelpers.h"
 #include <vector>
 
 using namespace DirectX;
@@ -7,19 +8,19 @@ using namespace DirectX;
 // ---------------------------------------------------------------------------
 // ComputeLocalMatrix — baut XMFLOAT4X4 aus Position, Quaternion, Scale.
 // ---------------------------------------------------------------------------
-XMFLOAT4X4 TransformSystem::ComputeLocalMatrix(const TransformComponent& t)
+GIDX::Float4x4 TransformSystem::ComputeLocalMatrix(const TransformComponent& t)
 {
     // Scale → Rotation (Quaternion) → Translation: SRT-Matrixkette.
-    const XMVECTOR s = XMLoadFloat3(&t.localScale);
-    const XMVECTOR r = XMLoadFloat4(&t.localRotation);  // Quaternion
-    const XMVECTOR p = XMLoadFloat3(&t.localPosition);
+    const XMVECTOR s = GDXMathHelpers::LoadFloat3(t.localScale);
+    const XMVECTOR r = GDXMathHelpers::LoadFloat4(t.localRotation);  // Quaternion
+    const XMVECTOR p = GDXMathHelpers::LoadFloat3(t.localPosition);
 
     XMMATRIX m = XMMatrixScalingFromVector(s)
         * XMMatrixRotationQuaternion(r)
         * XMMatrixTranslationFromVector(p);
 
-    XMFLOAT4X4 result;
-    XMStoreFloat4x4(&result, m);
+    GIDX::Float4x4 result;
+    GDXMathHelpers::StoreFloat4x4(result, m);
     return result;
 }
 
@@ -30,9 +31,9 @@ void TransformSystem::UpdateRoot(TransformComponent& t, WorldTransformComponent&
 {
     wt.matrix = ComputeLocalMatrix(t);
 
-    XMMATRIX m = XMLoadFloat4x4(&wt.matrix);
+    XMMATRIX m = GDXMathHelpers::LoadFloat4x4(wt.matrix);
     XMMATRIX inv = XMMatrixInverse(nullptr, m);
-    XMStoreFloat4x4(&wt.inverse, inv);
+    GDXMathHelpers::StoreFloat4x4(wt.inverse, inv);
 
     t.dirty = false;
 }
@@ -43,16 +44,16 @@ void TransformSystem::UpdateRoot(TransformComponent& t, WorldTransformComponent&
 void TransformSystem::UpdateChild(TransformComponent& t, WorldTransformComponent& wt,
     const WorldTransformComponent& parentWT)
 {
-    XMFLOAT4X4 local = ComputeLocalMatrix(t);
+    GIDX::Float4x4 local = ComputeLocalMatrix(t);
 
-    XMMATRIX localM = XMLoadFloat4x4(&local);
-    XMMATRIX parentM = XMLoadFloat4x4(&parentWT.matrix);
+    XMMATRIX localM = GDXMathHelpers::LoadFloat4x4(local);
+    XMMATRIX parentM = GDXMathHelpers::LoadFloat4x4(parentWT.matrix);
     XMMATRIX worldM = XMMatrixMultiply(localM, parentM);
 
-    XMStoreFloat4x4(&wt.matrix, worldM);
+    GDXMathHelpers::StoreFloat4x4(wt.matrix, worldM);
 
     XMMATRIX inv = XMMatrixInverse(nullptr, worldM);
-    XMStoreFloat4x4(&wt.inverse, inv);
+    GDXMathHelpers::StoreFloat4x4(wt.inverse, inv);
 
     t.dirty = false;
 }

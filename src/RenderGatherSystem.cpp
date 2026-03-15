@@ -49,10 +49,12 @@ void RenderGatherSystem::Gather(
     ResourceStore<MeshAssetResource, MeshTag>&     meshStore,
     ResourceStore<MaterialResource,  MaterialTag>& matStore,
     const ShaderResolver&                          resolveShader,
-    RenderQueue&                                   outQueue,
+    RenderQueue&                                   outOpaqueQueue,
+    RenderQueue&                                   outTransparentQueue,
     const RenderGatherOptions*                     options) const
 {
-    outQueue.Clear();
+    outOpaqueQueue.Clear();
+    outTransparentQueue.Clear();
 
     registry.View<WorldTransformComponent,
                   MeshRefComponent,
@@ -105,14 +107,16 @@ void RenderGatherSystem::Gather(
                 return;
             }
 
-            outQueue.Submit(mr.mesh, matr.material, shader,
-                            mr.submeshIndex, entity, wt.matrix,
-                            pass, shaderSortID, materialSortID, depth,
-                            vis.receiveShadows,
-                            &bindings);
+            RenderQueue& targetQueue = transparent ? outTransparentQueue : outOpaqueQueue;
+            targetQueue.Submit(mr.mesh, matr.material, shader,
+                               mr.submeshIndex, entity, wt.matrix,
+                               pass, shaderSortID, materialSortID, depth,
+                               vis.receiveShadows,
+                               &bindings);
         });
 
-    outQueue.Sort();
+    outOpaqueQueue.Sort();
+    outTransparentQueue.Sort();
 }
 
 void RenderGatherSystem::GatherShadow(

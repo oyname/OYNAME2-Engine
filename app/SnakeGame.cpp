@@ -389,7 +389,7 @@ SnakeGame::Cell SnakeGame::StepFrom(const Cell& c, Direction dir) const
     return out;
 }
 
-DirectX::XMFLOAT3 SnakeGame::CellToWorld(const Cell& c, float y) const
+Float3 SnakeGame::CellToWorld(const Cell& c, float y) const
 {
     const float originX = -((BOARD_W - 1) * CELL_SIZE) * 0.5f;
     const float originZ = -((BOARD_H - 1) * CELL_SIZE) * 0.5f;

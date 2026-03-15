@@ -1,10 +1,11 @@
 #pragma once
+#include "ICommandList.h"
 #include "RenderCommand.h"
 
 #include <vector>
 #include <algorithm>
 
-struct RenderQueue
+struct RenderQueue : public ICommandList
 {
     std::vector<RenderCommand> commands;
 
@@ -17,7 +18,7 @@ struct RenderQueue
 
     void Submit(MeshHandle mesh, MaterialHandle material, ShaderHandle shader,
                 uint32_t submeshIdx, EntityID ownerEntity,
-                const DirectX::XMFLOAT4X4& worldMatrix,
+                const GIDX::Float4x4& worldMatrix,
                 RenderPass pass, uint32_t shaderSortID, uint32_t materialSortID,
                 float depth = 0.0f,
                 bool receiveShadows = true,
@@ -47,6 +48,8 @@ struct RenderQueue
             });
     }
 
-    size_t Count() const noexcept { return commands.size(); }
-    bool   Empty() const noexcept { return commands.empty(); }
+
+    const std::vector<RenderCommand>& GetCommands() const override { return commands; }
+    size_t Count() const noexcept override { return commands.size(); }
+    bool   Empty() const noexcept override { return commands.empty(); }
 };

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GDXMath.h"
 #include "SubmeshData.h"
 
 #include <algorithm>
@@ -8,10 +9,10 @@
 
 struct MeshBounds
 {
-    DirectX::XMFLOAT3 min = { 0, 0, 0 };
-    DirectX::XMFLOAT3 max = { 0, 0, 0 };
-    DirectX::XMFLOAT3 center = { 0, 0, 0 };
-    DirectX::XMFLOAT3 extent = { 0, 0, 0 };
+    Float3 min = { 0, 0, 0 };
+    Float3 max = { 0, 0, 0 };
+    Float3 center = { 0, 0, 0 };
+    Float3 extent = { 0, 0, 0 };
     float radius = 0.0f;
     bool valid = false;
 };
@@ -20,22 +21,58 @@ namespace MeshUtilities
 {
     namespace _detail
     {
-        inline DirectX::XMVECTOR Load3(const DirectX::XMFLOAT3& v)
-        {
-            return DirectX::XMLoadFloat3(&v);
-        }
-
-        inline DirectX::XMVECTOR SafeNormalize3(DirectX::XMVECTOR v, DirectX::XMVECTOR fallback)
-        {
-            const float lenSq = DirectX::XMVectorGetX(DirectX::XMVector3LengthSq(v));
-            if (lenSq <= 1e-12f)
-                return fallback;
-            return DirectX::XMVector3Normalize(v);
-        }
-
         inline bool NearlyZero(float v)
         {
             return std::fabs(v) <= 1e-8f;
+        }
+
+        inline Float3 SafeNormalize3(const Float3& v, const Float3& fallback)
+        {
+            return GDXMath::Normalize3(v, fallback);
+        }
+
+        inline float AreaSq(const Float3& p0, const Float3& p1, const Float3& p2)
+        {
+            const Float3 e1 = GDXMath::Subtract(p1, p0);
+            const Float3 e2 = GDXMath::Subtract(p2, p0);
+            const Float3 c = GDXMath::Cross(e1, e2);
+            return GDXMath::Dot3(c, c);
+        }
+
+        inline Float4x4 Inverse3x4(const Float4x4& m)
+        {
+            const float a00 = m._11, a01 = m._12, a02 = m._13;
+            const float a10 = m._21, a11 = m._22, a12 = m._23;
+            const float a20 = m._31, a21 = m._32, a22 = m._33;
+
+            const float c00 =  (a11 * a22 - a12 * a21);
+            const float c01 = -(a10 * a22 - a12 * a20);
+            const float c02 =  (a10 * a21 - a11 * a20);
+            const float c10 = -(a01 * a22 - a02 * a21);
+            const float c11 =  (a00 * a22 - a02 * a20);
+            const float c12 = -(a00 * a21 - a01 * a20);
+            const float c20 =  (a01 * a12 - a02 * a11);
+            const float c21 = -(a00 * a12 - a02 * a10);
+            const float c22 =  (a00 * a11 - a01 * a10);
+
+            const float det = a00 * c00 + a01 * c01 + a02 * c02;
+            if (std::fabs(det) <= 1e-12f)
+                return GDXMath::Identity4x4();
+
+            const float invDet = 1.0f / det;
+
+            Float4x4 inv{};
+            inv._11 = c00 * invDet; inv._12 = c10 * invDet; inv._13 = c20 * invDet; inv._14 = 0.0f;
+            inv._21 = c01 * invDet; inv._22 = c11 * invDet; inv._23 = c21 * invDet; inv._24 = 0.0f;
+            inv._31 = c02 * invDet; inv._32 = c12 * invDet; inv._33 = c22 * invDet; inv._34 = 0.0f;
+            inv._44 = 1.0f;
+
+            const Float3 t = { m._41, m._42, m._43 };
+            const Float3 invT = GDXMath::Scale3(GDXMath::TransformVector(t, inv), -1.0f);
+            inv._41 = invT.x;
+            inv._42 = invT.y;
+            inv._43 = invT.z;
+            return inv;
         }
     }
 
@@ -50,8 +87,8 @@ namespace MeshUtilities
         if (s.positions.empty())
             return b;
 
-        DirectX::XMFLOAT3 minV = s.positions[0];
-        DirectX::XMFLOAT3 maxV = s.positions[0];
+        Float3 minV = s.positions[0];
+        Float3 maxV = s.positions[0];
 
         for (const auto& p : s.positions)
         {
@@ -132,38 +169,37 @@ namespace MeshUtilities
         }
     }
 
-    inline void ApplyTransform(SubmeshData& s, const DirectX::XMMATRIX& transform)
+    inline void ApplyTransform(SubmeshData& s, const Float4x4& transform)
     {
-        const DirectX::XMMATRIX normalMatrix = DirectX::XMMatrixTranspose(DirectX::XMMatrixInverse(nullptr, transform));
+        const Float4x4 inverse = _detail::Inverse3x4(transform);
+        const Float4x4 normalMatrix = {
+            inverse._11, inverse._21, inverse._31, 0.0f,
+            inverse._12, inverse._22, inverse._32, 0.0f,
+            inverse._13, inverse._23, inverse._33, 0.0f,
+            0.0f,        0.0f,        0.0f,        1.0f
+        };
 
         for (auto& p : s.positions)
-        {
-            const DirectX::XMVECTOR v = DirectX::XMVector3TransformCoord(_detail::Load3(p), transform);
-            DirectX::XMStoreFloat3(&p, v);
-        }
+            p = GDXMath::TransformPoint(p, transform);
 
         if (s.HasNormals())
         {
-            const DirectX::XMVECTOR fallback = DirectX::XMVectorSet(0, 1, 0, 0);
             for (auto& n : s.normals)
-            {
-                DirectX::XMVECTOR v = DirectX::XMVector3TransformNormal(_detail::Load3(n), normalMatrix);
-                v = _detail::SafeNormalize3(v, fallback);
-                DirectX::XMStoreFloat3(&n, v);
-            }
+                n = _detail::SafeNormalize3(
+                    GDXMath::TransformVector(n, normalMatrix),
+                    { 0.0f, 1.0f, 0.0f });
         }
 
         if (s.HasTangents())
         {
-            const DirectX::XMVECTOR fallback = DirectX::XMVectorSet(1, 0, 0, 0);
             for (auto& t : s.tangents)
             {
-                DirectX::XMVECTOR tv = DirectX::XMVectorSet(t.x, t.y, t.z, 0.0f);
-                tv = DirectX::XMVector3TransformNormal(tv, normalMatrix);
-                tv = _detail::SafeNormalize3(tv, fallback);
-                t.x = DirectX::XMVectorGetX(tv);
-                t.y = DirectX::XMVectorGetY(tv);
-                t.z = DirectX::XMVectorGetZ(tv);
+                const Float3 tv = _detail::SafeNormalize3(
+                    GDXMath::TransformVector({ t.x, t.y, t.z }, normalMatrix),
+                    { 1.0f, 0.0f, 0.0f });
+                t.x = tv.x;
+                t.y = tv.y;
+                t.z = tv.z;
             }
         }
     }
@@ -172,12 +208,7 @@ namespace MeshUtilities
     {
         auto areaSq = [&](uint32_t i0, uint32_t i1, uint32_t i2) -> float
         {
-            const DirectX::XMVECTOR p0 = _detail::Load3(s.positions[i0]);
-            const DirectX::XMVECTOR p1 = _detail::Load3(s.positions[i1]);
-            const DirectX::XMVECTOR p2 = _detail::Load3(s.positions[i2]);
-            const DirectX::XMVECTOR e1 = DirectX::XMVectorSubtract(p1, p0);
-            const DirectX::XMVECTOR e2 = DirectX::XMVectorSubtract(p2, p0);
-            return DirectX::XMVectorGetX(DirectX::XMVector3LengthSq(DirectX::XMVector3Cross(e1, e2)));
+            return _detail::AreaSq(s.positions[i0], s.positions[i1], s.positions[i2]);
         };
 
         if (!s.indices.empty())
@@ -204,22 +235,17 @@ namespace MeshUtilities
         if (s.positions.empty())
             return;
 
-        s.normals.assign(s.positions.size(), DirectX::XMFLOAT3{ 0, 0, 0 });
+        s.normals.assign(s.positions.size(), Float3{ 0, 0, 0 });
 
         auto accumulate = [&](uint32_t i0, uint32_t i1, uint32_t i2)
         {
-            const DirectX::XMVECTOR p0 = _detail::Load3(s.positions[i0]);
-            const DirectX::XMVECTOR p1 = _detail::Load3(s.positions[i1]);
-            const DirectX::XMVECTOR p2 = _detail::Load3(s.positions[i2]);
-            const DirectX::XMVECTOR e1 = DirectX::XMVectorSubtract(p1, p0);
-            const DirectX::XMVECTOR e2 = DirectX::XMVectorSubtract(p2, p0);
-            const DirectX::XMVECTOR n = DirectX::XMVector3Cross(e1, e2);
+            const Float3 e1 = GDXMath::Subtract(s.positions[i1], s.positions[i0]);
+            const Float3 e2 = GDXMath::Subtract(s.positions[i2], s.positions[i0]);
+            const Float3 n = GDXMath::Cross(e1, e2);
 
             auto addTo = [&](uint32_t idx)
             {
-                DirectX::XMVECTOR a = _detail::Load3(s.normals[idx]);
-                a = DirectX::XMVectorAdd(a, n);
-                DirectX::XMStoreFloat3(&s.normals[idx], a);
+                s.normals[idx] = GDXMath::Add(s.normals[idx], n);
             };
 
             addTo(i0);
@@ -238,12 +264,8 @@ namespace MeshUtilities
                 accumulate(static_cast<uint32_t>(i + 0), static_cast<uint32_t>(i + 1), static_cast<uint32_t>(i + 2));
         }
 
-        const DirectX::XMVECTOR fallback = DirectX::XMVectorSet(0, 1, 0, 0);
         for (auto& n : s.normals)
-        {
-            DirectX::XMVECTOR v = _detail::SafeNormalize3(_detail::Load3(n), fallback);
-            DirectX::XMStoreFloat3(&n, v);
-        }
+            n = _detail::SafeNormalize3(n, { 0.0f, 1.0f, 0.0f });
     }
 
     inline void ComputeTangents(SubmeshData& s)
@@ -254,8 +276,8 @@ namespace MeshUtilities
         if (!s.HasNormals())
             ComputeNormals(s);
 
-        std::vector<DirectX::XMVECTOR> tan1(s.positions.size(), DirectX::XMVectorZero());
-        std::vector<DirectX::XMVECTOR> tan2(s.positions.size(), DirectX::XMVectorZero());
+        std::vector<Float3> tan1(s.positions.size(), Float3{ 0, 0, 0 });
+        std::vector<Float3> tan2(s.positions.size(), Float3{ 0, 0, 0 });
 
         auto accumulate = [&](uint32_t i0, uint32_t i1, uint32_t i2)
         {
@@ -283,23 +305,23 @@ namespace MeshUtilities
                 return;
 
             const float r = 1.0f / det;
-            const DirectX::XMVECTOR sdir = DirectX::XMVectorSet(
+            const Float3 sdir = {
                 (t2 * x1 - t1 * x2) * r,
                 (t2 * y1 - t1 * y2) * r,
-                (t2 * z1 - t1 * z2) * r,
-                0.0f);
-            const DirectX::XMVECTOR tdir = DirectX::XMVectorSet(
+                (t2 * z1 - t1 * z2) * r
+            };
+            const Float3 tdir = {
                 (s1 * x2 - s2 * x1) * r,
                 (s1 * y2 - s2 * y1) * r,
-                (s1 * z2 - s2 * z1) * r,
-                0.0f);
+                (s1 * z2 - s2 * z1) * r
+            };
 
-            tan1[i0] = DirectX::XMVectorAdd(tan1[i0], sdir);
-            tan1[i1] = DirectX::XMVectorAdd(tan1[i1], sdir);
-            tan1[i2] = DirectX::XMVectorAdd(tan1[i2], sdir);
-            tan2[i0] = DirectX::XMVectorAdd(tan2[i0], tdir);
-            tan2[i1] = DirectX::XMVectorAdd(tan2[i1], tdir);
-            tan2[i2] = DirectX::XMVectorAdd(tan2[i2], tdir);
+            tan1[i0] = GDXMath::Add(tan1[i0], sdir);
+            tan1[i1] = GDXMath::Add(tan1[i1], sdir);
+            tan1[i2] = GDXMath::Add(tan1[i2], sdir);
+            tan2[i0] = GDXMath::Add(tan2[i0], tdir);
+            tan2[i1] = GDXMath::Add(tan2[i1], tdir);
+            tan2[i2] = GDXMath::Add(tan2[i2], tdir);
         };
 
         if (!s.indices.empty())
@@ -313,24 +335,23 @@ namespace MeshUtilities
                 accumulate(static_cast<uint32_t>(i + 0), static_cast<uint32_t>(i + 1), static_cast<uint32_t>(i + 2));
         }
 
-        s.tangents.assign(s.positions.size(), DirectX::XMFLOAT4{ 1, 0, 0, 1 });
-        const DirectX::XMVECTOR fallbackT = DirectX::XMVectorSet(1, 0, 0, 0);
+        s.tangents.assign(s.positions.size(), Float4{ 1, 0, 0, 1 });
 
         for (size_t i = 0; i < s.positions.size(); ++i)
         {
-            const DirectX::XMVECTOR n = _detail::Load3(s.normals[i]);
-            const DirectX::XMVECTOR t = tan1[i];
+            const Float3 n = s.normals[i];
+            const Float3 t = tan1[i];
 
-            DirectX::XMVECTOR tangent = DirectX::XMVectorSubtract(t, DirectX::XMVectorScale(n, DirectX::XMVectorGetX(DirectX::XMVector3Dot(n, t))));
-            tangent = _detail::SafeNormalize3(tangent, fallbackT);
+            Float3 tangent = GDXMath::Subtract(t, GDXMath::Scale3(n, GDXMath::Dot3(n, t)));
+            tangent = _detail::SafeNormalize3(tangent, { 1.0f, 0.0f, 0.0f });
 
-            const DirectX::XMVECTOR bitangent = DirectX::XMVector3Cross(n, tangent);
-            const float handedness = (DirectX::XMVectorGetX(DirectX::XMVector3Dot(bitangent, tan2[i])) < 0.0f) ? -1.0f : 1.0f;
+            const Float3 bitangent = GDXMath::Cross(n, tangent);
+            const float handedness = (GDXMath::Dot3(bitangent, tan2[i]) < 0.0f) ? -1.0f : 1.0f;
 
             s.tangents[i] = {
-                DirectX::XMVectorGetX(tangent),
-                DirectX::XMVectorGetY(tangent),
-                DirectX::XMVectorGetZ(tangent),
+                tangent.x,
+                tangent.y,
+                tangent.z,
                 handedness
             };
         }

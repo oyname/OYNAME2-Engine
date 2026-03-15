@@ -53,6 +53,7 @@ public:
 
     void* ExecuteMainPass(Registry& registry,
                           const RenderQueue& opaqueQueue,
+                          const RenderQueue& transparentQueue,
                           ResourceStore<MeshAssetResource, MeshTag>& meshStore,
                           ResourceStore<MaterialResource, MaterialTag>& matStore,
                           ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
@@ -62,6 +63,7 @@ public:
                                   const RenderPassClearDesc& clearDesc,
                                   Registry& registry,
                                   const RenderQueue& opaqueQueue,
+                                  const RenderQueue& transparentQueue,
                                   ResourceStore<MeshAssetResource, MeshTag>& meshStore,
                                   ResourceStore<MaterialResource, MaterialTag>& matStore,
                                   ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,

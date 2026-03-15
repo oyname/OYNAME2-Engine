@@ -36,7 +36,7 @@ public:
         m_data.indices.reserve(indexCount);
     }
 
-    uint32_t AddVertex(const DirectX::XMFLOAT3& position)
+    uint32_t AddVertex(const Float3& position)
     {
         m_data.positions.push_back(position);
         m_lastVertex = static_cast<uint32_t>(m_data.positions.size() - 1u);
@@ -58,58 +58,58 @@ public:
         return static_cast<uint32_t>(m_data.indices.size());
     }
 
-    void SetNormal(const DirectX::XMFLOAT3& n) { SetNormal(m_lastVertex, n); }
-    void SetNormal(uint32_t vertexIndex, const DirectX::XMFLOAT3& n)
+    void SetNormal(const Float3& n) { SetNormal(m_lastVertex, n); }
+    void SetNormal(uint32_t vertexIndex, const Float3& n)
     {
         EnsureVertex(vertexIndex);
-        EnsureSize(m_data.normals, m_data.positions.size(), DirectX::XMFLOAT3{ 0, 1, 0 });
+        EnsureSize(m_data.normals, m_data.positions.size(), Float3{ 0, 1, 0 });
         m_data.normals[vertexIndex] = n;
     }
 
-    void SetUV0(const DirectX::XMFLOAT2& uv) { SetUV0(m_lastVertex, uv); }
-    void SetUV0(uint32_t vertexIndex, const DirectX::XMFLOAT2& uv)
+    void SetUV0(const Float2& uv) { SetUV0(m_lastVertex, uv); }
+    void SetUV0(uint32_t vertexIndex, const Float2& uv)
     {
         EnsureVertex(vertexIndex);
-        EnsureSize(m_data.uv0, m_data.positions.size(), DirectX::XMFLOAT2{ 0, 0 });
+        EnsureSize(m_data.uv0, m_data.positions.size(), Float2{ 0, 0 });
         m_data.uv0[vertexIndex] = uv;
     }
 
-    void SetUV1(const DirectX::XMFLOAT2& uv) { SetUV1(m_lastVertex, uv); }
-    void SetUV1(uint32_t vertexIndex, const DirectX::XMFLOAT2& uv)
+    void SetUV1(const Float2& uv) { SetUV1(m_lastVertex, uv); }
+    void SetUV1(uint32_t vertexIndex, const Float2& uv)
     {
         EnsureVertex(vertexIndex);
-        EnsureSize(m_data.uv1, m_data.positions.size(), DirectX::XMFLOAT2{ 0, 0 });
+        EnsureSize(m_data.uv1, m_data.positions.size(), Float2{ 0, 0 });
         m_data.uv1[vertexIndex] = uv;
     }
 
-    void SetColor(const DirectX::XMFLOAT4& color) { SetColor(m_lastVertex, color); }
-    void SetColor(uint32_t vertexIndex, const DirectX::XMFLOAT4& color)
+    void SetColor(const Float4& color) { SetColor(m_lastVertex, color); }
+    void SetColor(uint32_t vertexIndex, const Float4& color)
     {
         EnsureVertex(vertexIndex);
-        EnsureSize(m_data.colors, m_data.positions.size(), DirectX::XMFLOAT4{ 1, 1, 1, 1 });
+        EnsureSize(m_data.colors, m_data.positions.size(), Float4{ 1, 1, 1, 1 });
         m_data.colors[vertexIndex] = color;
     }
 
-    void SetTangent(const DirectX::XMFLOAT4& tangent) { SetTangent(m_lastVertex, tangent); }
-    void SetTangent(uint32_t vertexIndex, const DirectX::XMFLOAT4& tangent)
+    void SetTangent(const Float4& tangent) { SetTangent(m_lastVertex, tangent); }
+    void SetTangent(uint32_t vertexIndex, const Float4& tangent)
     {
         EnsureVertex(vertexIndex);
-        EnsureSize(m_data.tangents, m_data.positions.size(), DirectX::XMFLOAT4{ 1, 0, 0, 1 });
+        EnsureSize(m_data.tangents, m_data.positions.size(), Float4{ 1, 0, 0, 1 });
         m_data.tangents[vertexIndex] = tangent;
     }
 
-    void SetBoneData(const DirectX::XMUINT4& indices, const DirectX::XMFLOAT4& weights)
+    void SetBoneData(const UInt4& indices, const Float4& weights)
     {
         SetBoneData(m_lastVertex, indices, weights);
     }
 
     void SetBoneData(uint32_t vertexIndex,
-        const DirectX::XMUINT4& indices,
-        const DirectX::XMFLOAT4& weights)
+        const UInt4& indices,
+        const Float4& weights)
     {
         EnsureVertex(vertexIndex);
-        EnsureSize(m_data.boneIndices, m_data.positions.size(), DirectX::XMUINT4{ 0, 0, 0, 0 });
-        EnsureSize(m_data.boneWeights, m_data.positions.size(), DirectX::XMFLOAT4{ 1, 0, 0, 0 });
+        EnsureSize(m_data.boneIndices, m_data.positions.size(), UInt4{ 0, 0, 0, 0 });
+        EnsureSize(m_data.boneWeights, m_data.positions.size(), Float4{ 1, 0, 0, 0 });
         m_data.boneIndices[vertexIndex] = indices;
         m_data.boneWeights[vertexIndex] = weights;
     }

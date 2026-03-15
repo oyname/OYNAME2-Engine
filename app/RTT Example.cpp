@@ -18,7 +18,7 @@
 #include <cmath>
 
 // -----------------------------------------------------------------------------
-// Layer-Bits für diese Demo
+// Layer-Bits fr diese Demo
 // -----------------------------------------------------------------------------
 static constexpr uint32_t LAYER_RTT = 1u << 0;
 static constexpr uint32_t LAYER_MAIN = 1u << 1;
@@ -52,7 +52,7 @@ public:
         }
 
         // ================================================================
-        // Textur für linken Würfel
+        // Textur fr linken Wrfel
         // ================================================================
         TextureHandle hFaceTex = TextureHandle::Invalid();
 
@@ -220,7 +220,7 @@ public:
         m_renderer.SetSceneAmbient(0.9f, 0.9f, 0.9f);
 
         // ================================================================
-        // Linker Würfel — wird in RTT aufgenommen
+        // Linker Wrfel  wird in RTT aufgenommen
         // Layer: RTT
         // ================================================================
         m_cubeLeft = reg.CreateEntity();
@@ -248,7 +248,7 @@ public:
         reg.Add<ShadowCasterTag>(m_cubeLeft);
 
         // ================================================================
-        // Rechter Würfel — zeigt RTT-Textur
+        // Rechter Wrfel  zeigt RTT-Textur
         // Layer: MAIN
         // -> RTT-Kamera sieht ihn nicht mehr
         // ================================================================

@@ -17,37 +17,27 @@ static constexpr uint32_t LAYER_DEFAULT = 1u << 0;
 
 static void SetLookAt(
     TransformComponent& tc,
-    const DirectX::XMVECTOR& position,
-    const DirectX::XMVECTOR& target,
-    const DirectX::XMVECTOR& upVec = DirectX::XMVectorSet(0, 0, 1, 0))
+    const Float3& position,
+    const Float3& target,
+    const Float3& upVec = Float3{ 0.0f, 0.0f, 1.0f })
 {
-    using namespace DirectX;
+    Float3 forward = GIDX::Normalize3(GIDX::Subtract(target, position), { 0.0f, 0.0f, 1.0f });
+    Float3 up = GIDX::Normalize3(upVec, { 0.0f, 1.0f, 0.0f });
 
-    XMVECTOR forward = XMVector3Normalize(XMVectorSubtract(target, position));
-    XMVECTOR up = upVec;
-
-    float dot = fabsf(XMVectorGetX(XMVector3Dot(forward, up)));
+    float dot = std::fabs(GIDX::Dot3(forward, up));
     if (dot > 0.9999f)
     {
-        up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-        dot = fabsf(XMVectorGetX(XMVector3Dot(forward, up)));
+        up = { 0.0f, 0.0f, 1.0f };
+        dot = std::fabs(GIDX::Dot3(forward, up));
         if (dot > 0.9999f)
-            up = XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f);
+            up = { 0.0f, 1.0f, 0.0f };
     }
 
-    XMVECTOR right = XMVector3Normalize(XMVector3Cross(up, forward));
-    up = XMVector3Cross(forward, right);
+    Float3 right = GIDX::Normalize3(GIDX::Cross(up, forward), { 1.0f, 0.0f, 0.0f });
+    up = GIDX::Cross(forward, right);
 
-    DirectX::XMMATRIX rotMatrix;
-    rotMatrix.r[0] = XMVectorSetW(right, 0.0f);
-    rotMatrix.r[1] = XMVectorSetW(up, 0.0f);
-    rotMatrix.r[2] = XMVectorSetW(forward, 0.0f);
-    rotMatrix.r[3] = XMVectorSet(0.0f, 0.0f, 0.0f, 1.0f);
-
-    XMStoreFloat4(&tc.localRotation,
-        XMQuaternionNormalize(XMQuaternionRotationMatrix(rotMatrix)));
-
-    XMStoreFloat3(&tc.localPosition, position);
+    tc.localRotation = GIDX::QuaternionFromBasis(right, up, forward);
+    tc.localPosition = position;
     tc.dirty = true;
 }
 
@@ -106,7 +96,7 @@ int main()
 
         TransformComponent tc;
         tc.localPosition = { 0.0f, 0.0f, 0.0f };
-        tc.localScale = { 4.0f, 1.0f, 4.0f };
+        tc.localScale = { 8.0f, 1.0f, 8.0f };
         tc.SetEulerDeg(0.0f, 0.0f, 0.0f);
         reg.Add<TransformComponent>(cube, tc);
 
@@ -119,18 +109,17 @@ int main()
         vc.active = true;
         vc.layerMask = LAYER_DEFAULT;
         vc.castShadows = false;
-        vc.receiveShadows = true;
         reg.Add<VisibilityComponent>(cube, vc);
     }
 
-    // kleiner Würfel bei -4,2,-4 ohne Schatten
+    // kleiner Wrfel bei -4,2,-4 ohne Schatten
     {
         EntityID cubeSmall = reg.CreateEntity();
         reg.Add<TagComponent>(cubeSmall, "SmallCube");
     
         TransformComponent tc;
-        tc.localPosition = { -1.0f, 2.0f, -1.0f };
-        tc.localScale = { 1.0f, 1.0f, 1.0f };
+        tc.localPosition = { -1.0f, 2.0f, -2.0f };
+        tc.localScale = { 2.0f, 2.0f, 2.0f };
         tc.SetEulerDeg(0.0f, 0.0f, 0.0f);
         reg.Add<TransformComponent>(cubeSmall, tc);
     

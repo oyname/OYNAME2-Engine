@@ -23,20 +23,20 @@ static bool FileExists(const std::wstring& path)
 }
 
 // -----------------------------------------------------------------------------
-// Würfel mit uv0 + uv1
+// Wrfel mit uv0 + uv1
 //
 // uv0: normale Face-UVs 0..1
-// uv1: Detail-UVs stärker gekachelt
+// uv1: Detail-UVs strker gekachelt
 // -----------------------------------------------------------------------------
 static SubmeshData BuildCubeUV0UV1(float detailTile = 1.0f)
 {
     SubmeshData s;
 
-    auto addFace = [&](DirectX::XMFLOAT3 bl,
-        DirectX::XMFLOAT3 tl,
-        DirectX::XMFLOAT3 tr,
-        DirectX::XMFLOAT3 br,
-        DirectX::XMFLOAT3 n)
+    auto addFace = [&](Float3 bl,
+        Float3 tl,
+        Float3 tr,
+        Float3 br,
+        Float3 n)
         {
             const uint32_t base = static_cast<uint32_t>(s.positions.size());
 
@@ -48,13 +48,13 @@ static SubmeshData BuildCubeUV0UV1(float detailTile = 1.0f)
             for (int i = 0; i < 4; ++i)
                 s.normals.push_back(n);
 
-            // uv0 — Basis-Textur (0..1 pro Face)
+            // uv0  Basis-Textur (0..1 pro Face)
             s.uv0.push_back({ 0.0f, 1.0f });
             s.uv0.push_back({ 0.0f, 0.0f });
             s.uv0.push_back({ 1.0f, 0.0f });
             s.uv0.push_back({ 1.0f, 1.0f });
 
-            // uv1 — Detail-Textur (stärker gekachelt)
+            // uv1  Detail-Textur (strker gekachelt)
             s.uv1.push_back({ 0.0f,       detailTile });
             s.uv1.push_back({ 0.0f,       0.0f });
             s.uv1.push_back({ detailTile, 0.0f });
@@ -94,7 +94,7 @@ public:
         Registry& reg = m_renderer.GetRegistry();
 
         // ---------------------------------------------------------------------
-        // Mesh — uv0 + uv1, detailTile=4 (UV1 ist 4× stärker gekachelt)
+        // Mesh  uv0 + uv1, detailTile=4 (UV1 ist 4 strker gekachelt)
         // ---------------------------------------------------------------------
         {
             MeshAssetResource asset;
@@ -124,7 +124,7 @@ public:
         //
         // MF_USE_DETAIL_MAP aktiviert den UV1-Pfad im Pixel Shader.
         // detailTex landet auf t4, wird mit UV1 abgetastet (2x Multiply).
-        // Kein echtes Detail-Bild vorhanden? Flag einfach weglassen —
+        // Kein echtes Detail-Bild vorhanden? Flag einfach weglassen 
         // UV1 wird dann vom Executor still auf UV0 aliasiert, kein Crash.
         // ---------------------------------------------------------------------
         {
@@ -137,8 +137,8 @@ public:
             {
                 mat.SetTexture(MaterialTextureSlot::Detail, firstDetail, MaterialTextureUVSet::UV1);
                 mat.SetFlag(MF_USE_DETAIL_MAP, true);
-                // UV1-Tiling wird hier über den cbuffer unabhängig von den
-                // Vertex-UVs zusätzlich skaliert (1:1 = kein Extra-Tiling).
+                // UV1-Tiling wird hier ber den cbuffer unabhngig von den
+                // Vertex-UVs zustzlich skaliert (1:1 = kein Extra-Tiling).
                 mat.SetDetailTiling(1.0f, 1.0f);
             }
 
@@ -200,7 +200,7 @@ public:
         m_renderer.SetSceneAmbient(0.08f, 0.08f, 0.10f);
 
         // ---------------------------------------------------------------------
-        // Würfel
+        // Wrfel
         // ---------------------------------------------------------------------
         m_cube = reg.CreateEntity();
         reg.Add<TagComponent>(m_cube, "UV1 Detail Cube");
