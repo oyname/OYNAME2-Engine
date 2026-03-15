@@ -782,6 +782,14 @@ namespace Engine
         vc->layerMask = layerMask;
     }
 
+    inline void EntityReceiveShadows(LPENTITY e, bool enabled)
+    {
+        if (!_::renderer) return;
+        auto* vc = _::renderer->GetRegistry().Get<VisibilityComponent>(e);
+        if (!vc) return;
+        vc->receiveShadows = enabled;
+    }
+
 
     // ===========================================================================
     // SZENE

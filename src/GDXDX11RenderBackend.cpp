@@ -406,8 +406,19 @@ void GDXDX11RenderBackend::ExecuteShadowPass(
     ResourceStore<GDXTextureResource, TextureTag>& texStore,
     const FrameData& frame)
 {
-    if (!m_shadowMap.IsReady() || shadowQueue.Empty()) return;
+    if (!m_shadowMap.IsReady())
+    {
+        m_hasShadowPass = false;
+        return;
+    }
 
+    if (shadowQueue.Empty())
+    {
+        m_hasShadowPass = false;
+        return;
+    }
+
+    m_hasShadowPass = true;
     m_shadowMap.BeginPass(m_ctx);
     m_executor.ExecuteShadowQueue(registry, shadowQueue, meshStore, matStore, shaderStore, texStore);
     m_shadowMap.EndPass(m_ctx);

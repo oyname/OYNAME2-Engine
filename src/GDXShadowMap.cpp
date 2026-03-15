@@ -75,6 +75,10 @@ void GDXShadowMap::BeginPass(ID3D11DeviceContext* ctx)
 {
     if (!ctx || !m_shadowDSV) return;
 
+    // Wichtig: Shadow-SRV vor Rebind als DSV lösen, sonst bleibt der Depth-Pass in DX11 ungültig.
+    ID3D11ShaderResourceView* nullSRV = nullptr;
+    ctx->PSSetShaderResources(16, 1, &nullSRV);
+
     // Kein RTV beim Shadow Pass — nur Depth
     ID3D11RenderTargetView* nullRTV = nullptr;
     ctx->OMSetRenderTargets(1, &nullRTV, m_shadowDSV);

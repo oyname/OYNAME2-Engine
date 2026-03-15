@@ -544,32 +544,36 @@ void GDXDX11RenderExecutor::ExecuteQueue(
 
         BindSkinningPalette(registry, cmd, *shader);
 
-        // --- Material + Texturen (State-Batching) ---------------------------
+        // --- Material + Texturen -------------------------------------------
         if (cmd.material != m_lastMaterial)
         {
-            // cbuffer b2
-            if (mat->gpuConstantBuffer)
-            {
-                auto* cb = static_cast<ID3D11Buffer*>(mat->gpuConstantBuffer);
-                if (mat->cpuDirty)
-                {
-                    D3D11_MAPPED_SUBRESOURCE m = {};
-                    if (SUCCEEDED(m_context->Map(cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)))
-                    {
-                        std::memcpy(m.pData, &mat->data, sizeof(MaterialData));
-                        m_context->Unmap(cb, 0);
-                    }
-                    mat->cpuDirty = false;
-                }
-                m_context->PSSetConstantBuffers(2, 1, &cb);
-            }
-
-            // Texturen t0-t3
+            // Texturen t0-t3 nur bei Materialwechsel
             BindMaterialTextures(cmd, *mat, texStore,
                 defaultWhiteTex, defaultNormalTex,
                 defaultORMTex, defaultBlackTex);
 
             m_lastMaterial = cmd.material;
+        }
+
+        // cbuffer b2: pro Draw aktualisieren, damit receiveShadows pro Entity wirkt
+        if (mat->gpuConstantBuffer)
+        {
+            auto* cb = static_cast<ID3D11Buffer*>(mat->gpuConstantBuffer);
+            MaterialData drawData = mat->data;
+            const bool materialReceive = (drawData.receiveShadows > 0.5f);
+            drawData.receiveShadows = (materialReceive && cmd.receiveShadows) ? 1.0f : 0.0f;
+
+            D3D11_MAPPED_SUBRESOURCE m = {};
+            if (SUCCEEDED(m_context->Map(cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)))
+            {
+                std::memcpy(m.pData, &drawData, sizeof(MaterialData));
+                m_context->Unmap(cb, 0);
+            }
+            m_context->PSSetConstantBuffers(2, 1, &cb);
+
+            // CPU-Material bleibt unabhängig davon synchron, damit Tools/Editor den echten Materialzustand behalten.
+            if (mat->cpuDirty)
+                mat->cpuDirty = false;
         }
 
         // --- Entity cbuffer b0 ----------------------------------------------

@@ -108,6 +108,7 @@ void RenderGatherSystem::Gather(
             outQueue.Submit(mr.mesh, matr.material, shader,
                             mr.submeshIndex, entity, wt.matrix,
                             pass, shaderSortID, materialSortID, depth,
+                            vis.receiveShadows,
                             &bindings);
         });
 
@@ -130,14 +131,12 @@ void RenderGatherSystem::GatherShadow(
     registry.View<WorldTransformComponent,
                   MeshRefComponent,
                   MaterialRefComponent,
-                  VisibilityComponent,
-                  ShadowCasterTag>(
+                  VisibilityComponent>(
         [&](EntityID entity,
             WorldTransformComponent& wt,
             MeshRefComponent&        mr,
             MaterialRefComponent&    matr,
-            VisibilityComponent&     vis,
-            ShadowCasterTag&)
+            VisibilityComponent&     vis)
         {
             if (!vis.active || !vis.castShadows) return;
             if ((vis.layerMask & frame.cullMask) == 0u) return;
@@ -168,6 +167,7 @@ void RenderGatherSystem::GatherShadow(
                                   RenderPass::Shadow,
                                   shader.Index() & 0x3FFFu,
                                   0u, 0.0f,
+                                  true,
                                   &bindings);
         });
 

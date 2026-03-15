@@ -26,6 +26,7 @@ struct RenderCommand
     ResourceBindingSet  resourceBindings{};
 
     uint64_t sortKey = 0ull;
+    bool           receiveShadows = true;
 
     static uint64_t MakeSortKey(RenderPass pass,
                                  uint32_t shaderSortID,

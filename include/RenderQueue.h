@@ -20,6 +20,7 @@ struct RenderQueue
                 const DirectX::XMFLOAT4X4& worldMatrix,
                 RenderPass pass, uint32_t shaderSortID, uint32_t materialSortID,
                 float depth = 0.0f,
+                bool receiveShadows = true,
                 const ResourceBindingSet* resourceBindings = nullptr)
     {
         RenderCommand cmd;
@@ -32,6 +33,7 @@ struct RenderQueue
         cmd.worldMatrix  = worldMatrix;
         if (resourceBindings)
             cmd.resourceBindings = *resourceBindings;
+        cmd.receiveShadows = receiveShadows;
         cmd.SetSortKey(pass, shaderSortID, materialSortID, depth);
         commands.push_back(cmd);
     }

@@ -118,32 +118,33 @@ int main()
         vc.visible = true;
         vc.active = true;
         vc.layerMask = LAYER_DEFAULT;
-        vc.castShadows = true;
+        vc.castShadows = false;
+        vc.receiveShadows = true;
         reg.Add<VisibilityComponent>(cube, vc);
     }
 
     // kleiner Würfel bei -4,2,-4 ohne Schatten
-    //{
-    //    EntityID cubeSmall = reg.CreateEntity();
-    //    reg.Add<TagComponent>(cubeSmall, "SmallCube");
-    //
-    //    TransformComponent tc;
-    //    tc.localPosition = { -2.0f, 2.0f, -2.0f };
-    //    tc.localScale = { 1.0f, 1.0f, 1.0f };
-    //    tc.SetEulerDeg(0.0f, 0.0f, 0.0f);
-    //    reg.Add<TransformComponent>(cubeSmall, tc);
-    //
-    //    reg.Add<WorldTransformComponent>(cubeSmall);
-    //    reg.Add<MeshRefComponent>(cubeSmall, cubeMesh, 0u);
-    //    reg.Add<MaterialRefComponent>(cubeSmall, whiteMaterial);
-    //
-    //    VisibilityComponent vc;
-    //    vc.visible = true;
-    //    vc.active = true;
-    //    vc.layerMask = LAYER_DEFAULT;
-    //    vc.castShadows = false;
-    //    reg.Add<VisibilityComponent>(cubeSmall, vc);
-    //}
+    {
+        EntityID cubeSmall = reg.CreateEntity();
+        reg.Add<TagComponent>(cubeSmall, "SmallCube");
+    
+        TransformComponent tc;
+        tc.localPosition = { -1.0f, 2.0f, -1.0f };
+        tc.localScale = { 1.0f, 1.0f, 1.0f };
+        tc.SetEulerDeg(0.0f, 0.0f, 0.0f);
+        reg.Add<TransformComponent>(cubeSmall, tc);
+    
+        reg.Add<WorldTransformComponent>(cubeSmall);
+        reg.Add<MeshRefComponent>(cubeSmall, cubeMesh, 0u);
+        reg.Add<MaterialRefComponent>(cubeSmall, whiteMaterial);
+    
+        VisibilityComponent vc;
+        vc.visible = true;
+        vc.active = true;
+        vc.layerMask = LAYER_DEFAULT;
+        vc.castShadows = true;
+        reg.Add<VisibilityComponent>(cubeSmall, vc);
+    }
 
     // Camera at 0,10,0 looking at scene origin
     {
@@ -182,7 +183,7 @@ int main()
             lc.kind = LightKind::Directional;
             lc.diffuseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
             lc.intensity = 1.5f;
-            lc.castShadows = false;
+            lc.castShadows = true;
             reg.Add<LightComponent>(light, lc);
         }
         {

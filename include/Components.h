@@ -239,10 +239,12 @@ struct VisibilityComponent
     bool     active = true;
     uint32_t layerMask = 0x00000001u;  // LAYER_DEFAULT
 
-    // Schatten werfen: RenderGatherSystem liest dieses Flag um ShadowCasterTag zu ersetzen.
-    // Schatten empfangen: liegt in MaterialData.receiveShadows (float, direkt im Shader).
-    // → kein receiveShadows hier, verhindert die doppelte inkonsistente Logik.
+    // Schatten werfen: kommt in den Shadow-Pass.
     bool castShadows = true;
+
+    // Schatten empfangen: pro Entity. Standard = true.
+    // Wird im Main-Pass mit MaterialData.receiveShadows kombiniert.
+    bool receiveShadows = true;
 
     VisibilityComponent() = default;
 };
@@ -347,6 +349,6 @@ struct LightComponent
 // ===========================================================================
 // ShadowCasterTag — Marker: diese Entity wirft Schatten.
 //
-// ShadowGatherSystem filtert: View<WorldTransformComponent, MeshRefComponent, ShadowCasterTag>
+// Legacy-Marker. Neuer Shadow-Gather filtert über VisibilityComponent.castShadows.
 // ===========================================================================
 struct ShadowCasterTag {};
