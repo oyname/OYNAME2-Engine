@@ -446,6 +446,9 @@
     <ClInclude Include="..\include\GDXMathHelpers.h">
       <Filter>util</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\GDXResourceBinding.h">
+      <Filter>engine</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Text Include="..\shader\ECSPixelShader.hlsl">

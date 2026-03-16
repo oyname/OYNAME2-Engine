@@ -24,6 +24,30 @@ bool GDXTextureLoader_Create1x1(ID3D11Device*, uint8_t, uint8_t, uint8_t, uint8_
 
 namespace
 {
+    ResourceBindingSet BuildPassBindingSet(bool includeShadowMap, void* shadowSrv)
+    {
+        ResourceBindingSet set{};
+        set.layoutKey = 0u;
+
+        ConstantBufferBindingDesc frameCB{};
+        frameCB.semantic = GDXShaderConstantBufferSlot::Frame;
+        frameCB.scope = GDXBindingScope::Pass;
+        frameCB.enabled = true;
+        set.AddConstantBufferBinding(frameCB);
+
+        if (includeShadowMap)
+        {
+            ShaderResourceBindingDesc shadowTex{};
+            shadowTex.semantic = ShaderResourceSemantic::ShadowMap;
+            shadowTex.scope = GDXBindingScope::Pass;
+            shadowTex.enabled = true;
+            shadowTex.nativeView = shadowSrv;
+            set.AddTextureBinding(shadowTex);
+        }
+        set.bindingKey = ResourceBindingSet::MakeStableKey(set);
+        return set;
+    }
+
     void ExecuteMainPassCommon(
         ID3D11DeviceContext* ctx,
         ID3D11RasterizerState* rasterizerState,
@@ -47,18 +71,19 @@ namespace
 
         const float bf[4] = { 0,0,0,0 };
         void* shadowSrv = (hasShadowPass && shadowMap.IsReady()) ? shadowMap.GetSRV() : nullptr;
+        const ResourceBindingSet passBindings = BuildPassBindingSet(shadowSrv != nullptr, shadowSrv);
 
         ctx->RSSetState(rasterizerState);
         ctx->OMSetDepthStencilState(depthStencilState, 0u);
         ctx->OMSetBlendState(blendState, bf, 0xFFFFFFFF);
         samplerCache.BindAll(ctx);
         if (!opaqueQueue.Empty())
-            executor.ExecuteQueue(registry, opaqueQueue, meshStore, matStore, shaderStore, texStore, shadowSrv);
+            executor.ExecuteQueue(registry, opaqueQueue, meshStore, matStore, shaderStore, texStore, &passBindings, shadowSrv);
 
         ctx->OMSetDepthStencilState(depthStateNoWrite, 0u);
         ctx->OMSetBlendState(blendStateAlpha, bf, 0xFFFFFFFF);
         if (!transparentQueue.Empty())
-            executor.ExecuteQueue(registry, transparentQueue, meshStore, matStore, shaderStore, texStore, shadowSrv);
+            executor.ExecuteQueue(registry, transparentQueue, meshStore, matStore, shaderStore, texStore, &passBindings, shadowSrv);
 
         ctx->OMSetDepthStencilState(depthStencilState, 0u);
         ctx->OMSetBlendState(blendState, bf, 0xFFFFFFFF);
@@ -191,7 +216,7 @@ bool GDXDX11RenderBackend::Initialize(ResourceStore<GDXTextureResource, TextureT
     m_executor.defaultBlackTex = m_defaultTextures.black;
 
     // Rasterizer States nach Init() übergeben (CreateRenderStates läuft vorher)
-    m_executor.SetRasterizerStates(m_rasterizerState, m_rasterizerStateNoCull);
+    m_executor.SetRasterizerStates(m_rasterizerState, m_rasterizerStateNoCull, m_depthStencilState, m_depthStateNoWrite, m_blendState, m_blendStateAlpha);
     return true;
 }
 
@@ -410,7 +435,8 @@ void GDXDX11RenderBackend::ExecuteShadowPass(
 
     m_hasShadowPass = true;
     m_shadowMap.BeginPass(m_ctx);
-    m_executor.ExecuteShadowQueue(registry, shadowQueue, meshStore, matStore, shaderStore, texStore);
+    const ResourceBindingSet passBindings = BuildPassBindingSet(false, nullptr);
+    m_executor.ExecuteShadowQueue(registry, shadowQueue, meshStore, matStore, shaderStore, texStore, &passBindings);
     m_shadowMap.EndPass(m_ctx);
 
     auto* rtv = static_cast<ID3D11RenderTargetView*>(m_context->GetRenderTarget());

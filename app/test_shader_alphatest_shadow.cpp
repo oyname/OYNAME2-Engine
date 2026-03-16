@@ -136,11 +136,10 @@ public:
 
         Debug::Log("alphatest_shadow_test: alpha_mask.png in ..//media legen; ESC beendet");
 
-        {
-            VisibilityComponent vis;
-            vis.castShadows = true;
-            reg.Add<VisibilityComponent>(m_cutout, vis);
-        }
+        m_spin = 180.0f;
+
+        if (auto* tc = reg.Get<TransformComponent>(m_cutout))
+            tc->SetEulerDeg(0.0f, m_spin, 0.0f);
 
     }
 

@@ -71,11 +71,11 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <IncludePath>../include;$(IncludePath)</IncludePath>
-    <IntDir>$(ProjectGIDX)\$(Configuration)\</IntDir>
+    <IntDir>$(Configuration)\$(ProjectName)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <IncludePath>../include;$(IncludePath)</IncludePath>
-    <IntDir>$(ProjectGIDX)\$(Configuration)\</IntDir>
+    <IntDir>$(Configuration)\$(ProjectName)\</IntDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -247,6 +247,7 @@
     <ClInclude Include="..\include\GDXOpenGLRenderer.h" />
     <ClInclude Include="..\include\GDXPipelineState.h" />
     <ClInclude Include="..\include\GDXRenderTargetResource.h" />
+    <ClInclude Include="..\include\GDXResourceBinding.h" />
     <ClInclude Include="..\include\GDXShaderLayout.h" />
     <ClInclude Include="..\include\GDXShaderResource.h" />
     <ClInclude Include="..\include\GDXShadowMap.h" />

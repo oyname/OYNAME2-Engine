@@ -92,15 +92,22 @@ namespace GDXShaderLayouts
         return l;
     }
 
-    inline GDXShaderLayout BuildShadow(uint32_t vertexFlags, bool supportsSkinning) noexcept
+    inline GDXShaderLayout BuildShadow(uint32_t vertexFlags, bool supportsSkinning, bool alphaTest) noexcept
     {
         GDXShaderLayout l{};
         l.vertexFormat = GDXVertexFormat::FromFlags(vertexFlags);
         l.AddConstantBuffer(GDXShaderConstantBufferSlot::Entity, 0u, 255u);
         l.AddConstantBuffer(GDXShaderConstantBufferSlot::Frame, 1u, 1u);
-        l.AddConstantBuffer(GDXShaderConstantBufferSlot::Material, 255u, 2u);
+
+        if (alphaTest)
+        {
+            l.AddConstantBuffer(GDXShaderConstantBufferSlot::Material, 255u, 2u);
+            l.AddTexture(GDXShaderTextureSemantic::Albedo, 0u);
+        }
+
         if (supportsSkinning)
             l.AddConstantBuffer(GDXShaderConstantBufferSlot::Skin, 4u, 255u);
+
         l.depthOnly = true;
         return l;
     }

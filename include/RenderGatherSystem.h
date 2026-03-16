@@ -32,21 +32,23 @@ public:
     using ShaderResolver = std::function<ShaderHandle(RenderPass, const SubmeshData&, const MaterialResource&)>;
 
     void Gather(
-        Registry&                                             registry,
-        const FrameData&                                      frame,
-        ResourceStore<MeshAssetResource, MeshTag>&            meshStore,
-        ResourceStore<MaterialResource,  MaterialTag>&        matStore,
-        const ShaderResolver&                                 resolveShader,
-        RenderQueue&                                          outOpaqueQueue,
-        RenderQueue&                                          outTransparentQueue,
-        const RenderGatherOptions*                            options = nullptr) const;
+        Registry& registry,
+        const FrameData& frame,
+        ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+        ResourceStore<MaterialResource, MaterialTag>& matStore,
+        ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+        const ShaderResolver& resolveShader,
+        RenderQueue& outOpaqueQueue,
+        RenderQueue& outTransparentQueue,
+        const RenderGatherOptions* options) const;
 
     void GatherShadow(
-        Registry&                                             registry,
-        const FrameData&                                      frame,
-        ResourceStore<MeshAssetResource, MeshTag>&            meshStore,
-        ResourceStore<MaterialResource,  MaterialTag>&        matStore,
-        const ShaderResolver&                                 resolveShader,
-        RenderQueue&                                          outShadowQueue,
-        const RenderGatherOptions*                            options = nullptr) const;
+        Registry& registry,
+        const FrameData& frame,
+        ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+        ResourceStore<MaterialResource, MaterialTag>& matStore,
+        ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+        const ShaderResolver& resolveShader,
+        RenderQueue& outShadowQueue,
+        const RenderGatherOptions* options) const;
 };

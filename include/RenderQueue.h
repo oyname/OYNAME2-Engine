@@ -19,10 +19,11 @@ struct RenderQueue : public ICommandList
     void Submit(MeshHandle mesh, MaterialHandle material, ShaderHandle shader,
                 uint32_t submeshIdx, EntityID ownerEntity,
                 const GIDX::Float4x4& worldMatrix,
-                RenderPass pass, uint32_t shaderSortID, uint32_t materialSortID,
+                RenderPass pass, uint32_t shaderSortID, uint32_t pipelineSortID, uint32_t materialSortID,
                 float depth = 0.0f,
                 bool receiveShadows = true,
-                const ResourceBindingSet* resourceBindings = nullptr)
+                const ResourceBindingSet* resourceBindings = nullptr,
+                const GDXPipelineStateDesc* pipelineState = nullptr)
     {
         RenderCommand cmd;
         cmd.mesh         = mesh;
@@ -34,8 +35,18 @@ struct RenderQueue : public ICommandList
         cmd.worldMatrix  = worldMatrix;
         if (resourceBindings)
             cmd.resourceBindings = *resourceBindings;
+        if (pipelineState)
+        {
+            cmd.pipelineState = *pipelineState;
+            cmd.pipelineStateKey = GDXPipelineStateKey::FromDesc(*pipelineState);
+        }
+        else
+        {
+            cmd.pipelineState = {};
+            cmd.pipelineStateKey = GDXPipelineStateKey::FromDesc(cmd.pipelineState);
+        }
         cmd.receiveShadows = receiveShadows;
-        cmd.SetSortKey(pass, shaderSortID, materialSortID, depth);
+        cmd.SetSortKey(pass, shaderSortID, pipelineSortID, materialSortID, depth);
         commands.push_back(cmd);
     }
 

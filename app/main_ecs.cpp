@@ -22,7 +22,7 @@ int main()
     desc.height = 768;
     desc.title = "OYNAME2 Engine - ECS Render Test | ESC: Beenden | C: Kamera-Orbit";
     desc.resizable = true;
-    desc.borderless = false;
+    desc.borderless = true;
 
     auto windowOwned = std::make_unique<GDXWin32Window>(desc, events);
     if (!windowOwned->Create())

@@ -134,6 +134,64 @@ void GDXDX11MeshUploader::Release(MeshAssetResource& mesh)
 // ===========================================================================
 // GDXDX11RenderExecutor
 // ===========================================================================
+uint64_t GDXDX11RenderExecutor::MakeGraphicsPipelineCacheKey(ShaderHandle shader, const GDXPipelineStateDesc& state) const noexcept
+{
+    GDXGraphicsPipelineDesc desc{};
+    desc.shader = shader;
+    desc.state = state;
+    desc.colorFormat = 0u;
+    desc.depthFormat = 0u;
+    return desc.MakeKey();
+}
+
+void GDXDX11RenderExecutor::InvalidateStateCache()
+{
+    m_lastGraphicsPipelineCacheKey = ~0ull;
+    m_lastBindingSetKey = ~0ull;
+    m_lastShader = ShaderHandle::Invalid();
+    m_lastMaterial = MaterialHandle::Invalid();
+    m_lastVSConstantBuffers.fill(nullptr);
+    m_lastPSConstantBuffers.fill(nullptr);
+    m_lastPSShaderResources.fill(nullptr);
+}
+
+const GDXDX11RenderExecutor::ResolvedLayoutCacheEntry&
+GDXDX11RenderExecutor::GetResolvedLayoutCache(const GDXShaderResource& shader, const ResourceBindingSet* passBindings, const ResourceBindingSet& drawBindings)
+{
+    uint32_t layoutKey = drawBindings.layoutKey;
+    if (layoutKey == 0u && passBindings)
+        layoutKey = passBindings->layoutKey;
+    if (layoutKey == 0u)
+        layoutKey = 2166136261u ^ shader.layout.constantBufferCount ^ (shader.layout.textureBindingCount << 16);
+
+    auto it = m_layoutCache.find(layoutKey);
+    if (it != m_layoutCache.end())
+        return it->second;
+
+    ResolvedLayoutCacheEntry entry{};
+    entry.layoutKey = layoutKey;
+    entry.valid = true;
+    for (uint32_t i = 0; i < shader.layout.constantBufferCount; ++i)
+    {
+        const auto& cb = shader.layout.constantBuffers[i];
+        const size_t idx = static_cast<size_t>(cb.slot);
+        if (idx < entry.cbVS.size())
+        {
+            entry.cbVS[idx] = cb.vsRegister;
+            entry.cbPS[idx] = cb.psRegister;
+        }
+    }
+    for (uint32_t i = 0; i < shader.layout.textureBindingCount; ++i)
+    {
+        const auto& tex = shader.layout.textureBindings[i];
+        const size_t idx = static_cast<size_t>(tex.semantic);
+        if (idx < entry.texPS.size())
+            entry.texPS[idx] = tex.shaderRegister;
+    }
+
+    auto [ins, _] = m_layoutCache.emplace(layoutKey, entry);
+    return ins->second;
+}
 bool GDXDX11RenderExecutor::Init(const InitParams& p)
 {
     m_device = p.device;
@@ -141,6 +199,9 @@ bool GDXDX11RenderExecutor::Init(const InitParams& p)
     if (!m_device || !m_context) return false;
     CreateConstantBuffers();
     m_textureStates.clear();
+    m_layoutCache.clear();
+    m_pipelineCache.Clear();
+    InvalidateStateCache();
     return m_entityCB && m_frameCB;
 }
 
@@ -160,6 +221,9 @@ void GDXDX11RenderExecutor::Shutdown()
     if (m_frameCB) { m_frameCB->Release();  m_frameCB = nullptr; }
     if (m_skinCB) { m_skinCB->Release();   m_skinCB = nullptr; }
     m_textureStates.clear();
+    m_layoutCache.clear();
+    m_pipelineCache.Clear();
+    InvalidateStateCache();
 }
 
 void GDXDX11RenderExecutor::UpdateFrameConstants(const FrameData& frame)
@@ -182,8 +246,48 @@ void GDXDX11RenderExecutor::UpdateFrameConstants(const FrameData& frame)
         std::memcpy(mapped.pData, &fc, sizeof(fc));
         m_context->Unmap(m_frameCB, 0);
     }
-    m_context->VSSetConstantBuffers(1, 1, &m_frameCB);
-    m_context->PSSetConstantBuffers(1, 1, &m_frameCB);
+}
+
+void GDXDX11RenderExecutor::BindFrameConstantsForShader(const GDXShaderResource& shader)
+{
+    if (!m_frameCB)
+        return;
+
+    for (uint32_t i = 0; i < shader.layout.constantBufferCount; ++i)
+    {
+        const auto& cb = shader.layout.constantBuffers[i];
+        if (cb.slot != GDXShaderConstantBufferSlot::Frame)
+            continue;
+
+        ConstantBufferBindingDesc binding{};
+        binding.semantic = GDXShaderConstantBufferSlot::Frame;
+        binding.vsRegister = cb.vsRegister;
+        binding.psRegister = cb.psRegister;
+        binding.enabled = true;
+        BindConstantBufferBinding(shader, binding, m_frameCB);
+        return;
+    }
+}
+
+void GDXDX11RenderExecutor::BindEntityConstantsForShader(const GDXShaderResource& shader)
+{
+    if (!m_entityCB)
+        return;
+
+    for (uint32_t i = 0; i < shader.layout.constantBufferCount; ++i)
+    {
+        const auto& cb = shader.layout.constantBuffers[i];
+        if (cb.slot != GDXShaderConstantBufferSlot::Entity)
+            continue;
+
+        ConstantBufferBindingDesc binding{};
+        binding.semantic = GDXShaderConstantBufferSlot::Entity;
+        binding.vsRegister = cb.vsRegister;
+        binding.psRegister = cb.psRegister;
+        binding.enabled = true;
+        BindConstantBufferBinding(shader, binding, m_entityCB);
+        return;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -228,74 +332,124 @@ bool GDXDX11RenderExecutor::BindVertexStreams(const GpuMeshBuffer& gpu, uint32_t
 }
 
 // ---------------------------------------------------------------------------
-// BindMaterialTextures — nutzt explizite ResourceBindings wenn vorhanden,
-// sonst Fallback auf den Materialzustand. Trackt ShaderRead-Nutzung pro Textur.
+// Binding Helpers — semantische Descriptor-/Binding-Auflösung.
+// ---------------------------------------------------------------------------
+void GDXDX11RenderExecutor::BindConstantBufferBinding(
+    const GDXShaderResource& shader,
+    const ConstantBufferBindingDesc& binding,
+    ID3D11Buffer* buffer)
+{
+    if (!buffer || !binding.enabled)
+        return;
+
+    uint8_t vsRegister = binding.vsRegister;
+    uint8_t psRegister = binding.psRegister;
+
+    if (vsRegister == 255u && psRegister == 255u)
+    {
+        for (uint32_t i = 0; i < shader.layout.constantBufferCount; ++i)
+        {
+            const auto& src = shader.layout.constantBuffers[i];
+            if (src.slot != binding.semantic)
+                continue;
+            vsRegister = src.vsRegister;
+            psRegister = src.psRegister;
+            break;
+        }
+    }
+
+    if (vsRegister != 255u)
+        m_context->VSSetConstantBuffers(vsRegister, 1, &buffer);
+    if (psRegister != 255u)
+        m_context->PSSetConstantBuffers(psRegister, 1, &buffer);
+}
+
+void GDXDX11RenderExecutor::BindShaderResourceBinding(
+    const GDXShaderResource& shader,
+    const ShaderResourceBindingDesc& binding,
+    ResourceStore<GDXTextureResource, TextureTag>& texStore,
+    TextureHandle defaultWhite,
+    TextureHandle defaultNormal,
+    TextureHandle defaultORM,
+    TextureHandle defaultBlack,
+    void* shadowSRV)
+{
+    const auto& layoutCache = GetResolvedLayoutCache(shader, nullptr, ResourceBindingSet{});
+    UINT slot = binding.bindingIndex;
+    const size_t semanticIndex = static_cast<size_t>(binding.semantic);
+    if (slot == 255u && semanticIndex < layoutCache.texPS.size())
+        slot = layoutCache.texPS[semanticIndex];
+
+    if (slot == 255u || slot >= m_lastPSShaderResources.size())
+        return;
+
+    ID3D11ShaderResourceView* srv = static_cast<ID3D11ShaderResourceView*>(binding.nativeView);
+    TextureHandle texHandle = TextureHandle::Invalid();
+
+    if (!srv)
+    {
+        switch (binding.semantic)
+        {
+        case ShaderResourceSemantic::Albedo:
+            texHandle = (binding.enabled && binding.texture.IsValid()) ? binding.texture : defaultWhite;
+            break;
+        case ShaderResourceSemantic::Normal:
+            texHandle = (binding.enabled && binding.texture.IsValid()) ? binding.texture : defaultNormal;
+            break;
+        case ShaderResourceSemantic::ORM:
+            texHandle = (binding.enabled && binding.texture.IsValid()) ? binding.texture : defaultORM;
+            break;
+        case ShaderResourceSemantic::Emissive:
+            texHandle = (binding.enabled && binding.texture.IsValid()) ? binding.texture : defaultBlack;
+            break;
+        case ShaderResourceSemantic::Detail:
+            texHandle = (binding.enabled && binding.texture.IsValid()) ? binding.texture : defaultWhite;
+            break;
+        case ShaderResourceSemantic::ShadowMap:
+            srv = static_cast<ID3D11ShaderResourceView*>(shadowSRV);
+            break;
+        default:
+            return;
+        }
+
+        if (texHandle.IsValid())
+        {
+            ValidateShaderReadState(texHandle, "BindShaderResourceBinding");
+            if (const GDXTextureResource* tex = texStore.Get(texHandle))
+                srv = static_cast<ID3D11ShaderResourceView*>(tex->srv);
+        }
+    }
+
+    void* srvKey = srv;
+    if (m_lastPSShaderResources[slot] != srvKey)
+    {
+        m_context->PSSetShaderResources(slot, 1, &srv);
+        m_lastPSShaderResources[slot] = srvKey;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// BindMaterialTextures — material-/draw-spezifische SRV-Bindings.
+// Pass-Bindings (z. B. ShadowMap) kommen separat.
 // ---------------------------------------------------------------------------
 void GDXDX11RenderExecutor::BindMaterialTextures(
     const RenderCommand& cmd,
-    const MaterialResource& mat,
     ResourceStore<GDXTextureResource, TextureTag>& texStore,
     TextureHandle defaultWhite,
     TextureHandle defaultNormal,
     TextureHandle defaultORM,
     TextureHandle defaultBlack)
 {
-    TextureHandle albedo = mat.GetTexture(MaterialTextureSlot::Albedo).IsValid()
-        ? mat.GetTexture(MaterialTextureSlot::Albedo) : defaultWhite;
-    TextureHandle normal = mat.GetTexture(MaterialTextureSlot::Normal).IsValid()
-        ? mat.GetTexture(MaterialTextureSlot::Normal) : defaultNormal;
-    TextureHandle orm = mat.GetTexture(MaterialTextureSlot::ORM).IsValid()
-        ? mat.GetTexture(MaterialTextureSlot::ORM) : defaultORM;
-    TextureHandle emissive = mat.GetTexture(MaterialTextureSlot::Emissive).IsValid()
-        ? mat.GetTexture(MaterialTextureSlot::Emissive) : defaultBlack;
-    TextureHandle detail = mat.GetTexture(MaterialTextureSlot::Detail).IsValid()
-        ? mat.GetTexture(MaterialTextureSlot::Detail) : defaultWhite;
-
-    if (const ShaderResourceBindingDesc* b = cmd.resourceBindings.FindTextureBinding(ShaderResourceSemantic::Albedo))
-    {
-        if (b->enabled && b->texture.IsValid()) albedo = b->texture;
-    }
-    if (const ShaderResourceBindingDesc* b = cmd.resourceBindings.FindTextureBinding(ShaderResourceSemantic::Normal))
-    {
-        if (b->enabled && b->texture.IsValid()) normal = b->texture;
-    }
-    if (const ShaderResourceBindingDesc* b = cmd.resourceBindings.FindTextureBinding(ShaderResourceSemantic::ORM))
-    {
-        if (b->enabled && b->texture.IsValid()) orm = b->texture;
-    }
-    if (const ShaderResourceBindingDesc* b = cmd.resourceBindings.FindTextureBinding(ShaderResourceSemantic::Emissive))
-    {
-        if (b->enabled && b->texture.IsValid()) emissive = b->texture;
-    }
-    if (const ShaderResourceBindingDesc* b = cmd.resourceBindings.FindTextureBinding(ShaderResourceSemantic::Detail))
-    {
-        if (b->enabled && b->texture.IsValid()) detail = b->texture;
-    }
-
-    if (albedo.IsValid())   ValidateShaderReadState(albedo,   "BindMaterialTextures Albedo");
-    if (normal.IsValid())   ValidateShaderReadState(normal,   "BindMaterialTextures Normal");
-    if (orm.IsValid())      ValidateShaderReadState(orm,      "BindMaterialTextures ORM");
-    if (emissive.IsValid()) ValidateShaderReadState(emissive, "BindMaterialTextures Emissive");
-    if (detail.IsValid())   ValidateShaderReadState(detail,   "BindMaterialTextures Detail");
-
-    ID3D11ShaderResourceView* srvs[5] = {};
-
-    if (const GDXTextureResource* tex = texStore.Get(albedo))
-        srvs[0] = static_cast<ID3D11ShaderResourceView*>(tex->srv);
-    if (const GDXTextureResource* tex = texStore.Get(normal))
-        srvs[1] = static_cast<ID3D11ShaderResourceView*>(tex->srv);
-    if (const GDXTextureResource* tex = texStore.Get(orm))
-        srvs[2] = static_cast<ID3D11ShaderResourceView*>(tex->srv);
-    if (const GDXTextureResource* tex = texStore.Get(emissive))
-        srvs[3] = static_cast<ID3D11ShaderResourceView*>(tex->srv);
-    if (const GDXTextureResource* tex = texStore.Get(detail))
-        srvs[4] = static_cast<ID3D11ShaderResourceView*>(tex->srv);
-
-    m_context->PSSetShaderResources(0, 5, srvs);
+    (void)cmd;
+    (void)texStore;
+    (void)defaultWhite;
+    (void)defaultNormal;
+    (void)defaultORM;
+    (void)defaultBlack;
 }
 
 // ---------------------------------------------------------------------------
-// BindSkinningPalette — VS b4, identity fallback wenn keine Skin-Daten vorhanden.
+// BindSkinningPalette — layout-gesteuertes Skin-CB-Binding.
 // ---------------------------------------------------------------------------
 void GDXDX11RenderExecutor::BindSkinningPalette(
     Registry& registry,
@@ -334,7 +488,48 @@ void GDXDX11RenderExecutor::BindSkinningPalette(
         m_context->Unmap(m_skinCB, 0);
     }
 
-    m_context->VSSetConstantBuffers(4, 1, &m_skinCB);
+    if (const ConstantBufferBindingDesc* binding = cmd.resourceBindings.FindConstantBufferBinding(GDXShaderConstantBufferSlot::Skin))
+    {
+        if (binding->enabled)
+            BindConstantBufferBinding(shader, *binding, m_skinCB);
+    }
+}
+
+void GDXDX11RenderExecutor::ApplyPipelineState(const RenderCommand& cmd)
+{
+    const auto& cached = m_pipelineCache.GetOrCreate(GDXGraphicsPipelineDesc{ cmd.shader, cmd.pipelineState, 0u, 0u });
+    const uint64_t pipelineCacheKey = cached.desc.MakeKey();
+    if (m_lastGraphicsPipelineCacheKey == pipelineCacheKey)
+        return;
+
+    const GDXPipelineStateDesc& state = cached.desc.state;
+
+    D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+    switch (state.topology)
+    {
+    case GDXPrimitiveTopology::TriangleList:
+    default:
+        topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+        break;
+    }
+    m_context->IASetPrimitiveTopology(topology);
+
+    ID3D11RasterizerState* rs = (state.cullMode == GDXCullMode::None) ? m_rsNoCull : m_rsCull;
+    if (rs)
+        m_context->RSSetState(rs);
+
+    ID3D11DepthStencilState* ds = (state.depthMode == GDXDepthMode::ReadOnly) ? m_dsReadOnly : m_dsReadWrite;
+    if (!state.depthTestEnabled)
+        ds = m_dsReadOnly;
+    if (ds)
+        m_context->OMSetDepthStencilState(ds, 0u);
+
+    const float bf[4] = { 0,0,0,0 };
+    ID3D11BlendState* blend = (state.blendMode == GDXBlendMode::AlphaBlend) ? m_blendAlpha : m_blendOpaque;
+    if (blend)
+        m_context->OMSetBlendState(blend, bf, 0xFFFFFFFFu);
+
+    m_lastGraphicsPipelineCacheKey = pipelineCacheKey;
 }
 
 ResourceState GDXDX11RenderExecutor::GetTrackedTextureState(TextureHandle texture) const
@@ -400,25 +595,22 @@ void GDXDX11RenderExecutor::ExecuteShadowQueue(
     ResourceStore<MeshAssetResource, MeshTag>& meshStore,
     ResourceStore<MaterialResource, MaterialTag>& matStore,
     ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-    ResourceStore<GDXTextureResource, TextureTag>& texStore)
+    ResourceStore<GDXTextureResource, TextureTag>& texStore,
+    const ResourceBindingSet* passBindings)
 {
     m_drawCalls = 0u;
     m_lastShader = ShaderHandle::Invalid();
     m_lastMaterial = MaterialHandle::Invalid();
 
-    m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-    ID3D11ShaderResourceView* nullShadow = nullptr;
-    m_context->PSSetShaderResources(16, 1, &nullShadow);
+    void* nullShadowSRV = nullptr;
 
     const auto& commands = queue.GetCommands();
     for (const RenderCommand& cmd : commands)
     {
         MeshAssetResource* mesh = meshStore.Get(cmd.mesh);
-        MaterialResource* mat = matStore.Get(cmd.material);
         GDXShaderResource* shader = shaderStore.Get(cmd.shader);
 
-        if (!mesh || !mat || !shader || !shader->IsValid())      continue;
+        if (!mesh || !shader || !shader->IsValid())      continue;
         if (cmd.submeshIndex >= mesh->gpuBuffers.size())         continue;
 
         const GpuMeshBuffer& gpu = mesh->gpuBuffers[cmd.submeshIndex];
@@ -429,6 +621,29 @@ void GDXDX11RenderExecutor::ExecuteShadowQueue(
             m_context->VSSetShader(static_cast<ID3D11VertexShader*>(shader->vertexShader), nullptr, 0);
             m_context->PSSetShader(static_cast<ID3D11PixelShader*>(shader->pixelShader), nullptr, 0);
             m_context->IASetInputLayout(static_cast<ID3D11InputLayout*>(shader->inputLayout));
+            BindFrameConstantsForShader(*shader);
+
+            if (passBindings)
+            {
+                for (uint32_t i = 0; i < passBindings->constantBufferCount; ++i)
+                {
+                    const auto& binding = passBindings->constantBuffers[i];
+                    if (!binding.enabled || binding.scope != GDXBindingScope::Pass)
+                        continue;
+                    ID3D11Buffer* buffer = (binding.semantic == GDXShaderConstantBufferSlot::Frame) ? m_frameCB : static_cast<ID3D11Buffer*>(binding.buffer);
+                    BindConstantBufferBinding(*shader, binding, buffer);
+                }
+                for (uint32_t i = 0; i < passBindings->textureCount; ++i)
+                {
+                    const auto& binding = passBindings->textures[i];
+                    if (!binding.enabled || binding.scope != GDXBindingScope::Pass)
+                        continue;
+                    BindShaderResourceBinding(*shader, binding, texStore,
+                        defaultWhiteTex, defaultNormalTex, defaultORMTex, defaultBlackTex,
+                        nullShadowSRV);
+                }
+            }
+
             m_lastShader = cmd.shader;
             m_lastMaterial = MaterialHandle::Invalid();
         }
@@ -437,25 +652,30 @@ void GDXDX11RenderExecutor::ExecuteShadowQueue(
 
         if (cmd.material != m_lastMaterial)
         {
-            if (mat->gpuConstantBuffer)
+            if (const ConstantBufferBindingDesc* materialBinding = cmd.resourceBindings.FindConstantBufferBinding(GDXShaderConstantBufferSlot::Material))
             {
-                auto* cb = static_cast<ID3D11Buffer*>(mat->gpuConstantBuffer);
-                if (mat->cpuDirty)
+                if (materialBinding->enabled && materialBinding->buffer)
                 {
+                    auto* cb = static_cast<ID3D11Buffer*>(materialBinding->buffer);
                     D3D11_MAPPED_SUBRESOURCE m = {};
                     if (SUCCEEDED(m_context->Map(cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)))
                     {
-                        std::memcpy(m.pData, &mat->data, sizeof(MaterialData));
+                        std::memcpy(m.pData, &cmd.materialData, sizeof(MaterialData));
                         m_context->Unmap(cb, 0);
                     }
-                    mat->cpuDirty = false;
+                    BindConstantBufferBinding(*shader, *materialBinding, cb);
                 }
-                m_context->PSSetConstantBuffers(2, 1, &cb);
             }
 
-            BindMaterialTextures(cmd, *mat, texStore,
-                defaultWhiteTex, defaultNormalTex,
-                defaultORMTex, defaultBlackTex);
+            for (uint32_t i = 0; i < cmd.resourceBindings.textureCount; ++i)
+            {
+                const auto& binding = cmd.resourceBindings.textures[i];
+                if (!binding.enabled || binding.scope == GDXBindingScope::Pass)
+                    continue;
+                BindShaderResourceBinding(*shader, binding, texStore,
+                    defaultWhiteTex, defaultNormalTex, defaultORMTex, defaultBlackTex,
+                    nullptr);
+            }
             m_lastMaterial = cmd.material;
         }
 
@@ -469,17 +689,11 @@ void GDXDX11RenderExecutor::ExecuteShadowQueue(
                 std::memcpy(mapped.pData, &ec, sizeof(ec));
                 m_context->Unmap(m_entityCB, 0);
             }
-            m_context->VSSetConstantBuffers(0, 1, &m_entityCB);
+            if (const ConstantBufferBindingDesc* entityBinding = cmd.resourceBindings.FindConstantBufferBinding(GDXShaderConstantBufferSlot::Entity))
+                BindConstantBufferBinding(*shader, *entityBinding, m_entityCB);
         }
 
-        // --- Rasterizer State: nur MF_DOUBLE_SIDED schaltet CULL_NONE ---
-        // MF_ALPHA_TEST ist unabhängig – Alpha-Discard passiert im PS,
-        // das Culling bleibt davon unberührt.
-        {
-            const bool noCull = mat->IsShadowDoubleSided();
-            ID3D11RasterizerState* rs = noCull ? m_rsNoCull : m_rsCull;
-            if (rs) m_context->RSSetState(rs);
-        }
+        ApplyPipelineState(cmd);
 
         if (!BindVertexStreams(gpu, shader->vertexFlags)) continue;
 
@@ -506,28 +720,21 @@ void GDXDX11RenderExecutor::ExecuteQueue(
     ResourceStore<MaterialResource, MaterialTag>& matStore,
     ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
     ResourceStore<GDXTextureResource, TextureTag>& texStore,
+    const ResourceBindingSet* passBindings,
     void* shadowSRV)
 {
     m_drawCalls = 0u;
-    m_lastShader = ShaderHandle::Invalid();
-    m_lastMaterial = MaterialHandle::Invalid();
+    InvalidateStateCache();
 
-    m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-    // Shadow SRV an t16 binden (oder clearen wenn kein Shadow Pass)
-    {
-        auto* srv = static_cast<ID3D11ShaderResourceView*>(shadowSRV);
-        m_context->PSSetShaderResources(16, 1, &srv);
-    }
+    void* globalShadowSRV = shadowSRV;
 
     const auto& commands = queue.GetCommands();
     for (const RenderCommand& cmd : commands)
     {
         MeshAssetResource* mesh = meshStore.Get(cmd.mesh);
-        MaterialResource* mat = matStore.Get(cmd.material);
         GDXShaderResource* shader = shaderStore.Get(cmd.shader);
 
-        if (!mesh || !mat || !shader || !shader->IsValid()) continue;
+        if (!mesh || !shader || !shader->IsValid()) continue;
         if (cmd.submeshIndex >= mesh->gpuBuffers.size())    continue;
 
         const GpuMeshBuffer& gpu = mesh->gpuBuffers[cmd.submeshIndex];
@@ -539,6 +746,29 @@ void GDXDX11RenderExecutor::ExecuteQueue(
             m_context->VSSetShader(static_cast<ID3D11VertexShader*>(shader->vertexShader), nullptr, 0);
             m_context->PSSetShader(static_cast<ID3D11PixelShader*> (shader->pixelShader), nullptr, 0);
             m_context->IASetInputLayout(static_cast<ID3D11InputLayout*>(shader->inputLayout));
+            BindFrameConstantsForShader(*shader);
+
+            if (passBindings)
+            {
+                for (uint32_t i = 0; i < passBindings->constantBufferCount; ++i)
+                {
+                    const auto& binding = passBindings->constantBuffers[i];
+                    if (!binding.enabled || binding.scope != GDXBindingScope::Pass)
+                        continue;
+                    ID3D11Buffer* buffer = (binding.semantic == GDXShaderConstantBufferSlot::Frame) ? m_frameCB : static_cast<ID3D11Buffer*>(binding.buffer);
+                    BindConstantBufferBinding(*shader, binding, buffer);
+                }
+                for (uint32_t i = 0; i < passBindings->textureCount; ++i)
+                {
+                    const auto& binding = passBindings->textures[i];
+                    if (!binding.enabled || binding.scope != GDXBindingScope::Pass)
+                        continue;
+                    BindShaderResourceBinding(*shader, binding, texStore,
+                        defaultWhiteTex, defaultNormalTex, defaultORMTex, defaultBlackTex,
+                        globalShadowSRV);
+                }
+            }
+
             m_lastShader = cmd.shader;
             m_lastMaterial = MaterialHandle::Invalid();
         }
@@ -548,33 +778,39 @@ void GDXDX11RenderExecutor::ExecuteQueue(
         // --- Material + Texturen -------------------------------------------
         if (cmd.material != m_lastMaterial)
         {
-            // Texturen t0-t3 nur bei Materialwechsel
-            BindMaterialTextures(cmd, *mat, texStore,
-                defaultWhiteTex, defaultNormalTex,
-                defaultORMTex, defaultBlackTex);
-
+            for (uint32_t i = 0; i < cmd.resourceBindings.textureCount; ++i)
+            {
+                const auto& binding = cmd.resourceBindings.textures[i];
+                if (!binding.enabled || binding.scope == GDXBindingScope::Pass)
+                    continue;
+                BindShaderResourceBinding(*shader, binding, texStore,
+                    defaultWhiteTex, defaultNormalTex, defaultORMTex, defaultBlackTex,
+                    nullptr);
+            }
             m_lastMaterial = cmd.material;
         }
 
         // cbuffer b2: pro Draw aktualisieren, damit receiveShadows pro Entity wirkt
-        if (mat->gpuConstantBuffer)
+        if (const ConstantBufferBindingDesc* materialBinding =
+            cmd.resourceBindings.FindConstantBufferBinding(GDXShaderConstantBufferSlot::Material))
         {
-            auto* cb = static_cast<ID3D11Buffer*>(mat->gpuConstantBuffer);
-            MaterialData drawData = mat->data;
-            const bool materialReceive = (drawData.receiveShadows > 0.5f);
-            drawData.receiveShadows = (materialReceive && cmd.receiveShadows) ? 1.0f : 0.0f;
-
-            D3D11_MAPPED_SUBRESOURCE m = {};
-            if (SUCCEEDED(m_context->Map(cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)))
+            if (materialBinding->enabled && materialBinding->buffer)
             {
-                std::memcpy(m.pData, &drawData, sizeof(MaterialData));
-                m_context->Unmap(cb, 0);
-            }
-            m_context->PSSetConstantBuffers(2, 1, &cb);
+                auto* cb = static_cast<ID3D11Buffer*>(materialBinding->buffer);
 
-            // CPU-Material bleibt unabhängig davon synchron, damit Tools/Editor den echten Materialzustand behalten.
-            if (mat->cpuDirty)
-                mat->cpuDirty = false;
+                MaterialData drawData = cmd.materialData;
+                const bool materialReceive = (drawData.receiveShadows > 0.5f);
+                drawData.receiveShadows = (materialReceive && cmd.receiveShadows) ? 1.0f : 0.0f;
+
+                D3D11_MAPPED_SUBRESOURCE m = {};
+                if (SUCCEEDED(m_context->Map(cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)))
+                {
+                    std::memcpy(m.pData, &drawData, sizeof(MaterialData));
+                    m_context->Unmap(cb, 0);
+                }
+
+                BindConstantBufferBinding(*shader, *materialBinding, cb);
+            }
         }
 
         // --- Entity cbuffer b0 ----------------------------------------------
@@ -595,17 +831,11 @@ void GDXDX11RenderExecutor::ExecuteQueue(
                 std::memcpy(mapped.pData, &ec, sizeof(ec));
                 m_context->Unmap(m_entityCB, 0);
             }
-            m_context->VSSetConstantBuffers(0, 1, &m_entityCB);
+            if (const ConstantBufferBindingDesc* entityBinding = cmd.resourceBindings.FindConstantBufferBinding(GDXShaderConstantBufferSlot::Entity))
+                BindConstantBufferBinding(*shader, *entityBinding, m_entityCB);
         }
 
-        // --- Rasterizer State: nur MF_DOUBLE_SIDED schaltet CULL_NONE ---
-        // MF_ALPHA_TEST ist unabhängig – Alpha-Discard passiert im PS,
-        // das Culling bleibt davon unberührt.
-        {
-            const bool noCull = mat->IsDoubleSided();
-            ID3D11RasterizerState* rs = noCull ? m_rsNoCull : m_rsCull;
-            if (rs) m_context->RSSetState(rs);
-        }
+        ApplyPipelineState(cmd);
 
         // --- Vertex Streams --------------------------------------------------
         if (!BindVertexStreams(gpu, shader->vertexFlags)) continue;

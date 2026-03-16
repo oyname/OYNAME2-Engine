@@ -15,21 +15,75 @@ namespace
         return false;
     }
 
-    ResourceBindingSet BuildResourceBindingSet(const MaterialResource& mat)
+    uint32_t BuildBindingLayoutKey(const GDXShaderLayout& layout)
+    {
+        uint32_t key = 2166136261u;
+        for (uint32_t i = 0; i < layout.constantBufferCount; ++i)
+        {
+            const auto& cb = layout.constantBuffers[i];
+            key ^= static_cast<uint32_t>(cb.slot) + (static_cast<uint32_t>(cb.vsRegister) << 8) + (static_cast<uint32_t>(cb.psRegister) << 16);
+            key *= 16777619u;
+        }
+        for (uint32_t i = 0; i < layout.textureBindingCount; ++i)
+        {
+            const auto& tex = layout.textureBindings[i];
+            key ^= static_cast<uint32_t>(tex.semantic) + (static_cast<uint32_t>(tex.shaderRegister) << 8);
+            key *= 16777619u;
+        }
+        return key;
+    }
+
+    ResourceBindingSet BuildResourceBindingSet(const MaterialResource& mat, const GDXShaderResource& shader)
     {
         ResourceBindingSet set;
-        set.materialConstantBuffer = mat.gpuConstantBuffer;
-        set.materialConstantBufferSlot = 2u;
+        set.layoutKey = BuildBindingLayoutKey(shader.layout);
 
-        for (uint32_t i = 0; i < static_cast<uint32_t>(MaterialTextureSlot::Count); ++i)
+        for (uint32_t i = 0; i < shader.layout.constantBufferCount; ++i)
         {
-            const auto slot = static_cast<MaterialTextureSlot>(i);
-            const auto& layer = mat.Layer(slot);
+            const auto& src = shader.layout.constantBuffers[i];
+            ConstantBufferBindingDesc cb{};
+            cb.semantic = src.slot;
+            cb.vsRegister = src.vsRegister;
+            cb.psRegister = src.psRegister;
+            cb.buffer = (src.slot == GDXShaderConstantBufferSlot::Material) ? mat.gpuConstantBuffer : nullptr;
+            cb.scope = (src.slot == GDXShaderConstantBufferSlot::Frame || src.slot == GDXShaderConstantBufferSlot::Light)
+                ? GDXBindingScope::Pass
+                : ((src.slot == GDXShaderConstantBufferSlot::Material) ? GDXBindingScope::Material : GDXBindingScope::Draw);
+            cb.enabled = (src.slot != GDXShaderConstantBufferSlot::Material) || (mat.gpuConstantBuffer != nullptr);
+            set.AddConstantBufferBinding(cb);
+        }
 
-            ShaderResourceBindingDesc desc;
-            desc.semantic = ToShaderResourceSemantic(slot);
-            desc.bindingIndex = BindingIndexForSemantic(desc.semantic);
+        for (uint32_t i = 0; i < shader.layout.textureBindingCount; ++i)
+        {
+            const auto& src = shader.layout.textureBindings[i];
+            ShaderResourceBindingDesc desc{};
+            switch (src.semantic)
+            {
+            case GDXShaderTextureSemantic::Albedo:   desc.semantic = ShaderResourceSemantic::Albedo; break;
+            case GDXShaderTextureSemantic::Normal:   desc.semantic = ShaderResourceSemantic::Normal; break;
+            case GDXShaderTextureSemantic::ORM:      desc.semantic = ShaderResourceSemantic::ORM; break;
+            case GDXShaderTextureSemantic::Emissive: desc.semantic = ShaderResourceSemantic::Emissive; break;
+            case GDXShaderTextureSemantic::Detail:   desc.semantic = ShaderResourceSemantic::Detail; break;
+            case GDXShaderTextureSemantic::ShadowMap:
+                desc.semantic = ShaderResourceSemantic::ShadowMap;
+                desc.bindingIndex = src.shaderRegister;
+                desc.texture = TextureHandle::Invalid();
+                desc.nativeView = nullptr;
+                desc.uvSet = MaterialTextureUVSet::UV0;
+                desc.scope = GDXBindingScope::Pass;
+                desc.enabled = false;
+                desc.expectsSRGB = false;
+                desc.requiredState = ResourceState::ShaderRead;
+                set.AddTextureBinding(desc);
+                continue;
+            }
+
+            const auto materialSlot = static_cast<MaterialTextureSlot>(static_cast<uint8_t>(desc.semantic));
+            const auto& layer = mat.Layer(materialSlot);
+            desc.bindingIndex = src.shaderRegister;
             desc.texture = layer.texture;
+            desc.nativeView = nullptr;
+            desc.scope = GDXBindingScope::Material;
             desc.uvSet = (layer.uvSet == MaterialTextureUVSet::Auto)
                 ? DefaultUVSetForSemantic(desc.semantic)
                 : layer.uvSet;
@@ -39,7 +93,35 @@ namespace
             set.AddTextureBinding(desc);
         }
 
+        set.bindingKey = ResourceBindingSet::MakeStableKey(set);
         return set;
+    }
+
+
+    GDXPipelineStateDesc BuildPipelineStateDesc(RenderPass pass, const MaterialResource& mat)
+    {
+        GDXPipelineStateDesc desc{};
+        desc.alphaTestEnabled = mat.IsAlphaTest();
+
+        if (pass == RenderPass::Shadow)
+        {
+            desc.blendMode = GDXBlendMode::Opaque;
+            desc.cullMode = mat.IsShadowDoubleSided() ? GDXCullMode::None : GDXCullMode::Back;
+            desc.depthMode = GDXDepthMode::ReadWrite;
+            desc.topology = GDXPrimitiveTopology::TriangleList;
+            desc.passClass = GDXPipelinePassClass::Shadow;
+            desc.depthTestEnabled = true;
+            return desc;
+        }
+
+        const bool transparent = (pass == RenderPass::Transparent) || mat.IsTransparent();
+        desc.blendMode = transparent ? GDXBlendMode::AlphaBlend : GDXBlendMode::Opaque;
+        desc.cullMode = mat.IsDoubleSided() ? GDXCullMode::None : GDXCullMode::Back;
+        desc.depthMode = transparent ? GDXDepthMode::ReadOnly : GDXDepthMode::ReadWrite;
+        desc.topology = GDXPrimitiveTopology::TriangleList;
+        desc.passClass = GDXPipelinePassClass::Graphics;
+        desc.depthTestEnabled = true;
+        return desc;
     }
 }
 
@@ -48,6 +130,7 @@ void RenderGatherSystem::Gather(
     const FrameData&                               frame,
     ResourceStore<MeshAssetResource, MeshTag>&     meshStore,
     ResourceStore<MaterialResource,  MaterialTag>& matStore,
+    ResourceStore<GDXShaderResource, ShaderTag>&   shaderStore,
     const ShaderResolver&                          resolveShader,
     RenderQueue&                                   outOpaqueQueue,
     RenderQueue&                                   outTransparentQueue,
@@ -96,9 +179,14 @@ void RenderGatherSystem::Gather(
             const float ndcDepth = CameraSystem::ComputeNDCDepth(wt.matrix, frame.viewProjMatrix);
             const float depth = transparent ? (1.0f - ndcDepth) : ndcDepth;
 
-            const uint32_t shaderSortID = shader.Index() & 0x3FFFu;
-            const uint32_t materialSortID = mat->sortID;
-            const ResourceBindingSet bindings = BuildResourceBindingSet(*mat);
+            const GDXPipelineStateDesc pipelineState = BuildPipelineStateDesc(pass, *mat);
+            const uint32_t shaderSortID = shader.Index() & 0x0FFFu;
+            const uint32_t pipelineSortID = GDXPipelineStateKey::FromDesc(pipelineState).value & 0x00FFu;
+            const uint32_t materialSortID = mat->sortID & 0x03FFu;
+            const GDXShaderResource* shaderRes = shaderStore.Get(shader);
+            if (!shaderRes) return;
+
+            const ResourceBindingSet bindings = BuildResourceBindingSet(*mat, *shaderRes);
 
             if (options && options->skipSelfReferentialDraws &&
                 UsesTextureAsShaderResource(bindings, options->forbiddenShaderReadTexture))
@@ -107,12 +195,23 @@ void RenderGatherSystem::Gather(
                 return;
             }
 
+            RenderCommand cmd;
+            cmd.mesh = mr.mesh;
+            cmd.material = matr.material;
+            cmd.shader = shader;
+            cmd.submeshIndex = mr.submeshIndex;
+            cmd.ownerEntity = entity;
+            cmd.pass = pass;
+            cmd.worldMatrix = wt.matrix;
+            cmd.resourceBindings = bindings;
+            cmd.pipelineState = pipelineState;
+            cmd.pipelineStateKey = GDXPipelineStateKey::FromDesc(pipelineState);
+            cmd.materialData = mat->data;
+            cmd.receiveShadows = vis.receiveShadows;
+            cmd.SetSortKey(pass, shaderSortID, pipelineSortID, materialSortID, depth);
+
             RenderQueue& targetQueue = transparent ? outTransparentQueue : outOpaqueQueue;
-            targetQueue.Submit(mr.mesh, matr.material, shader,
-                               mr.submeshIndex, entity, wt.matrix,
-                               pass, shaderSortID, materialSortID, depth,
-                               vis.receiveShadows,
-                               &bindings);
+            targetQueue.Submit(std::move(cmd));
         });
 
     outOpaqueQueue.Sort();
@@ -124,6 +223,7 @@ void RenderGatherSystem::GatherShadow(
     const FrameData&                               frame,
     ResourceStore<MeshAssetResource, MeshTag>&     meshStore,
     ResourceStore<MaterialResource,  MaterialTag>& matStore,
+    ResourceStore<GDXShaderResource, ShaderTag>&   shaderStore,
     const ShaderResolver&                          resolveShader,
     RenderQueue&                                   outShadowQueue,
     const RenderGatherOptions*                     options) const
@@ -158,7 +258,10 @@ void RenderGatherSystem::GatherShadow(
             const ShaderHandle shader = resolveShader(RenderPass::Shadow, submesh, *mat);
             if (!shader.IsValid()) return;
 
-            const ResourceBindingSet bindings = BuildResourceBindingSet(*mat);
+            const GDXShaderResource* shaderRes = shaderStore.Get(shader);
+            if (!shaderRes) return;
+
+            const ResourceBindingSet bindings = BuildResourceBindingSet(*mat, *shaderRes);
             if (options && options->skipSelfReferentialDraws &&
                 UsesTextureAsShaderResource(bindings, options->forbiddenShaderReadTexture))
             {
@@ -166,13 +269,27 @@ void RenderGatherSystem::GatherShadow(
                 return;
             }
 
-            outShadowQueue.Submit(mr.mesh, matr.material, shader,
-                                  mr.submeshIndex, entity, wt.matrix,
-                                  RenderPass::Shadow,
-                                  shader.Index() & 0x3FFFu,
-                                  0u, 0.0f,
-                                  true,
-                                  &bindings);
+            const GDXPipelineStateDesc pipelineState = BuildPipelineStateDesc(RenderPass::Shadow, *mat);
+            const uint32_t pipelineSortID = GDXPipelineStateKey::FromDesc(pipelineState).value & 0x00FFu;
+
+            RenderCommand cmd;
+            cmd.mesh = mr.mesh;
+            cmd.material = matr.material;
+            cmd.shader = shader;
+            cmd.submeshIndex = mr.submeshIndex;
+            cmd.ownerEntity = entity;
+            cmd.pass = RenderPass::Shadow;
+            cmd.worldMatrix = wt.matrix;
+            cmd.resourceBindings = bindings;
+            cmd.pipelineState = pipelineState;
+            cmd.pipelineStateKey = GDXPipelineStateKey::FromDesc(pipelineState);
+            cmd.materialData = mat->data;
+            cmd.receiveShadows = true;
+            cmd.SetSortKey(RenderPass::Shadow,
+                           shader.Index() & 0x0FFFu,
+                           pipelineSortID, 0u, 0.0f);
+
+            outShadowQueue.Submit(std::move(cmd));
         });
 
     outShadowQueue.Sort();
