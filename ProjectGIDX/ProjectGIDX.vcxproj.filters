@@ -94,6 +94,12 @@
     <Filter Include="app\_bugtest\MeshBuilder">
       <UniqueIdentifier>{f944617f-68eb-4179-8a2b-b9886c030f56}</UniqueIdentifier>
     </Filter>
+    <Filter Include="app\StatsTest">
+      <UniqueIdentifier>{0dbc030a-ea64-4331-9059-1e775e3e05d0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\unlit mesh">
+      <UniqueIdentifier>{f65ad90b-bf85-4657-a975-274efa5c98db}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\app\AdapterEnum.cpp">
@@ -221,6 +227,12 @@
     </ClCompile>
     <ClCompile Include="..\app\SchattenBugTest.cpp">
       <Filter>app\_bugtest</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\stats.cpp">
+      <Filter>app\StatsTest</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\unlit_mesh_example.cpp">
+      <Filter>app\unlit mesh</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

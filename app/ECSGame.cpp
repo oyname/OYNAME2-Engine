@@ -217,6 +217,32 @@ void ECSGame::Init()
         reg.Add<TransformComponent>(m_spotlight, tc);
     }
     reg.Add<WorldTransformComponent>(m_spotlight);
+
+
+    // ====================================================================
+// Entity: Spot-Licht — leuchtet von unten auf den Würfel
+// ====================================================================
+    m_spotlight = reg.CreateEntity();
+    reg.Add<TagComponent>(m_spotlight, "Spotlight");
+    {
+        LightComponent lc;
+        lc.kind = LightKind::Spot;
+        lc.diffuseColor = { 1.2f, 0.6f, 0.0f, 1.0f };
+        lc.intensity = 25.0f;
+        lc.radius = 25.0f;    // Reichweite in Welteinheiten
+        lc.innerConeAngle = 2.0f;    // volle Helligkeit bis 12°
+        lc.outerConeAngle = 10.0f;    // Penumbra bis 25°
+        lc.castShadows = false;
+        reg.Add<LightComponent>(m_spotlight, lc);
+    }
+    {
+        // Spotlight: Position über dem Würfel, zeigt nach unten
+        TransformComponent tc;
+        tc.localPosition = { 0.0f, -20.0f, 3.0f };  // über dem Würfel
+        tc.SetEulerDeg(-90.0f, 0.0f, 0.0f);       // zeigt nach unten (-Z → Y mit 90° Pitch)
+        reg.Add<TransformComponent>(m_spotlight, tc);
+    }
+    reg.Add<WorldTransformComponent>(m_spotlight);
 }
 
 void ECSGame::Update(float dt)

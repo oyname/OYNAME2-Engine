@@ -34,17 +34,14 @@ struct RenderQueue : public ICommandList
         cmd.pass         = pass;
         cmd.worldMatrix  = worldMatrix;
         if (resourceBindings)
-            cmd.resourceBindings = *resourceBindings;
+            cmd.SetBindings(*resourceBindings,
+                            BuildResourceBindingScopeKey(*resourceBindings, ResourceBindingScope::Pass, shader.value),
+                            BuildResourceBindingScopeKey(*resourceBindings, ResourceBindingScope::Material, material.value),
+                            BuildResourceBindingScopeKey(*resourceBindings, ResourceBindingScope::Draw, ownerEntity.value));
         if (pipelineState)
-        {
-            cmd.pipelineState = *pipelineState;
-            cmd.pipelineStateKey = GDXPipelineStateKey::FromDesc(*pipelineState);
-        }
+            cmd.SetPipelineState(*pipelineState);
         else
-        {
-            cmd.pipelineState = {};
-            cmd.pipelineStateKey = GDXPipelineStateKey::FromDesc(cmd.pipelineState);
-        }
+            cmd.SetPipelineState({});
         cmd.receiveShadows = receiveShadows;
         cmd.SetSortKey(pass, shaderSortID, pipelineSortID, materialSortID, depth);
         commands.push_back(cmd);

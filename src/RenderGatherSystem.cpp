@@ -3,6 +3,7 @@
 
 namespace
 {
+
     bool UsesTextureAsShaderResource(const ResourceBindingSet& set, TextureHandle texture)
     {
         if (!texture.IsValid()) return false;
@@ -15,28 +16,9 @@ namespace
         return false;
     }
 
-    uint32_t BuildBindingLayoutKey(const GDXShaderLayout& layout)
-    {
-        uint32_t key = 2166136261u;
-        for (uint32_t i = 0; i < layout.constantBufferCount; ++i)
-        {
-            const auto& cb = layout.constantBuffers[i];
-            key ^= static_cast<uint32_t>(cb.slot) + (static_cast<uint32_t>(cb.vsRegister) << 8) + (static_cast<uint32_t>(cb.psRegister) << 16);
-            key *= 16777619u;
-        }
-        for (uint32_t i = 0; i < layout.textureBindingCount; ++i)
-        {
-            const auto& tex = layout.textureBindings[i];
-            key ^= static_cast<uint32_t>(tex.semantic) + (static_cast<uint32_t>(tex.shaderRegister) << 8);
-            key *= 16777619u;
-        }
-        return key;
-    }
-
     ResourceBindingSet BuildResourceBindingSet(const MaterialResource& mat, const GDXShaderResource& shader)
     {
         ResourceBindingSet set;
-        set.layoutKey = BuildBindingLayoutKey(shader.layout);
 
         for (uint32_t i = 0; i < shader.layout.constantBufferCount; ++i)
         {
@@ -46,10 +28,10 @@ namespace
             cb.vsRegister = src.vsRegister;
             cb.psRegister = src.psRegister;
             cb.buffer = (src.slot == GDXShaderConstantBufferSlot::Material) ? mat.gpuConstantBuffer : nullptr;
-            cb.scope = (src.slot == GDXShaderConstantBufferSlot::Frame || src.slot == GDXShaderConstantBufferSlot::Light)
-                ? GDXBindingScope::Pass
-                : ((src.slot == GDXShaderConstantBufferSlot::Material) ? GDXBindingScope::Material : GDXBindingScope::Draw);
             cb.enabled = (src.slot != GDXShaderConstantBufferSlot::Material) || (mat.gpuConstantBuffer != nullptr);
+            cb.scope = (src.slot == GDXShaderConstantBufferSlot::Frame) ? ResourceBindingScope::Pass :
+                       ((src.slot == GDXShaderConstantBufferSlot::Material) ? ResourceBindingScope::Material : ResourceBindingScope::Draw);
+            cb.prepared = true;
             set.AddConstantBufferBinding(cb);
         }
 
@@ -68,12 +50,12 @@ namespace
                 desc.semantic = ShaderResourceSemantic::ShadowMap;
                 desc.bindingIndex = src.shaderRegister;
                 desc.texture = TextureHandle::Invalid();
-                desc.nativeView = nullptr;
                 desc.uvSet = MaterialTextureUVSet::UV0;
-                desc.scope = GDXBindingScope::Pass;
                 desc.enabled = false;
                 desc.expectsSRGB = false;
                 desc.requiredState = ResourceState::ShaderRead;
+                desc.scope = ResourceBindingScope::Pass;
+                desc.prepared = true;
                 set.AddTextureBinding(desc);
                 continue;
             }
@@ -82,18 +64,17 @@ namespace
             const auto& layer = mat.Layer(materialSlot);
             desc.bindingIndex = src.shaderRegister;
             desc.texture = layer.texture;
-            desc.nativeView = nullptr;
-            desc.scope = GDXBindingScope::Material;
             desc.uvSet = (layer.uvSet == MaterialTextureUVSet::Auto)
                 ? DefaultUVSetForSemantic(desc.semantic)
                 : layer.uvSet;
             desc.enabled = layer.enabled;
             desc.expectsSRGB = layer.expectsSRGB;
             desc.requiredState = ResourceState::ShaderRead;
+            desc.scope = (desc.semantic == ShaderResourceSemantic::ShadowMap) ? ResourceBindingScope::Pass : ResourceBindingScope::Material;
+            desc.prepared = true;
             set.AddTextureBinding(desc);
         }
 
-        set.bindingKey = ResourceBindingSet::MakeStableKey(set);
         return set;
     }
 
@@ -108,8 +89,6 @@ namespace
             desc.blendMode = GDXBlendMode::Opaque;
             desc.cullMode = mat.IsShadowDoubleSided() ? GDXCullMode::None : GDXCullMode::Back;
             desc.depthMode = GDXDepthMode::ReadWrite;
-            desc.topology = GDXPrimitiveTopology::TriangleList;
-            desc.passClass = GDXPipelinePassClass::Shadow;
             desc.depthTestEnabled = true;
             return desc;
         }
@@ -118,8 +97,6 @@ namespace
         desc.blendMode = transparent ? GDXBlendMode::AlphaBlend : GDXBlendMode::Opaque;
         desc.cullMode = mat.IsDoubleSided() ? GDXCullMode::None : GDXCullMode::Back;
         desc.depthMode = transparent ? GDXDepthMode::ReadOnly : GDXDepthMode::ReadWrite;
-        desc.topology = GDXPrimitiveTopology::TriangleList;
-        desc.passClass = GDXPipelinePassClass::Graphics;
         desc.depthTestEnabled = true;
         return desc;
     }
@@ -203,9 +180,12 @@ void RenderGatherSystem::Gather(
             cmd.ownerEntity = entity;
             cmd.pass = pass;
             cmd.worldMatrix = wt.matrix;
-            cmd.resourceBindings = bindings;
-            cmd.pipelineState = pipelineState;
-            cmd.pipelineStateKey = GDXPipelineStateKey::FromDesc(pipelineState);
+            cmd.SetBindings(
+                bindings,
+                BuildResourceBindingScopeKey(bindings, ResourceBindingScope::Pass, shader.value),
+                BuildResourceBindingScopeKey(bindings, ResourceBindingScope::Material, matr.material.value),
+                BuildResourceBindingScopeKey(bindings, ResourceBindingScope::Draw, entity.value));
+            cmd.SetPipelineState(pipelineState);
             cmd.materialData = mat->data;
             cmd.receiveShadows = vis.receiveShadows;
             cmd.SetSortKey(pass, shaderSortID, pipelineSortID, materialSortID, depth);
@@ -280,9 +260,12 @@ void RenderGatherSystem::GatherShadow(
             cmd.ownerEntity = entity;
             cmd.pass = RenderPass::Shadow;
             cmd.worldMatrix = wt.matrix;
-            cmd.resourceBindings = bindings;
-            cmd.pipelineState = pipelineState;
-            cmd.pipelineStateKey = GDXPipelineStateKey::FromDesc(pipelineState);
+            cmd.SetBindings(
+                bindings,
+                BuildResourceBindingScopeKey(bindings, ResourceBindingScope::Pass, shader.value),
+                BuildResourceBindingScopeKey(bindings, ResourceBindingScope::Material, matr.material.value),
+                BuildResourceBindingScopeKey(bindings, ResourceBindingScope::Draw, entity.value));
+            cmd.SetPipelineState(pipelineState);
             cmd.materialData = mat->data;
             cmd.receiveShadows = true;
             cmd.SetSortKey(RenderPass::Shadow,

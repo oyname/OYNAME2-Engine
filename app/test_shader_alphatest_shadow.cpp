@@ -150,6 +150,24 @@ public:
         Wrap(m_spin);
         if (auto* tc = reg.Get<TransformComponent>(m_cutout))
             tc->SetEulerDeg(0.0f, m_spin, 0.0f);
+
+        m_timeAccum += dt;
+        ++m_frameCounter;
+
+        if (m_timeAccum >= 1.0f)
+        {
+            const auto& stats = m_renderer.GetFrameStats();
+
+            Debug::Log(
+                "FrameStats | fps=", m_frameCounter,
+                " drawCalls=", stats.drawCalls,
+                " entities=", stats.entityCount,
+                " dirtyTransforms=", stats.dirtyTransformCount
+            );
+
+            m_timeAccum = 0.0f;
+            m_frameCounter = 0;
+        }
     }
 
     void OnEvent(const Event& e, GDXEngine& engine)
@@ -164,6 +182,9 @@ public:
     }
 
 private:
+    float m_timeAccum = 0.0f;
+    int   m_frameCounter = 0;
+
     EntityID MakeEntity(const char* name, MeshHandle mesh, MaterialHandle mat,
         const Float3& pos, const Float3& scale,
         bool castShadows)

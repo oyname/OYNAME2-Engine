@@ -8,7 +8,7 @@
 #include <array>
 #include <cstdint>
 
-enum class GDXBindingScope : uint8_t
+enum class ResourceBindingScope : uint8_t
 {
     Pass = 0,
     Material = 1,
@@ -18,14 +18,14 @@ enum class GDXBindingScope : uint8_t
 struct ShaderResourceBindingDesc
 {
     ShaderResourceSemantic semantic = ShaderResourceSemantic::Albedo;
-    uint8_t bindingIndex = 255u;
+    uint8_t bindingIndex = 0u;
     TextureHandle texture = TextureHandle::Invalid();
-    void* nativeView = nullptr;
     MaterialTextureUVSet uvSet = MaterialTextureUVSet::UV0;
-    GDXBindingScope scope = GDXBindingScope::Material;
     bool enabled = false;
     bool expectsSRGB = false;
     ResourceState requiredState = ResourceState::ShaderRead;
+    ResourceBindingScope scope = ResourceBindingScope::Material;
+    bool prepared = false;
 };
 
 struct ConstantBufferBindingDesc
@@ -34,28 +34,29 @@ struct ConstantBufferBindingDesc
     uint8_t vsRegister = 255u;
     uint8_t psRegister = 255u;
     void* buffer = nullptr;
-    GDXBindingScope scope = GDXBindingScope::Draw;
     bool enabled = false;
+    ResourceBindingScope scope = ResourceBindingScope::Draw;
+    bool prepared = false;
 };
 
 struct ResourceBindingSet
 {
     static constexpr size_t MaxTextureBindings = static_cast<size_t>(ShaderResourceSemantic::Count);
-    static constexpr size_t MaxConstantBufferBindings = 8u;
+    static constexpr size_t MaxConstantBufferBindings = 5u;
 
     std::array<ShaderResourceBindingDesc, MaxTextureBindings> textures{};
     std::array<ConstantBufferBindingDesc, MaxConstantBufferBindings> constantBuffers{};
     uint32_t textureCount = 0u;
     uint32_t constantBufferCount = 0u;
-    uint32_t layoutKey = 0u;
-    uint64_t bindingKey = 0ull;
+    bool hasPreparedTextures = false;
+    bool hasPreparedConstantBuffers = false;
 
     void Clear() noexcept
     {
         textureCount = 0u;
         constantBufferCount = 0u;
-        layoutKey = 0u;
-        bindingKey = 0ull;
+        hasPreparedTextures = false;
+        hasPreparedConstantBuffers = false;
         for (auto& t : textures)
             t = {};
         for (auto& cb : constantBuffers)
@@ -67,6 +68,7 @@ struct ResourceBindingSet
         if (textureCount >= textures.size())
             return;
         textures[textureCount++] = desc;
+        hasPreparedTextures = hasPreparedTextures || desc.prepared;
     }
 
     void AddConstantBufferBinding(const ConstantBufferBindingDesc& desc) noexcept
@@ -74,6 +76,7 @@ struct ResourceBindingSet
         if (constantBufferCount >= constantBuffers.size())
             return;
         constantBuffers[constantBufferCount++] = desc;
+        hasPreparedConstantBuffers = hasPreparedConstantBuffers || desc.prepared;
     }
 
     const ShaderResourceBindingDesc* FindTextureBinding(ShaderResourceSemantic semantic) const noexcept
@@ -96,42 +99,108 @@ struct ResourceBindingSet
         return nullptr;
     }
 
-
-    static uint64_t MakeStableKey(const ResourceBindingSet& set) noexcept
+    bool HasPreparedTexturesForScope(ResourceBindingScope scope) const noexcept
     {
-        auto mix = [](uint64_t h, uint64_t v) noexcept
+        bool foundAny = false;
+        for (uint32_t i = 0; i < textureCount; ++i)
         {
-            h ^= v + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2);
-            return h;
-        };
+            const auto& binding = textures[i];
+            if (binding.scope != scope)
+                continue;
 
-        uint64_t key = 1469598103934665603ull;
-        key = mix(key, set.layoutKey);
-        key = mix(key, set.textureCount);
-        key = mix(key, set.constantBufferCount);
+            foundAny = true;
+            if (!binding.prepared)
+                return false;
+        }
+        return foundAny;
+    }
 
-        for (uint32_t i = 0; i < set.textureCount; ++i)
+    bool HasPreparedConstantBuffersForScope(ResourceBindingScope scope) const noexcept
+    {
+        bool foundAny = false;
+        for (uint32_t i = 0; i < constantBufferCount; ++i)
         {
-            const auto& t = set.textures[i];
-            key = mix(key, static_cast<uint64_t>(t.semantic));
-            key = mix(key, static_cast<uint64_t>(t.bindingIndex));
-            key = mix(key, static_cast<uint64_t>(t.scope));
-            key = mix(key, static_cast<uint64_t>(t.enabled ? 1u : 0u));
-            key = mix(key, static_cast<uint64_t>(t.texture.value));
-            key = mix(key, reinterpret_cast<uintptr_t>(t.nativeView));
+            const auto& binding = constantBuffers[i];
+            if (binding.scope != scope)
+                continue;
+
+            foundAny = true;
+            if (!binding.prepared)
+                return false;
+        }
+        return foundAny;
+    }
+
+    bool HasPreparedBindingsForScope(ResourceBindingScope scope) const noexcept
+    {
+        const bool texturesPrepared = HasPreparedTexturesForScope(scope);
+        const bool constantBuffersPrepared = HasPreparedConstantBuffersForScope(scope);
+        return texturesPrepared || constantBuffersPrepared;
+    }
+
+    bool HasBindingsForScope(ResourceBindingScope scope) const noexcept
+    {
+        for (uint32_t i = 0; i < textureCount; ++i)
+        {
+            if (textures[i].scope == scope)
+                return true;
         }
 
-        for (uint32_t i = 0; i < set.constantBufferCount; ++i)
+        for (uint32_t i = 0; i < constantBufferCount; ++i)
         {
-            const auto& cb = set.constantBuffers[i];
-            key = mix(key, static_cast<uint64_t>(cb.semantic));
-            key = mix(key, static_cast<uint64_t>(cb.vsRegister));
-            key = mix(key, static_cast<uint64_t>(cb.psRegister));
-            key = mix(key, static_cast<uint64_t>(cb.scope));
-            key = mix(key, static_cast<uint64_t>(cb.enabled ? 1u : 0u));
-            key = mix(key, reinterpret_cast<uintptr_t>(cb.buffer));
+            if (constantBuffers[i].scope == scope)
+                return true;
         }
 
-        return key;
+        return false;
     }
 };
+
+inline void HashResourceBindingValue(uint64_t& hash, uint64_t value) noexcept
+{
+    constexpr uint64_t kBindingHashPrime = 1099511628211ull;
+    hash ^= value;
+    hash *= kBindingHashPrime;
+}
+
+inline uint64_t BuildResourceBindingScopeKey(const ResourceBindingSet& set,
+                                             ResourceBindingScope scope,
+                                             uint32_t stableOwnerValue) noexcept
+{
+    constexpr uint64_t kBindingHashOffset = 1469598103934665603ull;
+
+    uint64_t hash = kBindingHashOffset;
+    HashResourceBindingValue(hash, static_cast<uint64_t>(scope));
+    HashResourceBindingValue(hash, stableOwnerValue);
+
+    for (uint32_t i = 0; i < set.textureCount; ++i)
+    {
+        const auto& binding = set.textures[i];
+        if (binding.scope != scope)
+            continue;
+
+        HashResourceBindingValue(hash, 0x54584eull);
+        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.semantic));
+        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.bindingIndex));
+        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.texture.value));
+        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.uvSet));
+        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.enabled ? 1u : 0u));
+        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.expectsSRGB ? 1u : 0u));
+        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.requiredState));
+    }
+
+    for (uint32_t i = 0; i < set.constantBufferCount; ++i)
+    {
+        const auto& binding = set.constantBuffers[i];
+        if (binding.scope != scope)
+            continue;
+
+        HashResourceBindingValue(hash, 0x43425546ull);
+        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.semantic));
+        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.vsRegister));
+        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.psRegister));
+        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.enabled ? 1u : 0u));
+    }
+
+    return hash;
+}
