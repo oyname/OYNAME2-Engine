@@ -644,6 +644,23 @@ namespace Engine
         m->cpuDirty = true;
     }
 
+    inline void MaterialShadowCullBackfaces(LPMATERIAL mat, bool enabled)
+    {
+        if (!_::renderer) return;
+        auto* m = _::renderer->GetMatStore().Get(mat);
+        if (!m) return;
+        m->SetShadowCullMode(enabled ? MaterialShadowCullMode::Back
+                                     : MaterialShadowCullMode::None);
+    }
+
+    inline void MaterialShadowCullAuto(LPMATERIAL mat)
+    {
+        if (!_::renderer) return;
+        auto* m = _::renderer->GetMatStore().Get(mat);
+        if (!m) return;
+        m->SetShadowCullMode(MaterialShadowCullMode::Auto);
+    }
+
 
     // ===========================================================================
     // TEXTUREN

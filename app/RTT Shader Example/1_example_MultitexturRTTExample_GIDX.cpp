@@ -151,7 +151,7 @@ int main()
     faceMatRes.SetTexture(MaterialTextureSlot::Albedo, faceTex, MaterialTextureUVSet::UV0);
     MaterialHandle materialFace = renderer->CreateMaterial(std::move(faceMatRes));
 
-    const Float3 sharedPos    = { 5.0f, 0.0f, 10.0f };
+    const Float3 sharedPos    = { 15.0f, 0.0f, 10.0f };
     const Float3 sharedTarget = { -20.0f, 0.0f, 0.0f };
     //-10.0f, 0.0f, 13.0f
 
@@ -214,7 +214,7 @@ int main()
 
     EntityID mesh1 = CreateCubeEntity(
         reg, cubeMesh, materialRTT, "MeshRTT",
-        -10.0f, 0.0f, 13.0f, 8.0f, 8.0f, 8.0f, 45.0f, 45.0f, 0.0f);
+        -5.0f, 0.0f, 13.0f, 8.0f, 8.0f, 8.0f, 45.0f, 45.0f, 0.0f);
 
     EntityID mesh2 = CreateCubeEntity(
         reg, cubeMesh, neonMaterial, "MeshNeon",

@@ -8,11 +8,11 @@
 
 struct MaterialData
 {
-    GIDX::Float4 baseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-    GIDX::Float4 specularColor = { 0.5f, 0.5f, 0.5f, 1.0f };
-    GIDX::Float4 emissiveColor = { 0.0f, 0.0f, 0.0f, 1.0f };
-    GIDX::Float4 uvTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f };
-    GIDX::Float4 uvDetailTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f };
+    Float4 baseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+    Float4 specularColor = { 0.5f, 0.5f, 0.5f, 1.0f };
+    Float4 emissiveColor = { 0.0f, 0.0f, 0.0f, 1.0f };
+    Float4 uvTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f };
+    Float4 uvDetailTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f };
     float metallic          = 0.0f;
     float roughness         = 0.5f;
     float normalScale       = 1.0f;
@@ -45,6 +45,13 @@ enum MaterialFlags : uint32_t
     MF_USE_DETAIL_MAP    = 1u << 11,
 };
 
+enum class MaterialShadowCullMode : uint8_t
+{
+    Auto = 0, // folgt MF_DOUBLE_SIDED für Rückwärtskompatibilität
+    Back = 1, // Shadow-Pass cullt Backfaces
+    None = 2, // Shadow-Pass rendert beidseitig
+};
+
 class MaterialResource
 {
 public:
@@ -57,6 +64,7 @@ public:
     uint32_t sortID = 0u;
     void* gpuConstantBuffer = nullptr;
     bool  cpuDirty          = true;
+    MaterialShadowCullMode shadowCullMode = MaterialShadowCullMode::Auto;
 
     MaterialResource()
     {
@@ -69,6 +77,27 @@ public:
     bool IsUnlit()       const noexcept { return (data.flags & MF_UNLIT)           != 0u; }
     bool UsesPBR()       const noexcept { return (data.flags & MF_SHADING_PBR)     != 0u; }
     bool UsesDetailMap() const noexcept { return (data.flags & MF_USE_DETAIL_MAP)  != 0u; }
+
+    MaterialShadowCullMode GetShadowCullMode() const noexcept
+    {
+        return shadowCullMode;
+    }
+
+    void SetShadowCullMode(MaterialShadowCullMode mode) noexcept
+    {
+        shadowCullMode = mode;
+    }
+
+    bool IsShadowDoubleSided() const noexcept
+    {
+        switch (shadowCullMode)
+        {
+        case MaterialShadowCullMode::None: return true;
+        case MaterialShadowCullMode::Back: return false;
+        case MaterialShadowCullMode::Auto:
+        default: return IsDoubleSided();
+        }
+    }
 
     void SetFlag(MaterialFlags f, bool on) noexcept
     {

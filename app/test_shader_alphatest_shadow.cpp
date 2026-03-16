@@ -77,9 +77,10 @@ public:
         m_hRed = m_renderer.CreateMaterial(MaterialResource::FlatColor(0.82f, 0.18f, 0.14f));
 
         MaterialResource cutout = MaterialResource::FlatColor(1.0f, 1.0f, 1.0f, 1.0f);
-        cutout.data.flags = MF_ALPHA_TEST | MF_DOUBLE_SIDED;
+        cutout.data.flags = MF_ALPHA_TEST ;
         cutout.data.alphaCutoff = 0.5f;
         cutout.data.receiveShadows = 1.0f;
+
         const std::wstring maskPath = L"..//media//alpha_mask.png";
         if (FileExists(maskPath))
             cutout.SetTexture(MaterialTextureSlot::Albedo, m_renderer.LoadTexture(maskPath, true));
@@ -134,6 +135,13 @@ public:
             { 0.0f, 2.0f, 4.2f }, { 3.5f, 3.5f, 3.5f }, true);
 
         Debug::Log("alphatest_shadow_test: alpha_mask.png in ..//media legen; ESC beendet");
+
+        {
+            VisibilityComponent vis;
+            vis.castShadows = true;
+            reg.Add<VisibilityComponent>(m_cutout, vis);
+        }
+
     }
 
     void Update(float dt)

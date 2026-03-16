@@ -132,6 +132,7 @@ int main()
         vc.active = true;
         vc.layerMask = LAYER_DEFAULT;
         vc.castShadows = true;
+        
         reg.Add<VisibilityComponent>(cubeSmall, vc);
     }
 

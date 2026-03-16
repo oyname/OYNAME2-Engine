@@ -67,9 +67,6 @@
     <Filter Include="app\parenting showcase">
       <UniqueIdentifier>{dac974b4-a685-453f-bac0-b003a26da59f}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\MeshBuilder">
-      <UniqueIdentifier>{f944617f-68eb-4179-8a2b-b9886c030f56}</UniqueIdentifier>
-    </Filter>
     <Filter Include="engine\renderer\dx11">
       <UniqueIdentifier>{d322e014-198d-4d94-bd2b-168dbc724d69}</UniqueIdentifier>
     </Filter>
@@ -93,6 +90,9 @@
     </Filter>
     <Filter Include="app\_bugtest">
       <UniqueIdentifier>{f58953c2-bc76-4248-ab17-0782a79de059}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\_bugtest\MeshBuilder">
+      <UniqueIdentifier>{f944617f-68eb-4179-8a2b-b9886c030f56}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -145,7 +145,7 @@
       <Filter>app\parenting showcase</Filter>
     </ClCompile>
     <ClCompile Include="..\app\meshbuilder.cpp">
-      <Filter>app\MeshBuilder</Filter>
+      <Filter>app\_bugtest\MeshBuilder</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXECSRenderer.cpp">
       <Filter>engine</Filter>

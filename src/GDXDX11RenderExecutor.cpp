@@ -476,7 +476,7 @@ void GDXDX11RenderExecutor::ExecuteShadowQueue(
         // MF_ALPHA_TEST ist unabhängig – Alpha-Discard passiert im PS,
         // das Culling bleibt davon unberührt.
         {
-            const bool noCull = mat->IsDoubleSided();
+            const bool noCull = mat->IsShadowDoubleSided();
             ID3D11RasterizerState* rs = noCull ? m_rsNoCull : m_rsCull;
             if (rs) m_context->RSSetState(rs);
         }

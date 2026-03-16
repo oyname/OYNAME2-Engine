@@ -129,8 +129,8 @@ public:
         {
             SkinComponent skin;
             skin.finalBoneMatrices.resize(2);
-            skin.finalBoneMatrices[0] = GDXMath::Identity4x4();
-            skin.finalBoneMatrices[1] = GDXMath::Identity4x4();
+            skin.finalBoneMatrices[0] = GIDX::Identity4x4();
+            skin.finalBoneMatrices[1] = GIDX::Identity4x4();
             reg.Add<SkinComponent>(m_skinned, std::move(skin));
         }
 
@@ -149,7 +149,7 @@ public:
         if (!skin || skin->finalBoneMatrices.size() < 2)
             return;
 
-        skin->finalBoneMatrices[0] = GDXMath::Identity4x4();
+        skin->finalBoneMatrices[0] = GIDX::Identity4x4();
 
         const float angle = std::sinf(m_time * 1.8f) * 0.85f;
         const DirectX::XMMATRIX bone1 =
