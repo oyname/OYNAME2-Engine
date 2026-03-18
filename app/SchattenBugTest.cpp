@@ -101,8 +101,7 @@ int main()
         reg.Add<TransformComponent>(cube, tc);
 
         reg.Add<WorldTransformComponent>(cube);
-        reg.Add<MeshRefComponent>(cube, cubeMesh, 0u);
-        reg.Add<MaterialRefComponent>(cube, whiteMaterial);
+        reg.Add<RenderableComponent>(cube, cubeMesh, whiteMaterial, 0u);
 
         VisibilityComponent vc;
         vc.visible = true;
@@ -124,8 +123,7 @@ int main()
         reg.Add<TransformComponent>(cubeSmall, tc);
     
         reg.Add<WorldTransformComponent>(cubeSmall);
-        reg.Add<MeshRefComponent>(cubeSmall, cubeMesh, 0u);
-        reg.Add<MaterialRefComponent>(cubeSmall, whiteMaterial);
+        reg.Add<RenderableComponent>(cubeSmall, cubeMesh, whiteMaterial, 0u);
     
         VisibilityComponent vc;
         vc.visible = true;

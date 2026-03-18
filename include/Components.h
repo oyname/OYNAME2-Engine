@@ -12,13 +12,6 @@
 //   5. WorldTransformComponent wird vom TransformSystem geschrieben,
 //      alle anderen Systeme lesen sie nur.
 //
-// Wichtige Korrektur gegenüber Step-1-Entwurf:
-//   - MaterialComponent (mit inline albedo, metallic etc.) → ENTFERNT.
-//     Ersetzt durch MaterialRefComponent (Handle).
-//     Inline-Materialdaten pro Entity erzwingen Kopien und verhindern Batching.
-//   - MeshComponent (mit uint32_t meshAssetID) → ENTFERNT.
-//     Ersetzt durch MeshRefComponent (MeshHandle).
-//     uint32_t ohne typisierten Store ist keine Lifetime-Garantie.
 // ---------------------------------------------------------------------------
 
 #include "Handle.h"
@@ -62,6 +55,8 @@ struct TransformComponent
     GIDX::Float3 localScale = { 1.0f, 1.0f, 1.0f };
 
     bool dirty = true;  // true → WorldTransformComponent muss neu berechnet werden
+    uint32_t localVersion = 1u;   // erhöht sich bei lokaler Änderung / Dirty-Markierung
+    uint32_t worldVersion = 0u;   // erhöht sich wenn WorldTransform neu geschrieben wurde
 
     TransformComponent() = default;
 
@@ -158,48 +153,29 @@ struct ChildrenComponent
 
 
 // ===========================================================================
-// MeshRefComponent — Referenz auf eine Mesh-Ressource per Handle.
+// RenderableComponent — renderrelevante Kern-Daten in EINER Komponente.
 //
-// Ersetzt das alte MeshComponent { uint32_t meshAssetID }.
-// Ein MeshHandle referenziert einen Slot im ResourceStore<MeshAssetResource>.
-//
-// submeshIndex: Welcher Sub-Mesh-Slot soll gerendert werden?
-//   0 = erster Slot (Standard).
-//   Für Multi-Mesh-Entities: mehrere MeshRefComponents (eine pro Slot).
-//   Oder: eine Entity pro Slot, alle als Kind der Eltern-Entity.
+// Primärpfad für Mesh/Material/Submesh/Enabled.
+// Sichtbarkeits- und Layer-Flags gehören NICHT hier hinein, sondern exklusiv
+// in VisibilityComponent. Damit gibt es nur noch eine Wahrheitsquelle für
+// visible/active/layerMask/castShadows/receiveShadows.
 // ===========================================================================
-struct MeshRefComponent
+struct RenderableComponent
 {
-    MeshHandle mesh;
-    uint32_t   submeshIndex = 0u;
-    bool       enabled = true;
-
-    MeshRefComponent() = default;
-    explicit MeshRefComponent(MeshHandle h, uint32_t slot = 0u)
-        : mesh(h), submeshIndex(slot) {
-    }
-};
-
-// ===========================================================================
-// MaterialRefComponent — Referenz auf eine Material-Ressource per Handle.
-//
-// Ersetzt das alte MaterialComponent mit inline PBR-Daten.
-//
-// WARUM Handle statt inline Daten?
-//   - Geteilte Materialien: 100 Entities mit demselben Material → 1 GPU-Upload.
-//   - Batching: Sort nach materialHandle.value minimiert Shader/State-Wechsel.
-//   - Lazy GPU-Upload: Material wird nur einmal auf die GPU gebracht.
-//
-// Für per-Entity-Overrides:
-//   Entweder ein neues MaterialResource im Store anlegen (billiges Shallow-Copy),
-//   oder MaterialOverrideComponent hinzufügen (kommt in Phase 5).
-// ===========================================================================
-struct MaterialRefComponent
-{
+    MeshHandle     mesh;
     MaterialHandle material;
+    uint32_t       submeshIndex = 0u;
+    bool           enabled = true;
 
-    MaterialRefComponent() = default;
-    explicit MaterialRefComponent(MaterialHandle h) : material(h) {}
+    // Dirty-/Versionsdaten für Mesh/Material/Submesh/Enabled.
+    bool           dirty = true;
+    uint32_t       stateVersion = 1u;
+
+    RenderableComponent() = default;
+    RenderableComponent(MeshHandle meshHandle, MaterialHandle materialHandle, uint32_t slot = 0u)
+        : mesh(meshHandle), material(materialHandle), submeshIndex(slot)
+    {
+    }
 };
 
 // ===========================================================================
@@ -223,8 +199,8 @@ struct SkinComponent
 // Ein Transform ist ein geometrisches Konzept.
 // Visibility ist ein Render-Metadatum.
 //
-// Entities ohne VisibilityComponent werden vom Renderer übersprungen,
-// wenn das System explizit nach Visibility filtert.
+// VisibilityComponent ist Pflicht für renderbare Entities.
+// Entities ohne VisibilityComponent werden vom Renderer übersprungen.
 // ===========================================================================
 struct VisibilityComponent
 {
@@ -238,6 +214,10 @@ struct VisibilityComponent
     // Schatten empfangen: pro Entity. Standard = true.
     // Wird im Main-Pass mit MaterialData.receiveShadows kombiniert.
     bool receiveShadows = true;
+
+    // Dirty-/Versionsdaten für Gather-/Render-Cache.
+    bool     dirty = true;
+    uint32_t stateVersion = 1u;
 
     VisibilityComponent() = default;
 };
@@ -339,9 +319,3 @@ struct LightComponent
     LightComponent() = default;
 };
 
-// ===========================================================================
-// ShadowCasterTag — Marker: diese Entity wirft Schatten.
-//
-// Legacy-Marker. Neuer Shadow-Gather filtert über VisibilityComponent.castShadows.
-// ===========================================================================
-struct ShadowCasterTag {};

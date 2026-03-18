@@ -22,6 +22,14 @@ enum class GDXTextureSemantic : uint8_t
     Procedural,
 };
 
+enum class GDXTextureFormat : uint8_t
+{
+    Unknown,
+    RGBA8_UNORM,
+    RGBA8_UNORM_SRGB,
+    RGBA16_FLOAT,
+};
+
 struct GDXTextureResource
 {
     void* srv = nullptr;   // ID3D11ShaderResourceView* — nicht owned hier
@@ -29,6 +37,7 @@ struct GDXTextureResource
     uint32_t     height = 0u;
     bool         ready = false;
     bool         isSRGB = false;
+    GDXTextureFormat format = GDXTextureFormat::Unknown;
     GDXTextureSemantic semantic = GDXTextureSemantic::Unknown;
     std::wstring debugName;
 

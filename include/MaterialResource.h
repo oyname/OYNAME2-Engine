@@ -17,16 +17,24 @@ struct MaterialData
     float roughness         = 0.5f;
     float normalScale       = 1.0f;
     float occlusionStrength = 1.0f;
-    float    shininess      = 32.0f;
-    float    transparency   = 0.0f;
-    float    alphaCutoff    = 0.5f;
-    float    receiveShadows = 1.0f;
-    float    blendMode   = 0.0f;
-    float    blendFactor = 0.0f;
-    uint32_t flags       = 0u;
-    float    _pad0       = 0.0f;
+    float shininess         = 32.0f;
+    float transparency      = 0.0f;
+    float alphaCutoff       = 0.5f;
+    float receiveShadows    = 1.0f;
+    float blendMode         = 0.0f;
+    float blendFactor       = 0.0f;
+    uint32_t flags          = 0u;
+    float    _pad0          = 0.0f;
 };
 static_assert(sizeof(MaterialData) == 128, "MaterialData muss 128 Byte sein (cbuffer-Anforderung)");
+
+enum class MaterialTextureBlendMode : uint32_t
+{
+    Multiply2x = 0u,
+    Multiply   = 1u,
+    Add        = 2u,
+    Lerp       = 3u,
+};
 
 enum MaterialFlags : uint32_t
 {
@@ -180,6 +188,31 @@ public:
     void SetDetailTiling(float tilingX, float tilingY, float offsetX = 0.0f, float offsetY = 0.0f) noexcept
     {
         data.uvDetailTilingOffset = { tilingX, tilingY, offsetX, offsetY };
+        cpuDirty = true;
+    }
+
+    void SetDetailBlendMode(MaterialTextureBlendMode mode) noexcept
+    {
+        data.blendMode = static_cast<float>(static_cast<uint32_t>(mode));
+        cpuDirty = true;
+    }
+
+    MaterialTextureBlendMode GetDetailBlendMode() const noexcept
+    {
+        const uint32_t raw = static_cast<uint32_t>(data.blendMode + 0.5f);
+        switch (raw)
+        {
+        case 1u: return MaterialTextureBlendMode::Multiply;
+        case 2u: return MaterialTextureBlendMode::Add;
+        case 3u: return MaterialTextureBlendMode::Lerp;
+        case 0u:
+        default: return MaterialTextureBlendMode::Multiply2x;
+        }
+    }
+
+    void SetDetailBlendFactor(float factor) noexcept
+    {
+        data.blendFactor = factor;
         cpuDirty = true;
     }
 

@@ -217,8 +217,7 @@ public:
             reg.Add<TransformComponent>(m_cube, tc);
         }
         reg.Add<WorldTransformComponent>(m_cube);
-        reg.Add<MeshRefComponent>(m_cube, m_hCube, 0u);
-        reg.Add<MaterialRefComponent>(m_cube, m_hMat);
+        reg.Add<RenderableComponent>(m_cube, m_hCube, m_hMat, 0u);
 
         {
             VisibilityComponent vis;
@@ -227,7 +226,6 @@ public:
             vis.castShadows = true;
             reg.Add<VisibilityComponent>(m_cube, vis);
         }
-        reg.Add<ShadowCasterTag>(m_cube);
 
         Debug::Log("UV1DetailDemo: Space = Detail-Textur wechseln");
     }

@@ -107,6 +107,7 @@ bool GDXTextureLoader_LoadFromFile(
     outResource.height    = static_cast<uint32_t>(h);
     outResource.ready     = true;
     outResource.isSRGB    = isSRGB;
+    outResource.format    = isSRGB ? GDXTextureFormat::RGBA8_UNORM_SRGB : GDXTextureFormat::RGBA8_UNORM;
     outResource.semantic  = GDXTextureSemantic::Unknown;
     outResource.debugName = filename;
     return true;
@@ -158,6 +159,7 @@ bool GDXTextureLoader_Create1x1(
     outResource.height = 1u;
     outResource.ready  = true;
     outResource.isSRGB = false;
+    outResource.format = GDXTextureFormat::RGBA8_UNORM;
     outResource.semantic = GDXTextureSemantic::Unknown;
     return true;
 }
@@ -189,6 +191,7 @@ bool GDXTextureLoader_CreateFromImage(
     outResource.height = image.Height();
     outResource.ready = true;
     outResource.isSRGB = isSRGB;
+    outResource.format = isSRGB ? GDXTextureFormat::RGBA8_UNORM_SRGB : GDXTextureFormat::RGBA8_UNORM;
     outResource.semantic = GDXTextureSemantic::Procedural;
     outResource.debugName = debugName ? debugName : L"ImageBufferTexture";
     return true;

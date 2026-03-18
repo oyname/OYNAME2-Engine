@@ -4,7 +4,6 @@
 #include "GDXPipelineState.h"
 #include "GDXShaderLayout.h"
 #include "GDXShaderResource.h"
-#include "GDXResourceBinding.h"
 
 #include <cstdint>
 #include <cstddef>
@@ -27,7 +26,8 @@ struct GDXGraphicsPipelineDesc
 struct GDXDX11CachedPipelineState
 {
     GDXGraphicsPipelineDesc desc{};
-    uint32_t key = 0u;
+    uint64_t graphicsKey = 0ull;
+    GDXPipelineStateKey stateKey{};
 };
 
 class GDXDX11PipelineCache
@@ -42,7 +42,8 @@ public:
 
         GDXDX11CachedPipelineState cached{};
         cached.desc = desc;
-        cached.key = GDXPipelineStateKey::FromDesc(desc.state).value;
+        cached.graphicsKey = key;
+        cached.stateKey = GDXPipelineStateKey::FromDesc(desc.state);
         auto [inserted, _] = m_cache.emplace(key, cached);
         return inserted->second;
     }

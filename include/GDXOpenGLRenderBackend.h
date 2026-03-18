@@ -43,33 +43,28 @@ public:
     void UpdateLights(Registry& registry, FrameData& frame) override;
     void UpdateFrameConstants(const FrameData& frame) override;
 
-    void ExecuteShadowPass(Registry& registry,
-                           const RenderQueue& shadowQueue,
-                           ResourceStore<MeshAssetResource, MeshTag>& meshStore,
-                           ResourceStore<MaterialResource, MaterialTag>& matStore,
-                           ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-                           ResourceStore<GDXTextureResource, TextureTag>& texStore,
-                           const FrameData& frame) override;
+    void* ExecuteRenderPass(const BackendRenderPassDesc& passDesc,
+                            Registry& registry,
+                            const ICommandList& commandList,
+                            ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+                            ResourceStore<MaterialResource, MaterialTag>& matStore,
+                            ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+                            ResourceStore<GDXTextureResource, TextureTag>& texStore,
+                            ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore = nullptr) override;
 
-    void* ExecuteMainPass(Registry& registry,
-                          const RenderQueue& opaqueQueue,
-                          const RenderQueue& transparentQueue,
-                          ResourceStore<MeshAssetResource, MeshTag>& meshStore,
-                          ResourceStore<MaterialResource, MaterialTag>& matStore,
-                          ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-                          ResourceStore<GDXTextureResource, TextureTag>& texStore) override;
+    void SetShadowMapSize(uint32_t size) override;
 
-    void* ExecuteMainPassToTarget(GDXRenderTargetResource& rt,
-                                  const RenderPassClearDesc& clearDesc,
-                                  Registry& registry,
-                                  const RenderQueue& opaqueQueue,
-                                  const RenderQueue& transparentQueue,
-                                  ResourceStore<MeshAssetResource, MeshTag>& meshStore,
-                                  ResourceStore<MaterialResource, MaterialTag>& matStore,
-                                  ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-                                  ResourceStore<GDXTextureResource, TextureTag>& texStore) override;
+    PostProcessHandle CreatePostProcessPass(ResourceStore<PostProcessResource, PostProcessTag>& postStore,
+                                            const PostProcessPassDesc& desc) override;
+    bool UpdatePostProcessConstants(PostProcessResource& pass, const void* data, uint32_t size) override;
+    void DestroyPostProcessPasses(ResourceStore<PostProcessResource, PostProcessTag>& postStore) override;
+    bool ExecutePostProcessChain(const std::vector<PostProcessHandle>& orderedPasses,
+                                 ResourceStore<PostProcessResource, PostProcessTag>& postStore,
+                                 ResourceStore<GDXTextureResource, TextureTag>& texStore,
+                                 TextureHandle sceneTexture,
+                                 float viewportWidth,
+                                 float viewportHeight) override;
 
-    void SetShadowMapSize(uint32_t size);
     uint32_t GetDrawCallCount() const override;
     bool HasShadowResources() const override;
     const DefaultTextureSet& GetDefaultTextures() const override;

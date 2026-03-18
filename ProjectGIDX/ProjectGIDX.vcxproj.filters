@@ -234,6 +234,15 @@
     <ClCompile Include="..\app\unlit_mesh_example.cpp">
       <Filter>app\unlit mesh</Filter>
     </ClCompile>
+    <ClCompile Include="..\app\test_scene.cpp">
+      <Filter>app</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\JobSystem.cpp">
+      <Filter>util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\postprocess_example.cpp">
+      <Filter>app</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\third_party\stb_image.h">
@@ -461,6 +470,18 @@
     <ClInclude Include="..\include\GDXResourceBinding.h">
       <Filter>engine</Filter>
     </ClInclude>
+    <ClInclude Include="..\app\NeonTimeBuffer.h">
+      <Filter>app</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\JobSystem.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\SystemScheduler.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\PostProcessResource.h">
+      <Filter>engine\assets</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Text Include="..\shader\ECSPixelShader.hlsl">
@@ -503,6 +524,12 @@
       <Filter>shader</Filter>
     </Text>
     <Text Include="..\shader\PixelShaderNeon_GIDX.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\PostProcessFullscreenVS.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\PostProcessTintPS.hlsl">
       <Filter>shader</Filter>
     </Text>
   </ItemGroup>

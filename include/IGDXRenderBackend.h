@@ -10,14 +10,13 @@
 #include "GDXRenderTargetResource.h"
 #include "ImageBuffer.h"
 #include "FrameData.h"
-#include "RenderQueue.h"
-#include "RenderPassClearDesc.h"
-#include "RenderPassTargetDesc.h"
+#include "PostProcessResource.h"
 #include "BackendRenderPassDesc.h"
 #include "ICommandList.h"
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 class IGDXRenderBackend
 {
@@ -63,6 +62,7 @@ public:
 
     virtual void UpdateLights(Registry& registry, FrameData& frame) = 0;
     virtual void UpdateFrameConstants(const FrameData& frame) = 0;
+
     virtual void* ExecuteRenderPass(const BackendRenderPassDesc& passDesc,
                                     Registry& registry,
                                     const ICommandList& commandList,
@@ -70,87 +70,55 @@ public:
                                     ResourceStore<MaterialResource, MaterialTag>& matStore,
                                     ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
                                     ResourceStore<GDXTextureResource, TextureTag>& texStore,
-                                    ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore = nullptr)
+                                    ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore = nullptr) = 0;
+
+
+    virtual PostProcessHandle CreatePostProcessPass(ResourceStore<PostProcessResource, PostProcessTag>& postStore,
+                                                    const PostProcessPassDesc& desc)
     {
-        const auto* queue = dynamic_cast<const RenderQueue*>(&commandList);
-        if (!queue)
-            return nullptr;
+        (void)postStore; (void)desc;
+        return PostProcessHandle::Invalid();
+    }
 
-        if (passDesc.kind == BackendRenderPassDesc::Kind::Shadow)
-        {
-            if (!passDesc.frame)
-                return nullptr;
-
-            ExecuteShadowPass(registry, *queue, meshStore, matStore, shaderStore, texStore, *passDesc.frame);
-            return nullptr;
-        }
-
-        return ExecutePass(passDesc.target, registry, *queue, meshStore, matStore, shaderStore, texStore, rtStore);
+    virtual bool UpdatePostProcessConstants(PostProcessResource& pass, const void* data, uint32_t size)
+    {
+        (void)pass; (void)data; (void)size;
+        return false;
     }
 
 
-    virtual void ExecuteShadowPass(Registry& registry,
-                                   const RenderQueue& shadowQueue,
-                                   ResourceStore<MeshAssetResource, MeshTag>& meshStore,
-                                   ResourceStore<MaterialResource, MaterialTag>& matStore,
-                                   ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-                                   ResourceStore<GDXTextureResource, TextureTag>& texStore,
-                                   const FrameData& frame) = 0;
-
-    virtual void* ExecuteMainPass(Registry& registry,
-                                  const RenderQueue& opaqueQueue,
-                                  const RenderQueue& transparentQueue,
-                                  ResourceStore<MeshAssetResource, MeshTag>& meshStore,
-                                  ResourceStore<MaterialResource, MaterialTag>& matStore,
-                                  ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-                                  ResourceStore<GDXTextureResource, TextureTag>& texStore) = 0;
-
-    virtual void* ExecuteMainPassToTarget(GDXRenderTargetResource& rt,
-                                          const RenderPassClearDesc& clearDesc,
-                                          Registry& registry,
-                                          const RenderQueue& opaqueQueue,
-                                          const RenderQueue& transparentQueue,
-                                          ResourceStore<MeshAssetResource, MeshTag>& meshStore,
-                                          ResourceStore<MaterialResource, MaterialTag>& matStore,
-                                          ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-                                          ResourceStore<GDXTextureResource, TextureTag>& texStore)
+    virtual void DestroyPostProcessPasses(ResourceStore<PostProcessResource, PostProcessTag>& postStore)
     {
-        (void)rt;
-        (void)clearDesc;
-        return ExecuteMainPass(registry, opaqueQueue, transparentQueue, meshStore, matStore, shaderStore, texStore);
+        (void)postStore;
     }
 
-    virtual void* ExecutePass(const RenderPassTargetDesc& targetDesc,
-                              Registry& registry,
-                              const RenderQueue& queue,
-                              ResourceStore<MeshAssetResource, MeshTag>& meshStore,
-                              ResourceStore<MaterialResource, MaterialTag>& matStore,
-                              ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-                              ResourceStore<GDXTextureResource, TextureTag>& texStore,
-                              ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore = nullptr)
+    virtual bool ExecutePostProcessChain(const std::vector<PostProcessHandle>& orderedPasses,
+                                         ResourceStore<PostProcessResource, PostProcessTag>& postStore,
+                                         ResourceStore<GDXTextureResource, TextureTag>& texStore,
+                                         TextureHandle sceneTexture,
+                                         float viewportWidth,
+                                         float viewportHeight)
     {
-        if (targetDesc.useBackbuffer || !targetDesc.renderTarget.IsValid() || !rtStore)
-            return ExecuteMainPass(registry, queue, RenderQueue{}, meshStore, matStore, shaderStore, texStore);
-
-        GDXRenderTargetResource* rt = rtStore->Get(targetDesc.renderTarget);
-        if (!rt)
-            return ExecuteMainPass(registry, queue, RenderQueue{}, meshStore, matStore, shaderStore, texStore);
-
-        return ExecuteMainPassToTarget(*rt, targetDesc.clear, registry, queue, RenderQueue{}, meshStore, matStore, shaderStore, texStore);
+        (void)orderedPasses; (void)postStore; (void)texStore;
+        (void)sceneTexture; (void)viewportWidth; (void)viewportHeight;
+        return false;
     }
-
 
     virtual uint32_t GetDrawCallCount() const = 0;
     virtual bool HasShadowResources() const = 0;
     virtual const DefaultTextureSet& GetDefaultTextures() const = 0;
 
-    // Offscreen Render-Target anlegen.
-    // Default-Implementierung gibt ungültige Handles zurück (Backends ohne RTT-Support).
+    virtual void SetShadowMapSize(uint32_t size)
+    {
+        (void)size;
+    }
+
     virtual RenderTargetHandle CreateRenderTarget(
         ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore,
         ResourceStore<GDXTextureResource,      TextureTag>&      texStore,
         uint32_t width, uint32_t height,
-        const std::wstring& debugName)
+        const std::wstring& debugName,
+        GDXTextureFormat colorFormat = GDXTextureFormat::RGBA8_UNORM)
     {
         (void)rtStore; (void)texStore;
         (void)width;   (void)height; (void)debugName;

@@ -109,8 +109,7 @@ public:
             reg.Add<TransformComponent>(m_cube, tc);
         }
         reg.Add<WorldTransformComponent>(m_cube);
-        reg.Add<MeshRefComponent>(m_cube, m_hCube, 0u);
-        reg.Add<MaterialRefComponent>(m_cube, m_hUnlit);
+        reg.Add<RenderableComponent>(m_cube, m_hCube, m_hUnlit, 0u);
         {
             VisibilityComponent vis;
             vis.visible = true;

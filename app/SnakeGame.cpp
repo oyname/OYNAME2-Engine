@@ -30,8 +30,7 @@ void SnakeGame::Init()
     reg.Add<TagComponent>(m_foodEntity, "Food");
     reg.Add<TransformComponent>(m_foodEntity);
     reg.Add<WorldTransformComponent>(m_foodEntity);
-    reg.Add<MeshRefComponent>(m_foodEntity, m_cubeMesh, 0u);
-    reg.Add<MaterialRefComponent>(m_foodEntity, m_foodMat);
+    reg.Add<RenderableComponent>(m_foodEntity, m_cubeMesh, m_foodMat, 0u);
     reg.Add<VisibilityComponent>(m_foodEntity);
 
     m_renderer.SetSceneAmbient(0.35f, 0.35f, 0.38f);
@@ -60,8 +59,7 @@ void SnakeGame::CreateBoard()
         reg.Add<TransformComponent>(m_board, tc);
     }
     reg.Add<WorldTransformComponent>(m_board);
-    reg.Add<MeshRefComponent>(m_board, m_cubeMesh, 0u);
-    reg.Add<MaterialRefComponent>(m_board, m_boardMat);
+    reg.Add<RenderableComponent>(m_board, m_cubeMesh, m_boardMat, 0u);
     reg.Add<VisibilityComponent>(m_board);
 
     for (int z = -1; z <= BOARD_H; ++z)
@@ -83,8 +81,7 @@ void SnakeGame::CreateBoard()
                 reg.Add<TransformComponent>(wall, tc);
             }
             reg.Add<WorldTransformComponent>(wall);
-            reg.Add<MeshRefComponent>(wall, m_cubeMesh, 0u);
-            reg.Add<MaterialRefComponent>(wall, m_wallMat);
+            reg.Add<RenderableComponent>(wall, m_cubeMesh, m_wallMat, 0u);
             reg.Add<VisibilityComponent>(wall);
         }
     }
@@ -326,8 +323,7 @@ void SnakeGame::SyncSnakeVisuals()
         reg.Add<TagComponent>(e, "SnakeSegment");
         reg.Add<TransformComponent>(e);
         reg.Add<WorldTransformComponent>(e);
-        reg.Add<MeshRefComponent>(e, m_cubeMesh, 0u);
-        reg.Add<MaterialRefComponent>(e, m_bodyMat);
+        reg.Add<RenderableComponent>(e, m_cubeMesh, m_bodyMat, 0u);
         reg.Add<VisibilityComponent>(e);
     }
 
@@ -348,12 +344,15 @@ void SnakeGame::SyncSnakeVisuals()
             tc->dirty = true;
         }
 
-        if (auto* mat = reg.Get<MaterialRefComponent>(id))
+        if (auto* mat = reg.Get<RenderableComponent>(id))
         {
             if (i == 0)
                 mat->material = m_gameOver ? m_gameOverMat : m_headMat;
             else
                 mat->material = m_bodyMat;
+
+            ++mat->stateVersion;
+            mat->dirty = true;
         }
     }
 }

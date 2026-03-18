@@ -36,6 +36,7 @@ void HierarchySystem::DecomposeWorldIntoLocal(TransformComponent&      tc,
         GDXMathHelpers::StoreFloat3(tc.localScale, scaleV);
     }
     tc.dirty = true;
+    ++tc.localVersion;
 }
 
 // ---------------------------------------------------------------------------
@@ -100,7 +101,11 @@ void HierarchySystem::MarkDirtySubtree(Registry& registry, EntityID root)
         if (!registry.IsAlive(cur)) continue;
 
         auto* t = registry.Get<TransformComponent>(cur);
-        if (t) t->dirty = true;
+        if (t)
+        {
+            t->dirty = true;
+            ++t->localVersion;
+        }
 
         // Fast path: ChildrenComponent vorhanden → O(1) Kindlookup
         if (const auto* cc = registry.Get<ChildrenComponent>(cur))

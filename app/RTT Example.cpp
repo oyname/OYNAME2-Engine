@@ -233,8 +233,7 @@ public:
             reg.Add<TransformComponent>(m_cubeLeft, tc);
         }
         reg.Add<WorldTransformComponent>(m_cubeLeft);
-        reg.Add<MeshRefComponent>(m_cubeLeft, m_hCube, 0u);
-        reg.Add<MaterialRefComponent>(m_cubeLeft, m_hMatLeft);
+        reg.Add<RenderableComponent>(m_cubeLeft, m_hCube, m_hMatLeft, 0u);
 
         {
             VisibilityComponent vis;
@@ -245,7 +244,6 @@ public:
             reg.Add<VisibilityComponent>(m_cubeLeft, vis);
         }
 
-        reg.Add<ShadowCasterTag>(m_cubeLeft);
 
         // ================================================================
         // Rechter Wrfel  zeigt RTT-Textur
@@ -263,8 +261,7 @@ public:
             reg.Add<TransformComponent>(m_cubeRight, tc);
         }
         reg.Add<WorldTransformComponent>(m_cubeRight);
-        reg.Add<MeshRefComponent>(m_cubeRight, m_hCube, 0u);
-        reg.Add<MaterialRefComponent>(m_cubeRight, m_hMatRight);
+        reg.Add<RenderableComponent>(m_cubeRight, m_hCube, m_hMatRight, 0u);
 
         {
             VisibilityComponent vis;
@@ -275,7 +272,6 @@ public:
             reg.Add<VisibilityComponent>(m_cubeRight, vis);
         }
 
-        reg.Add<ShadowCasterTag>(m_cubeRight);
 
         Debug::Log("RTTDemo: Szene initialisiert.");
     }

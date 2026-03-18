@@ -1,18 +1,138 @@
 #include "TransformSystem.h"
 #include "Components.h"
+#include "Debug.h"
 #include "GDXMathHelpers.h"
+#include "JobSystem.h"
 #include <vector>
+#include <atomic>
+#include <algorithm>
 
 using namespace DirectX;
 
-// ---------------------------------------------------------------------------
-// ComputeLocalMatrix — baut XMFLOAT4X4 aus Position, Quaternion, Scale.
-// ---------------------------------------------------------------------------
+namespace
+{
+    struct DirtyNodeContext
+    {
+        EntityID id = NULL_ENTITY;
+        EntityID parent = NULL_ENTITY;
+        bool hasParent = false;
+    };
+
+    void CollectDirtyChildren(Registry& registry, EntityID parent, std::vector<EntityID>& outChildren)
+    {
+        if (const auto* cc = registry.Get<ChildrenComponent>(parent))
+        {
+            outChildren.reserve(outChildren.size() + cc->children.size());
+            for (EntityID child : cc->children)
+            {
+                if (!registry.IsAlive(child))
+                    continue;
+
+                const auto* childT = registry.Get<TransformComponent>(child);
+                const auto* childP = registry.Get<ParentComponent>(child);
+                if (!childT || !childP || childP->parent != parent)
+                    continue;
+
+                outChildren.push_back(child);
+            }
+            return;
+        }
+
+        registry.View<TransformComponent, ParentComponent>(
+            [&](EntityID childID, TransformComponent&, ParentComponent& pc)
+            {
+                if (pc.parent == parent)
+                    outChildren.push_back(childID);
+            });
+    }
+
+    bool TryBuildDirtyNodeContext(Registry& registry, EntityID id, DirtyNodeContext& out)
+    {
+        if (!registry.IsAlive(id))
+            return false;
+
+        const auto* t = registry.Get<TransformComponent>(id);
+        const auto* wt = registry.Get<WorldTransformComponent>(id);
+        if (!t || !wt)
+            return false;
+
+        out.id = id;
+        out.parent = NULL_ENTITY;
+        out.hasParent = false;
+
+        const auto* pc = registry.Get<ParentComponent>(id);
+        if (!pc || pc->parent == NULL_ENTITY)
+            return true;
+
+        if (!registry.IsAlive(pc->parent) || !registry.Has<WorldTransformComponent>(pc->parent))
+            return true;
+
+        out.parent = pc->parent;
+        out.hasParent = true;
+        return true;
+    }
+
+    void CollectDirtyEntryFrontier(Registry& registry, std::vector<DirtyNodeContext>& frontier)
+    {
+        frontier.clear();
+
+        registry.View<TransformComponent, WorldTransformComponent>(
+            [&](EntityID id, TransformComponent& t, WorldTransformComponent&)
+            {
+                if (!t.dirty)
+                    return;
+
+                DirtyNodeContext ctx;
+                if (!TryBuildDirtyNodeContext(registry, id, ctx))
+                    return;
+
+                if (!ctx.hasParent)
+                {
+                    frontier.push_back(ctx);
+                    return;
+                }
+
+                const auto* parentT = registry.Get<TransformComponent>(ctx.parent);
+                if (parentT == nullptr || !parentT->dirty)
+                    frontier.push_back(ctx);
+            });
+    }
+
+    void CollectDirtyChildrenFrontier(Registry& registry,
+        const std::vector<DirtyNodeContext>& currentFrontier,
+        std::vector<DirtyNodeContext>& nextFrontier)
+    {
+        nextFrontier.clear();
+
+        std::vector<EntityID> childIds;
+        for (const DirtyNodeContext& current : currentFrontier)
+        {
+            childIds.clear();
+            CollectDirtyChildren(registry, current.id, childIds);
+
+            for (EntityID childID : childIds)
+            {
+                DirtyNodeContext childCtx;
+                if (!TryBuildDirtyNodeContext(registry, childID, childCtx))
+                    continue;
+
+                if (!childCtx.hasParent)
+                    continue;
+
+                const auto* parentT = registry.Get<TransformComponent>(childCtx.parent);
+                if (parentT != nullptr && parentT->dirty)
+                    continue;
+
+                nextFrontier.push_back(childCtx);
+            }
+        }
+    }
+}
+
 GIDX::Float4x4 TransformSystem::ComputeLocalMatrix(const TransformComponent& t)
 {
-    // Scale → Rotation (Quaternion) → Translation: SRT-Matrixkette.
     const XMVECTOR s = GDXMathHelpers::LoadFloat3(t.localScale);
-    const XMVECTOR r = GDXMathHelpers::LoadFloat4(t.localRotation);  // Quaternion
+    const XMVECTOR r = GDXMathHelpers::LoadFloat4(t.localRotation);
     const XMVECTOR p = GDXMathHelpers::LoadFloat3(t.localPosition);
 
     XMMATRIX m = XMMatrixScalingFromVector(s)
@@ -24,9 +144,6 @@ GIDX::Float4x4 TransformSystem::ComputeLocalMatrix(const TransformComponent& t)
     return result;
 }
 
-// ---------------------------------------------------------------------------
-// UpdateRoot — Root-Entity ohne Parent.
-// ---------------------------------------------------------------------------
 void TransformSystem::UpdateRoot(TransformComponent& t, WorldTransformComponent& wt)
 {
     wt.matrix = ComputeLocalMatrix(t);
@@ -36,12 +153,11 @@ void TransformSystem::UpdateRoot(TransformComponent& t, WorldTransformComponent&
     GDXMathHelpers::StoreFloat4x4(wt.inverse, inv);
 
     t.dirty = false;
+    ++t.worldVersion;
 }
 
-// ---------------------------------------------------------------------------
-// UpdateChild — Kind-Entity: local * parent.world
-// ---------------------------------------------------------------------------
-void TransformSystem::UpdateChild(TransformComponent& t, WorldTransformComponent& wt,
+void TransformSystem::UpdateChild(TransformComponent& t,
+    WorldTransformComponent& wt,
     const WorldTransformComponent& parentWT)
 {
     GIDX::Float4x4 local = ComputeLocalMatrix(t);
@@ -56,19 +172,15 @@ void TransformSystem::UpdateChild(TransformComponent& t, WorldTransformComponent
     GDXMathHelpers::StoreFloat4x4(wt.inverse, inv);
 
     t.dirty = false;
+    ++t.worldVersion;
 }
 
-// ---------------------------------------------------------------------------
-// EnsureWorldTransforms — WorldTransformComponent für alle Entities anlegen,
-// die TransformComponent haben, aber noch kein WorldTransformComponent.
-// ---------------------------------------------------------------------------
 void TransformSystem::EnsureWorldTransforms(Registry& registry)
 {
-    // Wir sammeln erst die IDs, dann fügen wir Komponenten hinzu,
-    // damit wir den Pool während der Iteration nicht modifizieren.
     std::vector<EntityID> missing;
 
-    registry.View<TransformComponent>([&](EntityID id, TransformComponent&)
+    registry.View<TransformComponent>(
+        [&](EntityID id, TransformComponent&)
         {
             if (!registry.Has<WorldTransformComponent>(id))
                 missing.push_back(id);
@@ -78,69 +190,81 @@ void TransformSystem::EnsureWorldTransforms(Registry& registry)
         registry.Add<WorldTransformComponent>(id);
 }
 
-// ---------------------------------------------------------------------------
-// Update — Haupteinsprungpunkt.
-// ---------------------------------------------------------------------------
-void TransformSystem::Update(Registry& registry)
+void TransformSystem::Update(Registry& registry, JobSystem* jobSystem)
 {
-    // Sicherstellen dass alle Transform-Entities auch WorldTransform haben.
     EnsureWorldTransforms(registry);
 
-    // -----------------------------------------------------------------------
-    // Schritt 1: Root-Entities (kein ParentComponent, dirty=true).
-    // -----------------------------------------------------------------------
-    registry.View<TransformComponent, WorldTransformComponent>(
-        [&](EntityID id, TransformComponent& t, WorldTransformComponent& wt)
+    std::vector<DirtyNodeContext> frontier;
+    std::vector<DirtyNodeContext> nextFrontier;
+    CollectDirtyEntryFrontier(registry, frontier);
+
+    auto updateFrontier = [&](const std::vector<DirtyNodeContext>& nodes)
         {
-            if (registry.Has<ParentComponent>(id)) return;  // Hat Parent → überspringen
-            if (!t.dirty) return;
-            UpdateRoot(t, wt);
+            auto worker = [&](size_t begin, size_t end)
+                {
+                    for (size_t i = begin; i < end; ++i)
+                    {
+                        const DirtyNodeContext& node = nodes[i];
+
+                        auto* t = registry.Get<TransformComponent>(node.id);
+                        auto* wt = registry.Get<WorldTransformComponent>(node.id);
+                        if (!t || !wt)
+                            continue;
+
+                        const bool forceByParent = node.hasParent;
+                        if (!t->dirty && !forceByParent)
+                            continue;
+
+                        if (!node.hasParent)
+                        {
+                            UpdateRoot(*t, *wt);
+                            continue;
+                        }
+
+                        const auto* parentWT = registry.Get<WorldTransformComponent>(node.parent);
+                        if (!parentWT)
+                            continue;
+
+                        const auto* parentT = registry.Get<TransformComponent>(node.parent);
+                        if (parentT != nullptr && parentT->dirty)
+                            continue;
+
+                        UpdateChild(*t, *wt, *parentWT);
+                    }
+                };
+
+            if (jobSystem)
+                jobSystem->ParallelFor(nodes.size(), worker, 32u);
+            else
+                worker(0u, nodes.size());
+        };
+
+    while (!frontier.empty())
+    {
+        updateFrontier(frontier);
+        CollectDirtyChildrenFrontier(registry, frontier, nextFrontier);
+        frontier.swap(nextFrontier);
+    }
+
+#ifdef _DEBUG
+    size_t unresolvedDirtyCount = 0u;
+    registry.View<TransformComponent>(
+        [&](EntityID, TransformComponent& t)
+        {
+            if (t.dirty)
+                ++unresolvedDirtyCount;
         });
 
-    // -----------------------------------------------------------------------
-    // Schritt 2: Kind-Entities.
-    //
-    // Einfache Implementierung: MAX_HIERARCHY_DEPTH Iterationen.
-    // Jede Iteration schreibt eine weitere Hierarchieebene.
-    // Kind-Entities werden als dirty markiert, wenn ihr Parent dirty war.
-    //
-    // Limitation: Zirkuläre Hierarchien führen zu MAX_HIERARCHY_DEPTH
-    // Iterationen ohne Konvergenz (kein Schutz hier — Verantwortung beim Caller).
-    // -----------------------------------------------------------------------
-    for (int depth = 0; depth < MAX_HIERARCHY_DEPTH; ++depth)
+    if (unresolvedDirtyCount > 0u)
     {
-        bool anyUpdated = false;
-
-        registry.View<TransformComponent, WorldTransformComponent, ParentComponent>(
-            [&](EntityID /*id*/, TransformComponent& t, WorldTransformComponent& wt,
-                ParentComponent& pc)
-            {
-                if (!t.dirty) return;
-
-                // Explizite Typen statt auto* — MSVC-Analyzer akzeptiert keine
-                // auto* aus Registry::Get innerhalb von Lambdas ohne Warnung.
-                const WorldTransformComponent* parentWT = registry.Get<WorldTransformComponent>(pc.parent);
-                if (parentWT == nullptr) return;
-
-                const TransformComponent* parentT = registry.Get<TransformComponent>(pc.parent);
-                if (parentT != nullptr && parentT->dirty) return;
-
-                UpdateChild(t, wt, *parentWT);
-                anyUpdated = true;
-            });
-
-        if (!anyUpdated) break;  // Keine weiteren Änderungen → fertig
+        DBWARN(GDX_SRC_LOC,
+            "TransformSystem left ",
+            unresolvedDirtyCount,
+            " dirty transform(s) unresolved. Check parent links or hierarchy cycles.");
     }
+#endif
 }
 
-// ---------------------------------------------------------------------------
-// MarkDirty — Entity und alle Kinder als dirty markieren.
-//
-// Iterativ (kein Rekursionsrisiko).
-// Fast path: ChildrenComponent vorhanden → O(depth).
-// Slow path: Kein ChildrenComponent → O(n) Scan pro Ebene.
-// Vollständige Variante via HierarchySystem::MarkDirtySubtree() verfügbar.
-// ---------------------------------------------------------------------------
 void TransformSystem::MarkDirty(Registry& registry, EntityID id)
 {
     std::vector<EntityID> stack;
@@ -152,12 +276,16 @@ void TransformSystem::MarkDirty(Registry& registry, EntityID id)
         const EntityID cur = stack.back();
         stack.pop_back();
 
-        if (!registry.IsAlive(cur)) continue;
+        if (!registry.IsAlive(cur))
+            continue;
 
         auto* t = registry.Get<TransformComponent>(cur);
-        if (t) t->dirty = true;
+        if (t)
+        {
+            t->dirty = true;
+            ++t->localVersion;
+        }
 
-        // Fast path: ChildrenComponent → O(1) Kindlookup
         if (const auto* cc = registry.Get<ChildrenComponent>(cur))
         {
             for (EntityID child : cc->children)
@@ -165,7 +293,6 @@ void TransformSystem::MarkDirty(Registry& registry, EntityID id)
         }
         else
         {
-            // Slow path: O(n) Scan (Fallback wenn HierarchySystem nicht genutzt)
             registry.View<TransformComponent, ParentComponent>(
                 [&](EntityID childID, TransformComponent&, ParentComponent& pc)
                 {

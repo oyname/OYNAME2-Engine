@@ -2,21 +2,23 @@
 #include "Components.h"
 #include "Registry.h"
 
+class JobSystem;
+
 // ---------------------------------------------------------------------------
 // TransformSystem — berechnet WorldTransformComponent aus TransformComponent.
 //
 // Verantwortlichkeiten:
-//   1. Alle Root-Entities (ohne ParentComponent) bei dirty=true aktualisieren.
-//   2. Alle Kind-Entities (mit ParentComponent) nachgelagert aktualisieren,
-//      so dass Parent immer vor Kind verarbeitet wird.
-//   3. dirty-Flag nach der Berechnung auf false setzen.
+//   1. Alle dirty Root-Entities (ohne ParentComponent) aktualisieren.
+//   2. Dirty-Hierarchien topologisch verarbeiten, so dass Parent immer vor Kind
+//      berechnet wird.
+//   3. Dirty-Flag nach der Berechnung auf false setzen.
 //
 // Update muss VOR allen Systemen aufgerufen werden, die WorldTransformComponent
 // lesen (Renderer, Physics, Audio, Camera, Light).
 //
-// Parent-Kind-Reihenfolge (Phase 1):
-//   Einfache Implementierung: mehrere Iterationen (max. Hierarchietiefe).
-//   Für tiefe Hierarchien besser: topologische Sortierung (Phase 7).
+// Parent-Kind-Reihenfolge:
+//   Dirty-Subtrees werden frontier-/level-basiert propagiert. Dadurch gibt es
+//   keine harte Hierarchietiefen-Grenze mehr und keine Blind-Scans pro Ebene.
 // ---------------------------------------------------------------------------
 class TransformSystem
 {
@@ -24,7 +26,7 @@ public:
     TransformSystem() = default;
 
     // Haupteinsprungpunkt — pro Frame aufrufen, bevor andere Systeme rendern.
-    void Update(Registry& registry);
+    void Update(Registry& registry, JobSystem* jobSystem = nullptr);
 
     // Erstellt WorldTransformComponent für alle Entities, die TransformComponent
     // haben aber noch kein WorldTransformComponent.
@@ -45,7 +47,4 @@ private:
     // Aktualisiert eine Kind-Entity relativ zum Parent.
     static void UpdateChild(TransformComponent& t, WorldTransformComponent& wt,
                             const WorldTransformComponent& parentWT);
-
-    // Maximale Hierarchietiefe für die iterative Parent-Propagation.
-    static constexpr int MAX_HIERARCHY_DEPTH = 8;
 };

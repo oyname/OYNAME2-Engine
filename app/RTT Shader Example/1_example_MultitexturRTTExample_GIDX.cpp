@@ -66,8 +66,7 @@ static EntityID CreateCubeEntity(
     reg.Add<TransformComponent>(e, tc);
 
     reg.Add<WorldTransformComponent>(e);
-    reg.Add<MeshRefComponent>(e, mesh, 0u);
-    reg.Add<MaterialRefComponent>(e, mat);
+    reg.Add<RenderableComponent>(e, mesh, mat, 0u);
 
     VisibilityComponent vc;
     vc.visible = true;
@@ -76,7 +75,6 @@ static EntityID CreateCubeEntity(
     vc.castShadows = true;
     reg.Add<VisibilityComponent>(e, vc);
 
-    reg.Add<ShadowCasterTag>(e);   // <<< DAS FEHLT
 
     return e;
 }

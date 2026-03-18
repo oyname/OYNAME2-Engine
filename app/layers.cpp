@@ -130,8 +130,7 @@ public:
             reg.Add<TransformComponent>(m_cube1, tc);
         }
         reg.Add<WorldTransformComponent>(m_cube1);
-        reg.Add<MeshRefComponent>(m_cube1, m_hCube, 0u);
-        reg.Add<MaterialRefComponent>(m_cube1, m_hMatCube1);
+        reg.Add<RenderableComponent>(m_cube1, m_hCube, m_hMatCube1, 0u);
 
         {
             VisibilityComponent vis;
@@ -142,7 +141,6 @@ public:
             reg.Add<VisibilityComponent>(m_cube1, vis);
         }
 
-        reg.Add<ShadowCasterTag>(m_cube1);
 
         // ============================================================
         // Cube 2  FX layer
@@ -157,8 +155,7 @@ public:
             reg.Add<TransformComponent>(m_cube2, tc);
         }
         reg.Add<WorldTransformComponent>(m_cube2);
-        reg.Add<MeshRefComponent>(m_cube2, m_hCube, 0u);
-        reg.Add<MaterialRefComponent>(m_cube2, m_hMatCube2);
+        reg.Add<RenderableComponent>(m_cube2, m_hCube, m_hMatCube2, 0u);
 
         {
             VisibilityComponent vis;
@@ -169,7 +166,6 @@ public:
             reg.Add<VisibilityComponent>(m_cube2, vis);
         }
 
-        reg.Add<ShadowCasterTag>(m_cube2);
 
         // ============================================================
         // Boden  DEFAULT | REFLECTION
@@ -184,8 +180,7 @@ public:
             reg.Add<TransformComponent>(m_floor, tc);
         }
         reg.Add<WorldTransformComponent>(m_floor);
-        reg.Add<MeshRefComponent>(m_floor, m_hCube, 0u);
-        reg.Add<MaterialRefComponent>(m_floor, m_hMatFloor);
+        reg.Add<RenderableComponent>(m_floor, m_hCube, m_hMatFloor, 0u);
 
         {
             VisibilityComponent vis;
@@ -196,7 +191,6 @@ public:
             reg.Add<VisibilityComponent>(m_floor, vis);
         }
 
-        reg.Add<ShadowCasterTag>(m_floor);
 
         // ============================================================
         // Directional Light

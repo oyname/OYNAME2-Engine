@@ -336,9 +336,15 @@ float4 main(PS_INPUT input) : SV_TARGET
     }
 
     // --- Emissive ---
-    float3 emissive = float3(0,0,0);
+    float3 emissive = float3(0, 0, 0);
     if ((gFlags & MF_USE_EMISSIVE) != 0u)
-        emissive = gEmissive.Sample(gSampler, uv).rgb * gEmissiveColor.rgb;
+    {
+        emissive = gEmissiveColor.rgb;
+
+        float3 emissiveTex = gEmissive.Sample(gSampler, uv).rgb;
+        if (dot(emissiveTex, emissiveTex) > 0.000001f)
+            emissive *= emissiveTex;
+    }
 
     // --- Zusammensetzen ---
     float3 color;

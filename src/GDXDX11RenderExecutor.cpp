@@ -463,7 +463,7 @@ void GDXDX11RenderExecutor::ApplyPipelineState(const RenderCommand& cmd)
     pipelineDesc.state = cmd.GetEffectivePipelineState();
 
     const auto& cached = m_pipelineCache.GetOrCreate(pipelineDesc);
-    if (cached.key == m_lastAppliedPipelineKey)
+    if (cached.stateKey.value == m_lastAppliedPipelineKey)
         return;
 
     const GDXPipelineStateDesc& state = cached.desc.state;
@@ -483,7 +483,7 @@ void GDXDX11RenderExecutor::ApplyPipelineState(const RenderCommand& cmd)
     if (blend)
         m_context->OMSetBlendState(blend, bf, 0xFFFFFFFFu);
 
-    m_lastAppliedPipelineKey = cached.key;
+    m_lastAppliedPipelineKey = cached.stateKey.value;
 }
 
 void GDXDX11RenderExecutor::ApplyPrimitiveTopology(const RenderCommand& cmd)

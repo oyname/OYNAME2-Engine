@@ -103,10 +103,8 @@ void ECSGame::Init()
         reg.Add<TransformComponent>(m_sphere, tc);
     }
     reg.Add<WorldTransformComponent>(m_sphere);
-    reg.Add<MeshRefComponent>(m_sphere, m_hSph, 0u);
-    reg.Add<MaterialRefComponent>(m_sphere, m_hMatPBR);
+    reg.Add<RenderableComponent>(m_sphere, m_hSph, m_hMatPBR, 0u);
     reg.Add<VisibilityComponent>(m_sphere);
-    reg.Add<ShadowCasterTag>(m_sphere);
 
     // ====================================================================
     // Entity: Würfel — PBR Material (oder Fallback), wirft Schatten
@@ -120,10 +118,8 @@ void ECSGame::Init()
         reg.Add<TransformComponent>(m_cube, tc);
     }
     reg.Add<WorldTransformComponent>(m_cube);
-    reg.Add<MeshRefComponent>(m_cube, m_hCube, 0u);
-    reg.Add<MaterialRefComponent>(m_cube, m_hMatPBR);
+    reg.Add<RenderableComponent>(m_cube, m_hCube, m_hMatPBR, 0u);
     reg.Add<VisibilityComponent>(m_cube);
-    reg.Add<ShadowCasterTag>(m_cube);
 
     // ====================================================================
     // Entity: Grüner Oktaeder — wirft Schatten, schwebt
@@ -137,10 +133,8 @@ void ECSGame::Init()
         reg.Add<TransformComponent>(m_diamond, tc);
     }
     reg.Add<WorldTransformComponent>(m_diamond);
-    reg.Add<MeshRefComponent>(m_diamond, m_hDiamond, 0u);
-    reg.Add<MaterialRefComponent>(m_diamond, m_hMatPBR);
+    reg.Add<RenderableComponent>(m_diamond, m_hDiamond, m_hMatPBR, 0u);
     reg.Add<VisibilityComponent>(m_diamond);
-    reg.Add<ShadowCasterTag>(m_diamond);
 
     // ====================================================================
     // Entity: Kamera

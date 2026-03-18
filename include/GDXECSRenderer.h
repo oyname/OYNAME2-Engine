@@ -10,6 +10,7 @@
 #include "GDXShaderResource.h"
 #include "GDXTextureResource.h"
 #include "GDXRenderTargetResource.h"
+#include "PostProcessResource.h"
 #include "GDXVertexFlags.h"
 #include "FrameData.h"
 #include "RenderQueue.h"
@@ -20,6 +21,8 @@
 #include "ImageBuffer.h"
 #include "FrameTransientResources.h"
 #include "FrameContext.h"
+#include "JobSystem.h"
+#include "SystemScheduler.h"
 
 #include <unordered_map>
 
@@ -74,8 +77,14 @@ public:
     ResourceStore<GDXTextureResource, TextureTag>& GetTextureStore() { return m_texStore; }
 
     // Render-Target (Offscreen RTT)
-    RenderTargetHandle CreateRenderTarget(uint32_t w, uint32_t h, const std::wstring& name);
+    RenderTargetHandle CreateRenderTarget(uint32_t w, uint32_t h, const std::wstring& name,
+                                          GDXTextureFormat colorFormat = GDXTextureFormat::RGBA8_UNORM);
     TextureHandle      GetRenderTargetTexture(RenderTargetHandle h);
+
+    PostProcessHandle  CreatePostProcessPass(const PostProcessPassDesc& desc);
+    bool               SetPostProcessConstants(PostProcessHandle h, const void* data, uint32_t size);
+    bool               SetPostProcessEnabled(PostProcessHandle h, bool enabled);
+    void               ClearPostProcessPasses();
 
     struct FrameStats
     {
@@ -109,6 +118,7 @@ private:
     ResourceStore<GDXShaderResource, ShaderTag>   m_shaderStore;
     ResourceStore<GDXTextureResource, TextureTag>  m_texStore;
     ResourceStore<GDXRenderTargetResource, RenderTargetTag> m_rtStore;
+    ResourceStore<PostProcessResource, PostProcessTag> m_postProcessStore;
 
     TransformSystem    m_transformSystem;
     CameraSystem       m_cameraSystem;
@@ -139,5 +149,9 @@ private:
 
     TickFn m_tickCallback;
 
+    std::vector<PostProcessHandle> m_postProcessPassOrder;
+    RenderTargetHandle m_mainScenePostProcessTarget = RenderTargetHandle::Invalid();
 
+    JobSystem m_jobSystem;
+    SystemScheduler m_systemScheduler;
 };

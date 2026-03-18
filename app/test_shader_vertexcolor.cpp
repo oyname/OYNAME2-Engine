@@ -158,10 +158,8 @@ private:
             reg.Add<TransformComponent>(e, tc);
         }
         reg.Add<WorldTransformComponent>(e);
-        reg.Add<MeshRefComponent>(e, mesh, 0u);
-        reg.Add<MaterialRefComponent>(e, mat);
+        reg.Add<RenderableComponent>(e, mesh, mat, 0u);
         reg.Add<VisibilityComponent>(e);
-        reg.Add<ShadowCasterTag>(e);
         return e;
     }
 

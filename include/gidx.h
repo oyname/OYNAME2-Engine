@@ -362,6 +362,22 @@ namespace Engine
     // ---------------------------------------------------------------------------
     namespace _
     {
+        inline RenderableComponent* EnsureRenderable(Registry& reg, EntityID e)
+        {
+            auto* renderable = reg.Get<RenderableComponent>(e);
+            if (!renderable)
+                renderable = &reg.Add<RenderableComponent>(e);
+            return renderable;
+        }
+
+        inline void MarkRenderableDirty(RenderableComponent* renderable)
+        {
+            if (!renderable) return;
+            renderable->dirty = true;
+            ++renderable->stateVersion;
+        }
+
+
         inline LPENTITY MakeEntity(const char* tag = "")
         {
             Registry& reg = _::renderer->GetRegistry();
@@ -386,10 +402,14 @@ namespace Engine
         *out = _::MakeEntity(tag);
 
         if (mesh.value != 0)
-            reg.Add<MeshRefComponent>(*out, mesh, 0u);
+        {
+            auto* renderable = _::EnsureRenderable(reg, *out);
+            renderable->mesh = mesh;
+            renderable->submeshIndex = 0u;
+            _::MarkRenderableDirty(renderable);
+        }
 
         reg.Add<VisibilityComponent>(*out);
-        reg.Add<ShadowCasterTag>(*out);
     }
 
     // ---------------------------------------------------------------------------
@@ -446,7 +466,7 @@ namespace Engine
         auto* tc = _::renderer->GetRegistry().Get<TransformComponent>(e);
         if (!tc) { DBERROR(GDX_SRC_LOC, "Engine::PositionEntity: kein TransformComponent"); return; }
         tc->localPosition = { x, y, z };
-        tc->dirty = true;
+        TransformSystem::MarkDirty(_::renderer->GetRegistry(), e);
     }
 
     inline void RotateEntity(LPENTITY e, float pitchDeg, float yawDeg, float rollDeg)
@@ -455,6 +475,7 @@ namespace Engine
         auto* tc = _::renderer->GetRegistry().Get<TransformComponent>(e);
         if (!tc) { DBERROR(GDX_SRC_LOC, "Engine::RotateEntity: kein TransformComponent"); return; }
         tc->SetEulerDeg(pitchDeg, yawDeg, rollDeg);
+        TransformSystem::MarkDirty(_::renderer->GetRegistry(), e);
     }
 
     // TurnEntity  dreht relativ zur aktuellen Rotation (akkumuliert).
@@ -466,7 +487,7 @@ namespace Engine
 
         const Float4 delta = GDXMath::QuaternionFromEulerDeg(pitchDeg, yawDeg, rollDeg);
         tc->localRotation = GDXMath::QuaternionMultiply(tc->localRotation, delta);
-        tc->dirty = true;
+        TransformSystem::MarkDirty(_::renderer->GetRegistry(), e);
     }
 
     inline void ScaleEntity(LPENTITY e, float x, float y, float z)
@@ -475,7 +496,7 @@ namespace Engine
         auto* tc = _::renderer->GetRegistry().Get<TransformComponent>(e);
         if (!tc) { DBERROR(GDX_SRC_LOC, "Engine::ScaleEntity: kein TransformComponent"); return; }
         tc->localScale = { x, y, z };
-        tc->dirty = true;
+        TransformSystem::MarkDirty(_::renderer->GetRegistry(), e);
     }
 
     // LookAt  dreht die Entity so dass sie auf ein Ziel zeigt.
@@ -504,7 +525,7 @@ namespace Engine
             { 0.0f, 1.0f, 0.0f });
 
         tc->localRotation = GDXMath::QuaternionFromBasis(right, newUp, forward);
-        tc->dirty = true;
+        TransformSystem::MarkDirty(_::renderer->GetRegistry(), e);
     }
 
     // ---------------------------------------------------------------------------
@@ -540,20 +561,19 @@ namespace Engine
     {
         if (!_::renderer) return;
         Registry& reg = _::renderer->GetRegistry();
-        if (reg.Has<MeshRefComponent>(e))
-            reg.Get<MeshRefComponent>(e)->mesh = mesh;
-        else
-            reg.Add<MeshRefComponent>(e, mesh, submeshIndex);
+        auto* renderable = _::EnsureRenderable(reg, e);
+        renderable->mesh = mesh;
+        renderable->submeshIndex = submeshIndex;
+        _::MarkRenderableDirty(renderable);
     }
 
     inline void AssignMaterial(LPENTITY e, LPMATERIAL mat)
     {
         if (!_::renderer) return;
         Registry& reg = _::renderer->GetRegistry();
-        if (reg.Has<MaterialRefComponent>(e))
-            reg.Get<MaterialRefComponent>(e)->material = mat;
-        else
-            reg.Add<MaterialRefComponent>(e, mat);
+        auto* renderable = _::EnsureRenderable(reg, e);
+        renderable->material = mat;
+        _::MarkRenderableDirty(renderable);
     }
 
 
@@ -763,17 +783,23 @@ namespace Engine
     inline void ShowEntity(LPENTITY e, bool visible)
     {
         if (!_::renderer) return;
-        auto* vc = _::renderer->GetRegistry().Get<VisibilityComponent>(e);
+        Registry& reg = _::renderer->GetRegistry();
+        auto* vc = reg.Get<VisibilityComponent>(e);
         if (!vc) return;
         vc->visible = visible;
+        vc->dirty = true;
+        ++vc->stateVersion;
     }
 
     inline void EntityActive(LPENTITY e, bool active)
     {
         if (!_::renderer) return;
-        auto* vc = _::renderer->GetRegistry().Get<VisibilityComponent>(e);
+        Registry& reg = _::renderer->GetRegistry();
+        auto* vc = reg.Get<VisibilityComponent>(e);
         if (!vc) return;
         vc->active = active;
+        vc->dirty = true;
+        ++vc->stateVersion;
     }
 
     inline void EntityCastShadows(LPENTITY e, bool enabled)
@@ -781,28 +807,35 @@ namespace Engine
         if (!_::renderer) return;
         Registry& reg = _::renderer->GetRegistry();
         auto* vc = reg.Get<VisibilityComponent>(e);
-        if (vc) vc->castShadows = enabled;
+        if (vc)
+        {
+            vc->castShadows = enabled;
+            vc->dirty = true;
+            ++vc->stateVersion;
+        }
 
-        if (enabled && !reg.Has<ShadowCasterTag>(e))
-            reg.Add<ShadowCasterTag>(e);
-        else if (!enabled && reg.Has<ShadowCasterTag>(e))
-            reg.Remove<ShadowCasterTag>(e);
     }
 
     inline void EntityLayer(LPENTITY e, uint32_t layerMask)
     {
         if (!_::renderer) return;
-        auto* vc = _::renderer->GetRegistry().Get<VisibilityComponent>(e);
+        Registry& reg = _::renderer->GetRegistry();
+        auto* vc = reg.Get<VisibilityComponent>(e);
         if (!vc) return;
         vc->layerMask = layerMask;
+        vc->dirty = true;
+        ++vc->stateVersion;
     }
 
     inline void EntityReceiveShadows(LPENTITY e, bool enabled)
     {
         if (!_::renderer) return;
-        auto* vc = _::renderer->GetRegistry().Get<VisibilityComponent>(e);
+        Registry& reg = _::renderer->GetRegistry();
+        auto* vc = reg.Get<VisibilityComponent>(e);
         if (!vc) return;
         vc->receiveShadows = enabled;
+        vc->dirty = true;
+        ++vc->stateVersion;
     }
 
 

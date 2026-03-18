@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Handle.h"
+#include "GDXTextureResource.h"
 #include <cstdint>
 #include <string>
 
@@ -22,7 +23,7 @@ struct GDXRenderTargetResource
     uint32_t width = 0u;
     uint32_t height = 0u;
     bool ready = false;
-
+    GDXTextureFormat colorFormat = GDXTextureFormat::RGBA8_UNORM;
 
     // Farbausgabe des RenderTargets als normale Engine-Textur nutzbar.
     TextureHandle exposedTexture = TextureHandle::Invalid();

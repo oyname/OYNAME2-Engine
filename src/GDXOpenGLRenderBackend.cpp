@@ -124,38 +124,21 @@ void GDXOpenGLRenderBackend::UpdateFrameConstants(const FrameData&)
 {
 }
 
-void GDXOpenGLRenderBackend::ExecuteShadowPass(Registry&,
-                                               const RenderQueue&,
-                                               ResourceStore<MeshAssetResource, MeshTag>&,
-                                               ResourceStore<MaterialResource, MaterialTag>&,
-                                               ResourceStore<GDXShaderResource, ShaderTag>&,
-                                               ResourceStore<GDXTextureResource, TextureTag>&,
-                                               const FrameData&)
+void* GDXOpenGLRenderBackend::ExecuteRenderPass(const BackendRenderPassDesc& passDesc,
+                                                Registry&,
+                                                const ICommandList&,
+                                                ResourceStore<MeshAssetResource, MeshTag>&,
+                                                ResourceStore<MaterialResource, MaterialTag>&,
+                                                ResourceStore<GDXShaderResource, ShaderTag>&,
+                                                ResourceStore<GDXTextureResource, TextureTag>&,
+                                                ResourceStore<GDXRenderTargetResource, RenderTargetTag>*)
 {
-}
+    if (passDesc.kind == BackendRenderPassDesc::Kind::Shadow)
+        return nullptr;
 
-void* GDXOpenGLRenderBackend::ExecuteMainPass(Registry&,
-                                              const RenderQueue&,
-                                              const RenderQueue&,
-                                              ResourceStore<MeshAssetResource, MeshTag>&,
-                                              ResourceStore<MaterialResource, MaterialTag>&,
-                                              ResourceStore<GDXShaderResource, ShaderTag>&,
-                                              ResourceStore<GDXTextureResource, TextureTag>&)
-{
-    return nullptr;
-}
+    if (!passDesc.target.useBackbuffer)
+        Debug::Log("GDXOpenGLRenderBackend: RTT-Offscreen-Pass noch nicht implementiert");
 
-void* GDXOpenGLRenderBackend::ExecuteMainPassToTarget(GDXRenderTargetResource&,
-                                                      const RenderPassClearDesc&,
-                                                      Registry&,
-                                                      const RenderQueue&,
-                                                      const RenderQueue&,
-                                                      ResourceStore<MeshAssetResource, MeshTag>&,
-                                                      ResourceStore<MaterialResource, MaterialTag>&,
-                                                      ResourceStore<GDXShaderResource, ShaderTag>&,
-                                                      ResourceStore<GDXTextureResource, TextureTag>&)
-{
-    Debug::Log("GDXOpenGLRenderBackend: RTT-Offscreen-Pass noch nicht implementiert");
     return nullptr;
 }
 
@@ -176,4 +159,31 @@ bool GDXOpenGLRenderBackend::HasShadowResources() const
 const IGDXRenderBackend::DefaultTextureSet& GDXOpenGLRenderBackend::GetDefaultTextures() const
 {
     return m_defaultTextures;
+}
+
+
+PostProcessHandle GDXOpenGLRenderBackend::CreatePostProcessPass(ResourceStore<PostProcessResource, PostProcessTag>&,
+                                                                const PostProcessPassDesc&)
+{
+    Debug::Log("GDXOpenGLRenderBackend: PostProcess noch nicht implementiert");
+    return PostProcessHandle::Invalid();
+}
+
+bool GDXOpenGLRenderBackend::UpdatePostProcessConstants(PostProcessResource&, const void*, uint32_t)
+{
+    return false;
+}
+
+void GDXOpenGLRenderBackend::DestroyPostProcessPasses(ResourceStore<PostProcessResource, PostProcessTag>&)
+{
+}
+
+bool GDXOpenGLRenderBackend::ExecutePostProcessChain(const std::vector<PostProcessHandle>&,
+                                                     ResourceStore<PostProcessResource, PostProcessTag>&,
+                                                     ResourceStore<GDXTextureResource, TextureTag>&,
+                                                     TextureHandle,
+                                                     float,
+                                                     float)
+{
+    return false;
 }

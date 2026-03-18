@@ -25,7 +25,6 @@ struct ShaderResourceBindingDesc
     bool expectsSRGB = false;
     ResourceState requiredState = ResourceState::ShaderRead;
     ResourceBindingScope scope = ResourceBindingScope::Material;
-    bool prepared = false;
 };
 
 struct ConstantBufferBindingDesc
@@ -36,7 +35,6 @@ struct ConstantBufferBindingDesc
     void* buffer = nullptr;
     bool enabled = false;
     ResourceBindingScope scope = ResourceBindingScope::Draw;
-    bool prepared = false;
 };
 
 struct ResourceBindingSet
@@ -48,15 +46,11 @@ struct ResourceBindingSet
     std::array<ConstantBufferBindingDesc, MaxConstantBufferBindings> constantBuffers{};
     uint32_t textureCount = 0u;
     uint32_t constantBufferCount = 0u;
-    bool hasPreparedTextures = false;
-    bool hasPreparedConstantBuffers = false;
 
     void Clear() noexcept
     {
         textureCount = 0u;
         constantBufferCount = 0u;
-        hasPreparedTextures = false;
-        hasPreparedConstantBuffers = false;
         for (auto& t : textures)
             t = {};
         for (auto& cb : constantBuffers)
@@ -68,7 +62,6 @@ struct ResourceBindingSet
         if (textureCount >= textures.size())
             return;
         textures[textureCount++] = desc;
-        hasPreparedTextures = hasPreparedTextures || desc.prepared;
     }
 
     void AddConstantBufferBinding(const ConstantBufferBindingDesc& desc) noexcept
@@ -76,7 +69,6 @@ struct ResourceBindingSet
         if (constantBufferCount >= constantBuffers.size())
             return;
         constantBuffers[constantBufferCount++] = desc;
-        hasPreparedConstantBuffers = hasPreparedConstantBuffers || desc.prepared;
     }
 
     const ShaderResourceBindingDesc* FindTextureBinding(ShaderResourceSemantic semantic) const noexcept
@@ -97,45 +89,6 @@ struct ResourceBindingSet
                 return &constantBuffers[i];
         }
         return nullptr;
-    }
-
-    bool HasPreparedTexturesForScope(ResourceBindingScope scope) const noexcept
-    {
-        bool foundAny = false;
-        for (uint32_t i = 0; i < textureCount; ++i)
-        {
-            const auto& binding = textures[i];
-            if (binding.scope != scope)
-                continue;
-
-            foundAny = true;
-            if (!binding.prepared)
-                return false;
-        }
-        return foundAny;
-    }
-
-    bool HasPreparedConstantBuffersForScope(ResourceBindingScope scope) const noexcept
-    {
-        bool foundAny = false;
-        for (uint32_t i = 0; i < constantBufferCount; ++i)
-        {
-            const auto& binding = constantBuffers[i];
-            if (binding.scope != scope)
-                continue;
-
-            foundAny = true;
-            if (!binding.prepared)
-                return false;
-        }
-        return foundAny;
-    }
-
-    bool HasPreparedBindingsForScope(ResourceBindingScope scope) const noexcept
-    {
-        const bool texturesPrepared = HasPreparedTexturesForScope(scope);
-        const bool constantBuffersPrepared = HasPreparedConstantBuffersForScope(scope);
-        return texturesPrepared || constantBuffersPrepared;
     }
 
     bool HasBindingsForScope(ResourceBindingScope scope) const noexcept

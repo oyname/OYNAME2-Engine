@@ -2,88 +2,218 @@
 
 #include "ECSTypes.h"
 
-#include <unordered_map>
-#include <typeindex>
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <typeindex>
+#include <utility>
 #include <vector>
 
-// ---------------------------------------------------------------------------
-// IComponentPool — type-erased base so Registry can hold heterogeneous pools.
-// ---------------------------------------------------------------------------
 struct IComponentPool
 {
     virtual ~IComponentPool() = default;
-
-    // Remove the component for this entity (no-op if absent).
     virtual void Remove(EntityID id) = 0;
-
-    // Returns true if this entity has this component.
     virtual bool Has(EntityID id) const = 0;
-
-    // Number of live components in this pool.
     virtual size_t Count() const = 0;
+    virtual uint64_t StructureVersion() const = 0;
+    virtual uint64_t ChangeVersion(EntityID id) const = 0;
 };
 
-// ---------------------------------------------------------------------------
-// ComponentPool<T> — stores one component type T, keyed by EntityID.
-//
-// Storage choice for Step 1: unordered_map<EntityID, T>.
-//
-// Why not sparse-set / archetype yet?
-//   - Correct first, fast later.
-//   - unordered_map gives O(1) lookup with zero migration cost.
-//   - When View<> iteration shows up in a profiler, swap to sparse-set.
-//     The interface stays identical; only the pool internals change.
-//
-// Components must be:
-//   - Default-constructible (for Add with no args)
-//   - Move-constructible (stored by value in the map)
-// ---------------------------------------------------------------------------
+struct TransformComponent;
+struct WorldTransformComponent;
+
+namespace detail
+{
+    template<typename T>
+    struct ComponentPoolTraits
+    {
+        static constexpr size_t ChunkSize = 64u;
+        static constexpr bool IsHotComponent = false;
+    };
+
+    template<>
+    struct ComponentPoolTraits<::TransformComponent>
+    {
+        static constexpr size_t ChunkSize = 256u;
+        static constexpr bool IsHotComponent = true;
+    };
+
+    template<>
+    struct ComponentPoolTraits<::WorldTransformComponent>
+    {
+        static constexpr size_t ChunkSize = 256u;
+        static constexpr bool IsHotComponent = true;
+    };
+}
+
 template<typename T>
 class ComponentPool final : public IComponentPool
 {
 public:
-    // Add a component by constructing it in-place from args.
-    // Returns a reference to the stored component.
-    // If the entity already has one, it is overwritten.
+    static constexpr size_t kChunkSize = detail::ComponentPoolTraits<T>::ChunkSize;
+    static constexpr bool kIsHotComponent = detail::ComponentPoolTraits<T>::IsHotComponent;
+
     template<typename... Args>
     T& Emplace(EntityID id, Args&&... args)
     {
-        auto [it, _] = m_data.try_emplace(id, std::forward<Args>(args)...);
-        it->second = T{ std::forward<Args>(args)... };
-        return it->second;
+        const size_t denseIndex = EnsureDenseSlot(id);
+        m_components[denseIndex] = T(std::forward<Args>(args)...);
+        TouchDenseIndex(denseIndex);
+        return m_components[denseIndex];
     }
 
-    // Store a copy/move of an existing T.
     T& Insert(EntityID id, T value)
     {
-        m_data[id] = std::move(value);
-        return m_data[id];
+        const size_t denseIndex = EnsureDenseSlot(id);
+        m_components[denseIndex] = std::move(value);
+        TouchDenseIndex(denseIndex);
+        return m_components[denseIndex];
     }
 
-    // Returns a pointer to the component, or nullptr if absent.
     T* Get(EntityID id)
     {
-        auto it = m_data.find(id);
-        return it != m_data.end() ? &it->second : nullptr;
+        const size_t denseIndex = DenseIndex(id);
+        return denseIndex != InvalidDenseIndex() ? &m_components[denseIndex] : nullptr;
     }
 
     const T* Get(EntityID id) const
     {
-        auto it = m_data.find(id);
-        return it != m_data.end() ? &it->second : nullptr;
+        const size_t denseIndex = DenseIndex(id);
+        return denseIndex != InvalidDenseIndex() ? &m_components[denseIndex] : nullptr;
     }
 
-    // IComponentPool interface
-    void   Remove(EntityID id) override { m_data.erase(id); }
-    bool   Has(EntityID id)    const override { return m_data.count(id) > 0; }
-    size_t Count()             const override { return m_data.size(); }
+    void Remove(EntityID id) override
+    {
+        const size_t denseIndex = DenseIndex(id);
+        if (denseIndex == InvalidDenseIndex())
+            return;
 
-    // Iterate all (EntityID, T&) pairs — used by Registry::View<>.
-    // Returns a view of the internal map; stable while no insertions occur.
-    const std::unordered_map<EntityID, T>& All() const { return m_data; }
-          std::unordered_map<EntityID, T>& All()       { return m_data; }
+        const size_t lastIndex = m_components.size() - 1u;
+        const EntityIndex removedSparseIndex = id.Index();
+
+        if (denseIndex != lastIndex)
+        {
+            m_components[denseIndex] = std::move(m_components[lastIndex]);
+            m_entities[denseIndex] = m_entities[lastIndex];
+            m_denseChangeVersions[denseIndex] = ++m_structureVersion;
+            m_sparseDensePlusOne[m_entities[denseIndex].Index()] = denseIndex + 1u;
+        }
+
+        m_components.pop_back();
+        m_entities.pop_back();
+        m_denseChangeVersions.pop_back();
+        m_sparseDensePlusOne[removedSparseIndex] = 0u;
+        ++m_structureVersion;
+    }
+
+    bool Has(EntityID id) const override
+    {
+        return DenseIndex(id) != InvalidDenseIndex();
+    }
+
+    size_t Count() const override { return m_components.size(); }
+    uint64_t StructureVersion() const override { return m_structureVersion; }
+
+    uint64_t ChangeVersion(EntityID id) const override
+    {
+        const size_t denseIndex = DenseIndex(id);
+        return denseIndex != InvalidDenseIndex() ? m_denseChangeVersions[denseIndex] : 0ull;
+    }
+
+    void MarkChanged(EntityID id)
+    {
+        const size_t denseIndex = DenseIndex(id);
+        if (denseIndex != InvalidDenseIndex())
+            TouchDenseIndex(denseIndex);
+    }
+
+    const std::vector<EntityID>& Entities() const { return m_entities; }
+    std::vector<EntityID>& Entities() { return m_entities; }
+    const std::vector<T>& Components() const { return m_components; }
+    std::vector<T>& Components() { return m_components; }
+
+    template<typename Fn>
+    void ForEachChunk(Fn&& fn) const
+    {
+        const size_t total = m_entities.size();
+        for (size_t begin = 0; begin < total; begin += kChunkSize)
+        {
+            const size_t end = (std::min)(begin + kChunkSize, total);
+            fn(begin, end, m_entities.data() + begin, m_components.data() + begin);
+        }
+    }
+
+    template<typename Fn>
+    void ForEachChunk(Fn&& fn)
+    {
+        const size_t total = m_entities.size();
+        for (size_t begin = 0; begin < total; begin += kChunkSize)
+        {
+            const size_t end = (std::min)(begin + kChunkSize, total);
+            fn(begin, end, m_entities.data() + begin, m_components.data() + begin);
+        }
+    }
 
 private:
-    std::unordered_map<EntityID, T> m_data;
+    static constexpr size_t InvalidDenseIndex() { return static_cast<size_t>(-1); }
+
+    void EnsureSparseCapacity(EntityIndex sparseIndex)
+    {
+        const size_t need = static_cast<size_t>(sparseIndex) + 1u;
+        if (m_sparseDensePlusOne.size() < need)
+            m_sparseDensePlusOne.resize(need, 0u);
+        if (m_sparseGenerations.size() < need)
+            m_sparseGenerations.resize(need, 0u);
+    }
+
+    size_t DenseIndex(EntityID id) const
+    {
+        const size_t sparseIndex = static_cast<size_t>(id.Index());
+        if (sparseIndex >= m_sparseDensePlusOne.size())
+            return InvalidDenseIndex();
+
+        const size_t densePlusOne = m_sparseDensePlusOne[sparseIndex];
+        if (densePlusOne == 0u)
+            return InvalidDenseIndex();
+
+        if (m_sparseGenerations[sparseIndex] != id.Generation())
+            return InvalidDenseIndex();
+
+        const size_t denseIndex = densePlusOne - 1u;
+        if (denseIndex >= m_entities.size())
+            return InvalidDenseIndex();
+
+        return m_entities[denseIndex] == id ? denseIndex : InvalidDenseIndex();
+    }
+
+    size_t EnsureDenseSlot(EntityID id)
+    {
+        EnsureSparseCapacity(id.Index());
+
+        const size_t denseIndex = DenseIndex(id);
+        if (denseIndex != InvalidDenseIndex())
+            return denseIndex;
+
+        const size_t newIndex = m_components.size();
+        m_entities.push_back(id);
+        m_components.emplace_back();
+        m_denseChangeVersions.push_back(0ull);
+        m_sparseDensePlusOne[id.Index()] = newIndex + 1u;
+        m_sparseGenerations[id.Index()] = id.Generation();
+        ++m_structureVersion;
+        return newIndex;
+    }
+
+    void TouchDenseIndex(size_t denseIndex)
+    {
+        m_denseChangeVersions[denseIndex] = ++m_structureVersion;
+    }
+
+    std::vector<EntityID> m_entities;
+    std::vector<T> m_components;
+    std::vector<uint64_t> m_denseChangeVersions;
+    std::vector<size_t> m_sparseDensePlusOne;
+    std::vector<EntityGeneration> m_sparseGenerations;
+    uint64_t m_structureVersion = 0ull;
 };

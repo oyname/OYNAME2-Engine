@@ -1,5 +1,4 @@
 #include "GDXECSRenderer.h"
-#include "GDXDX11RenderBackend.h"
 #include "GDXRenderTargetResource.h"
 #include "Debug.h"
 #include "GDXShaderLayout.h"
@@ -12,6 +11,15 @@ namespace
 {
     constexpr uint32_t kRelevantMainFeatures = SVF_SKINNED | SVF_VERTEX_COLOR;
     constexpr uint32_t kRelevantShadowFeatures = SVF_SKINNED | SVF_ALPHA_TEST;
+
+    enum SystemResourceMask : uint64_t
+    {
+        SR_TRANSFORM = 1ull << 0,
+        SR_FRAME = 1ull << 1,
+        SR_RENDER_QUEUES = 1ull << 2,
+        SR_BACKEND = 1ull << 3,
+        SR_STATS = 1ull << 4
+    };
 
     bool BuildFrameDataFromCameraEntity(Registry& registry, EntityID cameraEntity, FrameData& frame)
     {
@@ -299,10 +307,11 @@ MaterialHandle GDXECSRenderer::CreateMaterial(MaterialResource mat)
     return h;
 }
 
-RenderTargetHandle GDXECSRenderer::CreateRenderTarget(uint32_t w, uint32_t h, const std::wstring& name)
+RenderTargetHandle GDXECSRenderer::CreateRenderTarget(uint32_t w, uint32_t h, const std::wstring& name,
+                                          GDXTextureFormat colorFormat)
 {
     if (!m_backend) return RenderTargetHandle::Invalid();
-    return m_backend->CreateRenderTarget(m_rtStore, m_texStore, w, h, name);
+    return m_backend->CreateRenderTarget(m_rtStore, m_texStore, w, h, name, colorFormat);
 }
 
 TextureHandle GDXECSRenderer::GetRenderTargetTexture(RenderTargetHandle h)
@@ -312,10 +321,40 @@ TextureHandle GDXECSRenderer::GetRenderTargetTexture(RenderTargetHandle h)
     return m_defaultWhiteTex;
 }
 
+PostProcessHandle GDXECSRenderer::CreatePostProcessPass(const PostProcessPassDesc& desc)
+{
+    if (!m_backend) return PostProcessHandle::Invalid();
+    PostProcessHandle h = m_backend->CreatePostProcessPass(m_postProcessStore, desc);
+    if (h.IsValid())
+        m_postProcessPassOrder.push_back(h);
+    return h;
+}
+
+bool GDXECSRenderer::SetPostProcessConstants(PostProcessHandle h, const void* data, uint32_t size)
+{
+    if (!m_backend) return false;
+    auto* pass = m_postProcessStore.Get(h);
+    if (!pass) return false;
+    return m_backend->UpdatePostProcessConstants(*pass, data, size);
+}
+
+bool GDXECSRenderer::SetPostProcessEnabled(PostProcessHandle h, bool enabled)
+{
+    auto* pass = m_postProcessStore.Get(h);
+    if (!pass) return false;
+    pass->enabled = enabled;
+    return true;
+}
+
+void GDXECSRenderer::ClearPostProcessPasses()
+{
+    m_postProcessPassOrder.clear();
+}
+
 void GDXECSRenderer::SetShadowMapSize(uint32_t size)
 {
-    if (auto* dx11 = dynamic_cast<GDXDX11RenderBackend*>(m_backend.get()))
-        dx11->SetShadowMapSize(size);
+    if (m_backend)
+        m_backend->SetShadowMapSize(size);
 }
 
 void GDXECSRenderer::SetClearColor(float r, float g, float b, float a)
@@ -343,123 +382,168 @@ void GDXECSRenderer::Tick(float dt)
 
 void GDXECSRenderer::EndFrame()
 {
-    m_transformSystem.Update(m_registry);
-
     auto resolveShader = [this](RenderPass pass, const SubmeshData& submesh, const MaterialResource& mat)
     {
         return ResolveShaderVariant(pass, submesh, mat);
     };
 
-    m_registry.View<CameraComponent, RenderTargetCameraComponent>(
-        [this, &resolveShader](EntityID entity, CameraComponent& cam, RenderTargetCameraComponent& rtCam)
-        {
-            if (!m_backend || !rtCam.enabled || !rtCam.target.IsValid()) return;
-
-            GDXRenderTargetResource* rt = m_rtStore.Get(rtCam.target);
-            if (!rt || !rt->ready) return;
-
-            CameraComponent originalCam = cam;
-            if (rtCam.autoAspectFromTarget && rt->height > 0u)
-                cam.aspectRatio = static_cast<float>(rt->width) / static_cast<float>(rt->height);
-
-            FrameData rtFrame = m_frameData;
-            rtFrame.viewportWidth = static_cast<float>(rt->width);
-            rtFrame.viewportHeight = static_cast<float>(rt->height);
-
-            const bool built = BuildFrameDataFromCameraEntity(m_registry, entity, rtFrame);
-            cam = originalCam;
-            if (!built) return;
-
-            m_backend->UpdateLights(m_registry, rtFrame);
-            m_backend->UpdateFrameConstants(rtFrame);
-
-            RenderGatherOptions rtGatherOptions{};
-            rtGatherOptions.gatherShadows = rtCam.renderShadows;
-            rtGatherOptions.gatherOpaque = rtCam.renderOpaque;
-            rtGatherOptions.gatherTransparent = rtCam.renderTransparent;
-            rtGatherOptions.skipSelfReferentialDraws = rtCam.skipSelfReferentialDraws;
-            rtGatherOptions.forbiddenShaderReadTexture = rt->exposedTexture;
-            rtGatherOptions.visibilityLayerMask = rtFrame.cullMask;
-            rtGatherOptions.shadowCasterLayerMask = rtFrame.shadowCasterMask;
-
-            if (rtFrame.hasShadowPass && m_backend->HasShadowResources())
+    auto runRttCameras = [this, &resolveShader]()
+    {
+        m_registry.View<CameraComponent, RenderTargetCameraComponent>(
+            [this, &resolveShader](EntityID entity, CameraComponent& cam, RenderTargetCameraComponent& rtCam)
             {
-                m_gatherSystem.GatherShadow(m_registry, rtFrame,
+                if (!m_backend || !rtCam.enabled || !rtCam.target.IsValid()) return;
+
+                GDXRenderTargetResource* rt = m_rtStore.Get(rtCam.target);
+                if (!rt || !rt->ready) return;
+
+                CameraComponent originalCam = cam;
+                if (rtCam.autoAspectFromTarget && rt->height > 0u)
+                    cam.aspectRatio = static_cast<float>(rt->width) / static_cast<float>(rt->height);
+
+                FrameData rtFrame = m_frameData;
+                rtFrame.viewportWidth = static_cast<float>(rt->width);
+                rtFrame.viewportHeight = static_cast<float>(rt->height);
+
+                const bool built = BuildFrameDataFromCameraEntity(m_registry, entity, rtFrame);
+                cam = originalCam;
+                if (!built) return;
+
+                m_backend->UpdateLights(m_registry, rtFrame);
+                m_backend->UpdateFrameConstants(rtFrame);
+
+                RenderGatherOptions rtGatherOptions{};
+                rtGatherOptions.gatherShadows = rtCam.renderShadows;
+                rtGatherOptions.gatherOpaque = rtCam.renderOpaque;
+                rtGatherOptions.gatherTransparent = rtCam.renderTransparent;
+                rtGatherOptions.skipSelfReferentialDraws = rtCam.skipSelfReferentialDraws;
+                rtGatherOptions.forbiddenShaderReadTexture = rt->exposedTexture;
+                rtGatherOptions.visibilityLayerMask = rtFrame.cullMask;
+                rtGatherOptions.shadowCasterLayerMask = rtFrame.shadowCasterMask;
+
+                if (rtFrame.hasShadowPass && m_backend->HasShadowResources())
+                {
+                    m_gatherSystem.GatherShadow(m_registry, rtFrame,
+                        m_meshStore, m_matStore, m_shaderStore,
+                        resolveShader,
+                        m_shadowQueue,
+                        &rtGatherOptions);
+
+                    if (!m_shadowQueue.Empty())
+                        m_backend->ExecuteRenderPass(BackendRenderPassDesc::Shadow(rtFrame), m_registry, m_shadowQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore, &m_rtStore);
+                }
+
+                m_gatherSystem.Gather(m_registry, rtFrame,
                     m_meshStore, m_matStore, m_shaderStore,
-                    resolveShader,
-                    m_shadowQueue,
+                    resolveShader, m_opaqueQueue, m_transparentQueue,
                     &rtGatherOptions);
 
-                if (!m_shadowQueue.Empty())
-                    m_backend->ExecuteRenderPass(BackendRenderPassDesc::Shadow(rtFrame), m_registry, m_shadowQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore, &m_rtStore);
-            }
+                RenderQueue graphicsQueue;
+                graphicsQueue.commands = m_opaqueQueue.commands;
+                graphicsQueue.commands.insert(graphicsQueue.commands.end(),
+                                              m_transparentQueue.commands.begin(),
+                                              m_transparentQueue.commands.end());
+                graphicsQueue.Sort();
 
-            m_gatherSystem.Gather(m_registry, rtFrame,
+                RenderPassTargetDesc targetDesc = RenderPassTargetDesc::Offscreen(rtCam.target, rtCam.clear,
+                    static_cast<float>(rt->width), static_cast<float>(rt->height), rt->debugName);
+                m_backend->ExecuteRenderPass(BackendRenderPassDesc::Graphics(targetDesc, &rtFrame, RenderPass::Opaque),
+                    m_registry, graphicsQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore, &m_rtStore);
+            });
+    };
+
+    auto runMainView = [this, &resolveShader]()
+    {
+        m_cameraSystem.Update(m_registry, m_frameData);
+        if (m_backend) m_backend->UpdateLights(m_registry, m_frameData);
+        if (m_backend) m_backend->UpdateFrameConstants(m_frameData);
+
+        if (m_frameData.hasShadowPass && m_backend && m_backend->HasShadowResources())
+        {
+            RenderGatherOptions mainShadowOptions{};
+            mainShadowOptions.shadowCasterLayerMask = m_frameData.shadowCasterMask;
+            m_gatherSystem.GatherShadow(m_registry, m_frameData,
                 m_meshStore, m_matStore, m_shaderStore,
-                resolveShader, m_opaqueQueue, m_transparentQueue,
-                &rtGatherOptions);
+                resolveShader,
+                m_shadowQueue,
+                &mainShadowOptions);
 
-            RenderQueue graphicsQueue;
-            graphicsQueue.commands = m_opaqueQueue.commands;
-            graphicsQueue.commands.insert(graphicsQueue.commands.end(),
-                                          m_transparentQueue.commands.begin(),
-                                          m_transparentQueue.commands.end());
-            graphicsQueue.Sort();
+            if (!m_shadowQueue.Empty())
+                m_backend->ExecuteRenderPass(BackendRenderPassDesc::Shadow(m_frameData), m_registry, m_shadowQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore, &m_rtStore);
+        }
 
-            RenderPassTargetDesc targetDesc = RenderPassTargetDesc::Offscreen(rtCam.target, rtCam.clear,
-                static_cast<float>(rt->width), static_cast<float>(rt->height), rt->debugName);
-            m_backend->ExecuteRenderPass(BackendRenderPassDesc::Graphics(targetDesc, &rtFrame, RenderPass::Opaque),
-                m_registry, graphicsQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore, &m_rtStore);
-        });
-
-    m_cameraSystem.Update(m_registry, m_frameData);
-    if (m_backend) m_backend->UpdateLights(m_registry, m_frameData);
-    if (m_backend) m_backend->UpdateFrameConstants(m_frameData);
-
-    if (m_frameData.hasShadowPass && m_backend && m_backend->HasShadowResources())
-    {
-        RenderGatherOptions mainShadowOptions{};
-        mainShadowOptions.shadowCasterLayerMask = m_frameData.shadowCasterMask;
-        m_gatherSystem.GatherShadow(m_registry, m_frameData,
+        m_gatherSystem.Gather(m_registry, m_frameData,
             m_meshStore, m_matStore, m_shaderStore,
-            resolveShader,
-            m_shadowQueue,
-            &mainShadowOptions);
+            resolveShader, m_opaqueQueue, m_transparentQueue,
+            nullptr);
 
-        if (!m_shadowQueue.Empty())
-            m_backend->ExecuteRenderPass(BackendRenderPassDesc::Shadow(m_frameData), m_registry, m_shadowQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore, &m_rtStore);
-    }
+        RenderQueue graphicsQueue;
+        graphicsQueue.commands = m_opaqueQueue.commands;
+        graphicsQueue.commands.insert(graphicsQueue.commands.end(),
+                                      m_transparentQueue.commands.begin(),
+                                      m_transparentQueue.commands.end());
+        graphicsQueue.Sort();
 
-    m_gatherSystem.Gather(m_registry, m_frameData,
-        m_meshStore, m_matStore, m_shaderStore,
-        resolveShader, m_opaqueQueue, m_transparentQueue,
-        nullptr);
+        if (m_backend)
+        {
+            const bool hasPostProcess = !m_postProcessPassOrder.empty();
+            if (hasPostProcess)
+            {
+                const uint32_t targetWidth = static_cast<uint32_t>(m_frameData.viewportWidth > 1.0f ? m_frameData.viewportWidth : 1.0f);
+                const uint32_t targetHeight = static_cast<uint32_t>(m_frameData.viewportHeight > 1.0f ? m_frameData.viewportHeight : 1.0f);
+                const bool needsNewTarget = !m_mainScenePostProcessTarget.IsValid();
+                GDXRenderTargetResource* existing = needsNewTarget ? nullptr : m_rtStore.Get(m_mainScenePostProcessTarget);
+                if (needsNewTarget || !existing || existing->width != targetWidth || existing->height != targetHeight)
+                    m_mainScenePostProcessTarget = CreateRenderTarget(targetWidth, targetHeight, L"MainScenePostProcess", GDXTextureFormat::RGBA16_FLOAT);
 
-    RenderQueue graphicsQueue;
-    graphicsQueue.commands = m_opaqueQueue.commands;
-    graphicsQueue.commands.insert(graphicsQueue.commands.end(),
-                                  m_transparentQueue.commands.begin(),
-                                  m_transparentQueue.commands.end());
-    graphicsQueue.Sort();
+                if (m_mainScenePostProcessTarget.IsValid())
+                {
+                    const RenderPassTargetDesc targetDesc = RenderPassTargetDesc::Offscreen(
+                        m_mainScenePostProcessTarget,
+                        RenderPassClearDesc{},
+                        m_frameData.viewportWidth,
+                        m_frameData.viewportHeight,
+                        L"MainScenePostProcess");
+                    m_backend->ExecuteRenderPass(BackendRenderPassDesc::Graphics(targetDesc, &m_frameData, RenderPass::Opaque),
+                        m_registry, graphicsQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore, &m_rtStore);
 
-    if (m_backend)
-    {
-        const RenderPassTargetDesc targetDesc = RenderPassTargetDesc::Backbuffer(m_frameData.viewportWidth, m_frameData.viewportHeight);
-        m_backend->ExecuteRenderPass(BackendRenderPassDesc::Graphics(targetDesc, &m_frameData, RenderPass::Opaque),
-            m_registry, graphicsQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore, &m_rtStore);
-    }
+                    const TextureHandle sceneTexture = GetRenderTargetTexture(m_mainScenePostProcessTarget);
+                    m_backend->ExecutePostProcessChain(m_postProcessPassOrder, m_postProcessStore, m_texStore,
+                        sceneTexture, m_frameData.viewportWidth, m_frameData.viewportHeight);
+                }
+                else
+                {
+                    const RenderPassTargetDesc targetDesc = RenderPassTargetDesc::Backbuffer(m_frameData.viewportWidth, m_frameData.viewportHeight);
+                    m_backend->ExecuteRenderPass(BackendRenderPassDesc::Graphics(targetDesc, &m_frameData, RenderPass::Opaque),
+                        m_registry, graphicsQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore, &m_rtStore);
+                }
+            }
+            else
+            {
+                const RenderPassTargetDesc targetDesc = RenderPassTargetDesc::Backbuffer(m_frameData.viewportWidth, m_frameData.viewportHeight);
+                m_backend->ExecuteRenderPass(BackendRenderPassDesc::Graphics(targetDesc, &m_frameData, RenderPass::Opaque),
+                    m_registry, graphicsQueue, m_meshStore, m_matStore, m_shaderStore, m_texStore, &m_rtStore);
+            }
+        }
 
-    auto& frameTransient = m_frameTransients[m_currentFrameIndex];
-    constexpr size_t kApproxFrameConstantsBytes = 272u;
-    constexpr size_t kApproxEntityConstantsBytes = 128u;
-    (void)frameTransient.uploadArena.Allocate(kApproxFrameConstantsBytes, 16u);
-    (void)frameTransient.uploadArena.Allocate(kApproxEntityConstantsBytes * (m_opaqueQueue.Count() + m_transparentQueue.Count() + m_shadowQueue.Count()), 16u);
+        auto& frameTransient = m_frameTransients[m_currentFrameIndex];
+        constexpr size_t kApproxFrameConstantsBytes = 272u;
+        constexpr size_t kApproxEntityConstantsBytes = 128u;
+        (void)frameTransient.uploadArena.Allocate(kApproxFrameConstantsBytes, 16u);
+        (void)frameTransient.uploadArena.Allocate(kApproxEntityConstantsBytes * (m_opaqueQueue.Count() + m_transparentQueue.Count() + m_shadowQueue.Count()), 16u);
 
-    m_stats.drawCalls = m_backend ? m_backend->GetDrawCallCount() : 0u;
-    m_stats.renderCommands = static_cast<uint32_t>(graphicsQueue.Count());
-    m_stats.lightCount = m_frameData.lightCount;
+        m_stats.drawCalls = m_backend ? m_backend->GetDrawCallCount() : 0u;
+        m_stats.renderCommands = static_cast<uint32_t>(graphicsQueue.Count());
+        m_stats.lightCount = m_frameData.lightCount;
 
-    if (m_backend) m_backend->Present(true);
+        if (m_backend) m_backend->Present(true);
+    };
+
+    m_systemScheduler.Clear();
+    m_systemScheduler.AddTask({ "Transform", 0ull, SR_TRANSFORM, [this]() { m_transformSystem.Update(m_registry, &m_jobSystem); } });
+    m_systemScheduler.AddTask({ "RTT Cameras", SR_TRANSFORM | SR_FRAME | SR_RENDER_QUEUES, SR_RENDER_QUEUES | SR_BACKEND, runRttCameras });
+    m_systemScheduler.AddTask({ "Main View", SR_TRANSFORM | SR_FRAME | SR_RENDER_QUEUES, SR_FRAME | SR_RENDER_QUEUES | SR_BACKEND | SR_STATS, runMainView });
+    m_systemScheduler.Execute(&m_jobSystem);
 
     m_frameContexts[m_currentFrameIndex].MarkSubmitted(m_frameNumber);
     m_frameContexts[m_currentFrameIndex].MarkCompleted(m_frameNumber);
@@ -488,10 +572,12 @@ void GDXECSRenderer::Shutdown()
 
     if (m_backend)
     {
+        m_backend->DestroyPostProcessPasses(m_postProcessStore);
         m_backend->Shutdown(m_matStore, m_shaderStore, m_texStore);
         m_backend.reset();
     }
 
     m_shaderVariantCache.clear();
+    m_postProcessPassOrder.clear();
     m_initialized = false;
 }

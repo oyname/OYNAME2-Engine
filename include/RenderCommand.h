@@ -69,11 +69,6 @@ struct RenderCommand
         return pipelineState;
     }
 
-    GDXPipelineStateKey GetEffectivePipelineStateKey() const noexcept
-    {
-        return pipelineStateKey;
-    }
-
     bool HasBindingsForScope(ResourceBindingScope scope) const noexcept
     {
         return resourceBindings.HasBindingsForScope(scope);
@@ -108,32 +103,5 @@ struct RenderCommand
     {
         pipelineState = state;
         pipelineStateKey = GDXPipelineStateKey::FromDesc(state);
-    }
-
-    // Rückwärtskompatible Alt-Callsites: laufen jetzt auf denselben Primärpfad.
-    void SetLegacyBindings(const ResourceBindingSet& bindings) noexcept
-    {
-        SetBindings(bindings,
-                    BuildResourceBindingScopeKey(bindings, ResourceBindingScope::Pass, shader.value),
-                    BuildResourceBindingScopeKey(bindings, ResourceBindingScope::Material, material.value),
-                    BuildResourceBindingScopeKey(bindings, ResourceBindingScope::Draw, ownerEntity.value));
-    }
-
-    void SetPreparedBindings(const ResourceBindingSet& bindings,
-                             uint64_t passKey,
-                             uint64_t materialKey,
-                             uint64_t drawKey) noexcept
-    {
-        SetBindings(bindings, passKey, materialKey, drawKey);
-    }
-
-    void SetLegacyPipelineState(const GDXPipelineStateDesc& state) noexcept
-    {
-        SetPipelineState(state);
-    }
-
-    void SetPreparedPipelineState(const GDXPipelineStateDesc& state) noexcept
-    {
-        SetPipelineState(state);
     }
 };

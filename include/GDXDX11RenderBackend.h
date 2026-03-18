@@ -8,14 +8,19 @@
 #include "GDXShadowMap.h"
 #include "ResourceStore.h"
 #include "GDXRenderTargetResource.h"
+#include "PostProcessResource.h"
 
 #include <memory>
+#include <unordered_map>
 
 struct ID3D11Device;
 struct ID3D11DeviceContext;
 struct ID3D11RasterizerState;
 struct ID3D11DepthStencilState;
 struct ID3D11BlendState;
+struct ID3D11VertexShader;
+struct ID3D11PixelShader;
+struct ID3D11Buffer;
 
 class GDXDX11RenderBackend final : public IGDXRenderBackend
 {
@@ -55,31 +60,26 @@ public:
     void UpdateLights(Registry& registry, FrameData& frame) override;
     void UpdateFrameConstants(const FrameData& frame) override;
 
-    void ExecuteShadowPass(Registry& registry,
-                           const RenderQueue& shadowQueue,
-                           ResourceStore<MeshAssetResource, MeshTag>& meshStore,
-                           ResourceStore<MaterialResource, MaterialTag>& matStore,
-                           ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-                           ResourceStore<GDXTextureResource, TextureTag>& texStore,
-                           const FrameData& frame) override;
+    void* ExecuteRenderPass(const BackendRenderPassDesc& passDesc,
+                            Registry& registry,
+                            const ICommandList& commandList,
+                            ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+                            ResourceStore<MaterialResource, MaterialTag>& matStore,
+                            ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+                            ResourceStore<GDXTextureResource, TextureTag>& texStore,
+                            ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore = nullptr) override;
 
-    void* ExecuteMainPass(Registry& registry,
-                          const RenderQueue& opaqueQueue,
-                          const RenderQueue& transparentQueue,
-                          ResourceStore<MeshAssetResource, MeshTag>& meshStore,
-                          ResourceStore<MaterialResource, MaterialTag>& matStore,
-                          ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-                          ResourceStore<GDXTextureResource, TextureTag>& texStore) override;
 
-    void* ExecuteMainPassToTarget(GDXRenderTargetResource& rt,
-                                  const RenderPassClearDesc& clearDesc,
-                                  Registry& registry,
-                                  const RenderQueue& opaqueQueue,
-                                  const RenderQueue& transparentQueue,
-                                  ResourceStore<MeshAssetResource, MeshTag>& meshStore,
-                                  ResourceStore<MaterialResource, MaterialTag>& matStore,
-                                  ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-                                  ResourceStore<GDXTextureResource, TextureTag>& texStore) override;
+    PostProcessHandle CreatePostProcessPass(ResourceStore<PostProcessResource, PostProcessTag>& postStore,
+                                            const PostProcessPassDesc& desc) override;
+    bool UpdatePostProcessConstants(PostProcessResource& pass, const void* data, uint32_t size) override;
+    void DestroyPostProcessPasses(ResourceStore<PostProcessResource, PostProcessTag>& postStore) override;
+    bool ExecutePostProcessChain(const std::vector<PostProcessHandle>& orderedPasses,
+                                 ResourceStore<PostProcessResource, PostProcessTag>& postStore,
+                                 ResourceStore<GDXTextureResource, TextureTag>& texStore,
+                                 TextureHandle sceneTexture,
+                                 float viewportWidth,
+                                 float viewportHeight) override;
 
     uint32_t GetDrawCallCount() const override;
     bool HasShadowResources() const override;
@@ -90,12 +90,33 @@ public:
         ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore,
         ResourceStore<GDXTextureResource,      TextureTag>&      texStore,
         uint32_t width, uint32_t height,
-        const std::wstring& debugName) override;
+        const std::wstring& debugName,
+        GDXTextureFormat colorFormat = GDXTextureFormat::RGBA8_UNORM) override;
 
-    void SetShadowMapSize(uint32_t size) { m_shadowMapSize = size; }
+    void SetShadowMapSize(uint32_t size) override { m_shadowMapSize = size; }
 
 private:
+
+    struct Dx11PostProcessRuntime
+    {
+        ID3D11VertexShader* vertexShader = nullptr;
+        ID3D11PixelShader* pixelShader = nullptr;
+        ID3D11Buffer* constantBuffer = nullptr;
+    };
+
+    struct Dx11PostProcessSurface
+    {
+        void* texture = nullptr;
+        void* rtv = nullptr;
+        void* srv = nullptr;
+        uint32_t width = 0u;
+        uint32_t height = 0u;
+        GDXTextureFormat format = GDXTextureFormat::Unknown;
+    };
+
     bool CreateRenderStates();
+    void ReleasePostProcessSurface(Dx11PostProcessSurface& surface);
+    bool EnsurePostProcessSurface(Dx11PostProcessSurface& surface, uint32_t width, uint32_t height, GDXTextureFormat format, const wchar_t* debugName);
     bool InitDefaultTextures(ResourceStore<GDXTextureResource, TextureTag>& texStore);
 
     std::unique_ptr<IGDXDXGIContext> m_context;
@@ -121,4 +142,8 @@ private:
     bool m_hasShadowPass = false;
     int m_backbufferWidth  = 1;
     int m_backbufferHeight = 1;
+
+    Dx11PostProcessSurface m_postProcessPing;
+    Dx11PostProcessSurface m_postProcessPong;
+    std::unordered_map<PostProcessHandle, Dx11PostProcessRuntime> m_postProcessRuntime;
 };

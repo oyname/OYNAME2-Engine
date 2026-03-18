@@ -152,8 +152,7 @@ public:
             reg.Add<TransformComponent>(m_floor, tc);
         }
         reg.Add<WorldTransformComponent>(m_floor);
-        reg.Add<MeshRefComponent>(m_floor, m_hCube, 0u);
-        reg.Add<MaterialRefComponent>(m_floor, m_hMatFloor);
+        reg.Add<RenderableComponent>(m_floor, m_hCube, m_hMatFloor, 0u);
 
         {
             VisibilityComponent vis;
@@ -163,7 +162,6 @@ public:
             reg.Add<VisibilityComponent>(m_floor, vis);
         }
 
-        reg.Add<ShadowCasterTag>(m_floor);
 
         // ============================================================
         // Opaker Referenzwrfel hinten
@@ -178,8 +176,7 @@ public:
             reg.Add<TransformComponent>(m_solidCube, tc);
         }
         reg.Add<WorldTransformComponent>(m_solidCube);
-        reg.Add<MeshRefComponent>(m_solidCube, m_hCube, 0u);
-        reg.Add<MaterialRefComponent>(m_solidCube, m_hMatSolid);
+        reg.Add<RenderableComponent>(m_solidCube, m_hCube, m_hMatSolid, 0u);
 
         {
             VisibilityComponent vis;
@@ -189,7 +186,6 @@ public:
             reg.Add<VisibilityComponent>(m_solidCube, vis);
         }
 
-        reg.Add<ShadowCasterTag>(m_solidCube);
 
         // ============================================================
         // Transparente Wrfel
@@ -205,8 +201,7 @@ public:
             reg.Add<TransformComponent>(m_cubeFar, tc);
         }
         reg.Add<WorldTransformComponent>(m_cubeFar);
-        reg.Add<MeshRefComponent>(m_cubeFar, m_hCube, 0u);
-        reg.Add<MaterialRefComponent>(m_cubeFar, m_hMatFar);
+        reg.Add<RenderableComponent>(m_cubeFar, m_hCube, m_hMatFar, 0u);
 
         {
             VisibilityComponent vis;
@@ -216,7 +211,6 @@ public:
             reg.Add<VisibilityComponent>(m_cubeFar, vis);
         }
 
-        reg.Add<ShadowCasterTag>(m_cubeFar);
 
         // mitte
         m_cubeMid = reg.CreateEntity();
@@ -228,8 +222,7 @@ public:
             reg.Add<TransformComponent>(m_cubeMid, tc);
         }
         reg.Add<WorldTransformComponent>(m_cubeMid);
-        reg.Add<MeshRefComponent>(m_cubeMid, m_hCube, 0u);
-        reg.Add<MaterialRefComponent>(m_cubeMid, m_hMatMid);
+        reg.Add<RenderableComponent>(m_cubeMid, m_hCube, m_hMatMid, 0u);
 
         {
             VisibilityComponent vis;
@@ -239,7 +232,6 @@ public:
             reg.Add<VisibilityComponent>(m_cubeMid, vis);
         }
 
-        reg.Add<ShadowCasterTag>(m_cubeMid);
 
         // nah
         m_cubeNear = reg.CreateEntity();
@@ -251,8 +243,7 @@ public:
             reg.Add<TransformComponent>(m_cubeNear, tc);
         }
         reg.Add<WorldTransformComponent>(m_cubeNear);
-        reg.Add<MeshRefComponent>(m_cubeNear, m_hCube, 0u);
-        reg.Add<MaterialRefComponent>(m_cubeNear, m_hMatNear);
+        reg.Add<RenderableComponent>(m_cubeNear, m_hCube, m_hMatNear, 0u);
 
         {
             VisibilityComponent vis;
@@ -262,7 +253,6 @@ public:
             reg.Add<VisibilityComponent>(m_cubeNear, vis);
         }
 
-        reg.Add<ShadowCasterTag>(m_cubeNear);
 
         Debug::Log("transparent_example.cpp: Szene aufgebaut - 1 opaker Referenzwuerfel, 3 transparente Wuerfel");
     }
