@@ -150,7 +150,7 @@ float CalculateShadow(float4 lightSpacePos, float3 N, float3 lightDir)
         proj.z < 0.0f || proj.z > 1.0f) return 1.0f;
 
     float NdotL  = saturate(dot(normalize(N), normalize(-lightDir)));
-    float bias   = max(0.0005f, 0.003f * (1.0f - NdotL));
+    float bias = max(0.0002f, 0.0010f * (1.0f - NdotL));
     float depth  = proj.z - bias;
 
     uint tw, th;

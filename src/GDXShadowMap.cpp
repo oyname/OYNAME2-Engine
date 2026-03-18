@@ -58,7 +58,7 @@ bool GDXShadowMap::Create(ID3D11Device* device, uint32_t size)
     rsDesc.FillMode              = D3D11_FILL_SOLID;
     rsDesc.CullMode              = D3D11_CULL_BACK;
     rsDesc.FrontCounterClockwise = FALSE;
-    rsDesc.DepthBias             = 2000;    // verhindert Shadow-Acne
+    rsDesc.DepthBias             = 1000;   // verhindert Shadow-Acne
     rsDesc.DepthBiasClamp        = 0.01f;
     rsDesc.SlopeScaledDepthBias  = 0.5f;   // reduziert vs OYNAME 1.5 → weniger Offset
     rsDesc.DepthClipEnable       = TRUE;

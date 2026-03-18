@@ -741,12 +741,12 @@ private:
         {
             LightComponent lc;
             lc.kind = LightKind::Directional;
-            lc.diffuseColor = { 1.0f, 0.95f, 0.85f, 1.0f };
+            lc.diffuseColor = { 0.85f, 0.95f, 1.0f, 1.0f };
             lc.intensity = 3.0f;
             lc.castShadows = true;
-            lc.shadowOrthoSize = 44.0f;
+            lc.shadowOrthoSize = 50.0f;
             lc.shadowNear = 0.5f;
-            lc.shadowFar = 500.0f;
+            lc.shadowFar = 100.0f;
             reg.Add<LightComponent>(m_sunLight, lc);
         }
         {
