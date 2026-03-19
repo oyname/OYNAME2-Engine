@@ -3,6 +3,7 @@
 #include <memory>
 #include <vector>
 #include <functional>
+#include <string>
 #include "GDXEventQueue.h"
 #include "GDXFrameTimer.h"
 #include "IGDXWindow.h"
@@ -45,4 +46,5 @@ private:
     GDXFrameTimer                 m_frameTimer;
     float                         m_deltaTime = 0.0f;
     EventFn                       m_eventCallback;
+    std::string                   m_baseWindowTitle;
 };

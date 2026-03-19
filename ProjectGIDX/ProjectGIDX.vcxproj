@@ -231,6 +231,7 @@
     <ClCompile Include="..\src\GDXWin32OpenGLContextFactory.cpp" />
     <ClCompile Include="..\src\GDXWin32Platform.cpp" />
     <ClCompile Include="..\src\GDXWin32Window.cpp" />
+    <ClCompile Include="..\src\ViewCullingSystem.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\app\ECSGame.h" />
@@ -259,7 +260,6 @@
     <ClInclude Include="..\include\GDXInput.h" />
     <ClInclude Include="..\include\GDXMath.h" />
     <ClInclude Include="..\include\GDXMathHelpers.h" />
-    <ClInclude Include="..\include\GDXNullRenderer.h" />
     <ClInclude Include="..\include\GDXOpenGLIncludes.h" />
     <ClInclude Include="..\include\GDXOpenGLRenderBackend.h" />
     <ClInclude Include="..\include\GDXOpenGLRenderer.h" />
@@ -300,16 +300,19 @@
     <ClInclude Include="..\include\PostProcessResource.h" />
     <ClInclude Include="..\include\Registry.h" />
     <ClInclude Include="..\include\RenderCommand.h" />
+    <ClInclude Include="..\include\RenderFramePipeline.h" />
     <ClInclude Include="..\include\RenderGatherSystem.h" />
     <ClInclude Include="..\include\RenderPassClearDesc.h" />
     <ClInclude Include="..\include\RenderPassTargetDesc.h" />
     <ClInclude Include="..\include\RenderQueue.h" />
+    <ClInclude Include="..\include\RenderViewData.h" />
     <ClInclude Include="..\include\ResourceStore.h" />
     <ClInclude Include="..\include\ShaderVariant.h" />
     <ClInclude Include="..\include\SubmeshBuilder.h" />
     <ClInclude Include="..\include\SubmeshData.h" />
     <ClInclude Include="..\include\SystemScheduler.h" />
     <ClInclude Include="..\include\TransformSystem.h" />
+    <ClInclude Include="..\include\ViewCullingSystem.h" />
     <ClInclude Include="..\include\WindowDesc.h" />
     <ClInclude Include="..\third_party\stb_image.h" />
   </ItemGroup>

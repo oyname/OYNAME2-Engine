@@ -149,8 +149,8 @@ void TransformSystem::UpdateRoot(TransformComponent& t, WorldTransformComponent&
     wt.matrix = ComputeLocalMatrix(t);
 
     XMMATRIX m = GDXMathHelpers::LoadFloat4x4(wt.matrix);
-    XMMATRIX inv = XMMatrixInverse(nullptr, m);
-    GDXMathHelpers::StoreFloat4x4(wt.inverse, inv);
+    XMVECTOR det = XMMatrixDeterminant(m);
+    XMMATRIX inv = XMMatrixInverse(&det, m);
 
     t.dirty = false;
     ++t.worldVersion;

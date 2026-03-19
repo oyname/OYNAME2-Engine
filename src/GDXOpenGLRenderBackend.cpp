@@ -114,8 +114,9 @@ bool GDXOpenGLRenderBackend::CreateMaterialGpu(MaterialResource&)
     return true;
 }
 
-void GDXOpenGLRenderBackend::UpdateLights(Registry&, FrameData& frame)
+void GDXOpenGLRenderBackend::UpdateLights(Registry& registry, FrameData& frame)
 {
+    (void)registry;
     frame.lightCount = 0u;
     frame.hasShadowPass = false;
 }

@@ -37,6 +37,7 @@ public:
     bool Init(void* device) override;
     void Shutdown() override;
     void Update(Registry& registry, FrameData& frame, void* ctx) override;
+    void Upload(const FrameData& frame, void* ctx);
     bool IsReady() const override { return m_lightBuffer != nullptr; }
 
 private:

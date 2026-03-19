@@ -243,6 +243,9 @@
     <ClCompile Include="..\app\postprocess_example.cpp">
       <Filter>app</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\ViewCullingSystem.cpp">
+      <Filter>util</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\third_party\stb_image.h">
@@ -422,9 +425,6 @@
     <ClInclude Include="..\include\GDXDX12RenderBackend.h">
       <Filter>engine\renderer\dx12</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\GDXNullRenderer.h">
-      <Filter>engine\renderer\null</Filter>
-    </ClInclude>
     <ClInclude Include="..\include\BasicMeshGenerator.h">
       <Filter>util</Filter>
     </ClInclude>
@@ -481,6 +481,15 @@
     </ClInclude>
     <ClInclude Include="..\include\PostProcessResource.h">
       <Filter>engine\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\ViewCullingSystem.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\RenderViewData.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\RenderFramePipeline.h">
+      <Filter>engine</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

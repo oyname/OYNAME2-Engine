@@ -1,6 +1,9 @@
 #include "RenderGatherSystem.h"
 #include "Debug.h"
 
+#include <algorithm>
+#include <utility>
+
 namespace
 {
     struct ResolvedRenderable
@@ -110,19 +113,19 @@ namespace
         return desc;
     }
 
-    ResolvedRenderable ResolveRenderable(const RenderableComponent& renderable, const VisibilityComponent& visibility)
+    ResolvedRenderable ResolveRenderable(const VisibleRenderCandidate& candidate)
     {
         ResolvedRenderable resolved{};
-        resolved.mesh = renderable.mesh;
-        resolved.material = renderable.material;
-        resolved.submeshIndex = renderable.submeshIndex;
-        resolved.enabled = renderable.enabled;
-        resolved.stateVersion = renderable.stateVersion;
-        resolved.visible = visibility.visible;
-        resolved.active = visibility.active;
-        resolved.layerMask = visibility.layerMask;
-        resolved.castShadows = visibility.castShadows;
-        resolved.receiveShadows = visibility.receiveShadows;
+        resolved.mesh = candidate.mesh;
+        resolved.material = candidate.material;
+        resolved.submeshIndex = candidate.submeshIndex;
+        resolved.enabled = candidate.enabled;
+        resolved.stateVersion = candidate.renderableStateVersion;
+        resolved.visible = candidate.visible;
+        resolved.active = candidate.active;
+        resolved.layerMask = candidate.layerMask;
+        resolved.castShadows = candidate.castShadows;
+        resolved.receiveShadows = candidate.receiveShadows;
         return resolved;
     }
 
@@ -143,9 +146,7 @@ namespace
             && cache.materialCpuDirtySnapshot == material.cpuDirty;
     }
 
-    bool BuildMainRenderCommand(EntityID entity,
-                                const WorldTransformComponent& wt,
-                                const ResolvedRenderable& renderable,
+    bool BuildMainRenderCommand(const VisibleRenderCandidate& candidate,
                                 const FrameData& frame,
                                 ResourceStore<MeshAssetResource, MeshTag>& meshStore,
                                 ResourceStore<MaterialResource, MaterialTag>& matStore,
@@ -156,7 +157,8 @@ namespace
                                 RenderCommand& outCmd,
                                 bool& outTransparent)
     {
-        if (!renderable.visible || !renderable.active) return false;
+        const ResolvedRenderable renderable = ResolveRenderable(candidate);
+        if (!renderable.active || !renderable.visible) return false;
         if ((renderable.layerMask & frame.cullMask) == 0u) return false;
         if (options && (renderable.layerMask & options->visibilityLayerMask) == 0u) return false;
         if (!renderable.enabled) return false;
@@ -214,24 +216,24 @@ namespace
         if (options && options->skipSelfReferentialDraws &&
             UsesTextureAsShaderResource(cache.bindings, options->forbiddenShaderReadTexture))
         {
-            Debug::LogWarning("RenderGatherSystem: skipped self-referential RTT draw for entity ", entity.value);
+            Debug::LogWarning("RenderGatherSystem: skipped self-referential RTT draw for entity ", candidate.entity.value);
             return false;
         }
 
-        const float ndcDepth = CameraSystem::ComputeNDCDepth(wt.matrix, frame.viewProjMatrix);
+        const float ndcDepth = CameraSystem::ComputeNDCDepth(candidate.worldMatrix, frame.viewProjMatrix);
         const float depth = outTransparent ? (1.0f - ndcDepth) : ndcDepth;
         outCmd.mesh = cache.mesh;
         outCmd.material = cache.material;
         outCmd.shader = cache.shader;
         outCmd.submeshIndex = cache.submeshIndex;
-        outCmd.ownerEntity = entity;
+        outCmd.ownerEntity = candidate.entity;
         outCmd.pass = cache.pass;
-        outCmd.worldMatrix = wt.matrix;
+        outCmd.worldMatrix = candidate.worldMatrix;
         outCmd.SetBindings(
             cache.bindings,
             BuildResourceBindingScopeKey(cache.bindings, ResourceBindingScope::Pass, cache.shader.value),
             BuildResourceBindingScopeKey(cache.bindings, ResourceBindingScope::Material, cache.material.value),
-            BuildResourceBindingScopeKey(cache.bindings, ResourceBindingScope::Draw, entity.value));
+            BuildResourceBindingScopeKey(cache.bindings, ResourceBindingScope::Draw, candidate.entity.value));
         outCmd.SetPipelineState(cache.pipelineState);
         outCmd.materialData = cache.materialData;
         outCmd.receiveShadows = renderable.receiveShadows;
@@ -243,9 +245,7 @@ namespace
         return true;
     }
 
-    bool BuildShadowRenderCommand(EntityID entity,
-                                  const WorldTransformComponent& wt,
-                                  const ResolvedRenderable& renderable,
+    bool BuildShadowRenderCommand(const VisibleRenderCandidate& candidate,
                                   const FrameData& frame,
                                   ResourceStore<MeshAssetResource, MeshTag>& meshStore,
                                   ResourceStore<MaterialResource, MaterialTag>& matStore,
@@ -255,6 +255,7 @@ namespace
                                   RenderGatherSystem::CachedCommandState& cache,
                                   RenderCommand& outCmd)
     {
+        const ResolvedRenderable renderable = ResolveRenderable(candidate);
         if (!renderable.active || !renderable.castShadows) return false;
         if ((renderable.layerMask & frame.cullMask) == 0u) return false;
         if (options && (renderable.layerMask & options->shadowCasterLayerMask) == 0u) return false;
@@ -300,7 +301,7 @@ namespace
         if (options && options->skipSelfReferentialDraws &&
             UsesTextureAsShaderResource(cache.bindings, options->forbiddenShaderReadTexture))
         {
-            Debug::LogWarning("RenderGatherSystem: skipped self-referential RTT shadow draw for entity ", entity.value);
+            Debug::LogWarning("RenderGatherSystem: skipped self-referential RTT shadow draw for entity ", candidate.entity.value);
             return false;
         }
 
@@ -308,14 +309,14 @@ namespace
         outCmd.material = cache.material;
         outCmd.shader = cache.shader;
         outCmd.submeshIndex = cache.submeshIndex;
-        outCmd.ownerEntity = entity;
+        outCmd.ownerEntity = candidate.entity;
         outCmd.pass = RenderPass::Shadow;
-        outCmd.worldMatrix = wt.matrix;
+        outCmd.worldMatrix = candidate.worldMatrix;
         outCmd.SetBindings(
             cache.bindings,
             BuildResourceBindingScopeKey(cache.bindings, ResourceBindingScope::Pass, cache.shader.value),
             BuildResourceBindingScopeKey(cache.bindings, ResourceBindingScope::Material, cache.material.value),
-            BuildResourceBindingScopeKey(cache.bindings, ResourceBindingScope::Draw, entity.value));
+            BuildResourceBindingScopeKey(cache.bindings, ResourceBindingScope::Draw, candidate.entity.value));
         outCmd.SetPipelineState(cache.pipelineState);
         outCmd.materialData = cache.materialData;
         outCmd.receiveShadows = true;
@@ -326,103 +327,186 @@ namespace
                           0.0f);
         return true;
     }
+
+    template<typename Selector>
+    void MergeCommandVectors(const std::vector<RenderGatherSystem::GatherChunkResult>& chunks,
+                             Selector selector,
+                             RenderQueue& outQueue)
+    {
+        size_t totalCount = 0u;
+        for (const auto& chunk : chunks)
+            totalCount += selector(chunk).size();
+
+        outQueue.commands.clear();
+        outQueue.commands.reserve(totalCount);
+        for (const auto& chunk : chunks)
+        {
+            const auto& src = selector(chunk);
+            outQueue.commands.insert(outQueue.commands.end(), src.begin(), src.end());
+        }
+    }
 }
 
-void RenderGatherSystem::Gather(
-    Registry&                                      registry,
-    const FrameData&                               frame,
-    ResourceStore<MeshAssetResource, MeshTag>&     meshStore,
-    ResourceStore<MaterialResource,  MaterialTag>& matStore,
-    ResourceStore<GDXShaderResource, ShaderTag>&   shaderStore,
-    const ShaderResolver&                          resolveShader,
-    RenderQueue&                                   outOpaqueQueue,
-    RenderQueue&                                   outTransparentQueue,
-    const RenderGatherOptions*                     options) const
+void RenderGatherSystem::GatherVisibleSetChunks(const VisibleSet& visibleSet,
+                                                 const FrameData& frame,
+                                                 ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+                                                 ResourceStore<MaterialResource, MaterialTag>& matStore,
+                                                 ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+                                                 const ShaderResolver& resolveShader,
+                                                 std::vector<GatherChunkResult>& outChunkResults,
+                                                 const RenderGatherOptions* options,
+                                                 JobSystem* jobSystem) const
 {
-    outOpaqueQueue.Clear();
-    outTransparentQueue.Clear();
+    outChunkResults.clear();
 
-    if (auto* worldPool = registry.TryGetPool<WorldTransformComponent>())
+    const size_t total = visibleSet.candidates.size();
+    if (total == 0u)
+        return;
+
+    const size_t batchSize = 128u;
+    const size_t chunkCount = (total + batchSize - 1u) / batchSize;
+    outChunkResults.resize(chunkCount);
+
+    auto processRange = [&](size_t beginChunk, size_t endChunk)
     {
-        worldPool->ForEachChunk([&](size_t begin, size_t end, EntityID* entities, WorldTransformComponent* worlds)
+        for (size_t chunkIndex = beginChunk; chunkIndex < endChunk; ++chunkIndex)
         {
-            const size_t count = end - begin;
-            for (size_t i = 0; i < count; ++i)
-            {
-                const EntityID entity = entities[i];
-                auto* renderable = registry.Get<RenderableComponent>(entity);
-                auto* visibility = registry.Get<VisibilityComponent>(entity);
-                if (!renderable || !visibility)
-                    continue;
+            const size_t begin = chunkIndex * batchSize;
+            const size_t end = (std::min)(begin + batchSize, total);
+            auto& result = outChunkResults[chunkIndex];
+            result.opaque.reserve(end - begin);
+            result.transparent.reserve(end - begin);
 
+            for (size_t i = begin; i < end; ++i)
+            {
+                const auto& candidate = visibleSet.candidates[i];
                 RenderCommand cmd;
                 bool transparent = false;
-                auto& cache = m_mainCache[entity];
-                if (!BuildMainRenderCommand(entity, worlds[i], ResolveRenderable(*renderable, *visibility),
-                                            frame, meshStore, matStore, shaderStore, resolveShader, options,
-                                            cache, cmd, transparent))
+                auto& cache = result.mainCache[candidate.entity];
+                if (!BuildMainRenderCommand(candidate, frame, meshStore, matStore, shaderStore,
+                                            resolveShader, options, cache, cmd, transparent))
                 {
                     continue;
                 }
 
-                renderable->dirty = false;
-                visibility->dirty = false;
-                registry.MarkComponentChanged<RenderableComponent>(entity);
-                registry.MarkComponentChanged<VisibilityComponent>(entity);
-                RenderQueue& targetQueue = transparent ? outTransparentQueue : outOpaqueQueue;
-                targetQueue.Submit(std::move(cmd));
+                if (transparent)
+                    result.transparent.push_back(std::move(cmd));
+                else
+                    result.opaque.push_back(std::move(cmd));
             }
-        });
-    }
+        }
+    };
 
-    outOpaqueQueue.Sort();
-    outTransparentQueue.Sort();
+    if (jobSystem)
+        jobSystem->ParallelFor(chunkCount, processRange, 1u);
+    else
+        processRange(0u, chunkCount);
 }
 
-void RenderGatherSystem::GatherShadow(
-    Registry&                                      registry,
-    const FrameData&                               frame,
-    ResourceStore<MeshAssetResource, MeshTag>&     meshStore,
-    ResourceStore<MaterialResource,  MaterialTag>& matStore,
-    ResourceStore<GDXShaderResource, ShaderTag>&   shaderStore,
-    const ShaderResolver&                          resolveShader,
-    RenderQueue&                                   outShadowQueue,
-    const RenderGatherOptions*                     options) const
+void RenderGatherSystem::GatherShadowVisibleSetChunks(const VisibleSet& visibleSet,
+                                                      const FrameData& frame,
+                                                      ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+                                                      ResourceStore<MaterialResource, MaterialTag>& matStore,
+                                                      ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+                                                      const ShaderResolver& resolveShader,
+                                                      std::vector<GatherChunkResult>& outChunkResults,
+                                                      const RenderGatherOptions* options,
+                                                      JobSystem* jobSystem) const
 {
-    outShadowQueue.Clear();
+    outChunkResults.clear();
     if (options && !options->gatherShadows)
         return;
 
-    if (auto* worldPool = registry.TryGetPool<WorldTransformComponent>())
-    {
-        worldPool->ForEachChunk([&](size_t begin, size_t end, EntityID* entities, WorldTransformComponent* worlds)
-        {
-            const size_t count = end - begin;
-            for (size_t i = 0; i < count; ++i)
-            {
-                const EntityID entity = entities[i];
-                auto* renderable = registry.Get<RenderableComponent>(entity);
-                auto* visibility = registry.Get<VisibilityComponent>(entity);
-                if (!renderable || !visibility)
-                    continue;
+    const size_t total = visibleSet.candidates.size();
+    if (total == 0u)
+        return;
 
+    const size_t batchSize = 128u;
+    const size_t chunkCount = (total + batchSize - 1u) / batchSize;
+    outChunkResults.resize(chunkCount);
+
+    auto processRange = [&](size_t beginChunk, size_t endChunk)
+    {
+        for (size_t chunkIndex = beginChunk; chunkIndex < endChunk; ++chunkIndex)
+        {
+            const size_t begin = chunkIndex * batchSize;
+            const size_t end = (std::min)(begin + batchSize, total);
+            auto& result = outChunkResults[chunkIndex];
+            result.shadow.reserve(end - begin);
+
+            for (size_t i = begin; i < end; ++i)
+            {
+                const auto& candidate = visibleSet.candidates[i];
                 RenderCommand cmd;
-                auto& cache = m_shadowCache[entity];
-                if (!BuildShadowRenderCommand(entity, worlds[i], ResolveRenderable(*renderable, *visibility),
-                                              frame, meshStore, matStore, shaderStore, resolveShader, options,
-                                              cache, cmd))
+                auto& cache = result.shadowCache[candidate.entity];
+                if (!BuildShadowRenderCommand(candidate, frame, meshStore, matStore, shaderStore,
+                                              resolveShader, options, cache, cmd))
                 {
                     continue;
                 }
-
-                renderable->dirty = false;
-                visibility->dirty = false;
-                registry.MarkComponentChanged<RenderableComponent>(entity);
-                registry.MarkComponentChanged<VisibilityComponent>(entity);
-                outShadowQueue.Submit(std::move(cmd));
+                result.shadow.push_back(std::move(cmd));
             }
-        });
-    }
+        }
+    };
 
-    outShadowQueue.Sort();
+    if (jobSystem)
+        jobSystem->ParallelFor(chunkCount, processRange, 1u);
+    else
+        processRange(0u, chunkCount);
+}
+
+void RenderGatherSystem::MergeVisibleSetChunks(const std::vector<GatherChunkResult>& chunkResults,
+                                              RenderQueue& outOpaqueQueue,
+                                              RenderQueue& outTransparentQueue) const
+{
+    outOpaqueQueue.Clear();
+    outTransparentQueue.Clear();
+    MergeCommandVectors(chunkResults, [](const GatherChunkResult& c) -> const std::vector<RenderCommand>& { return c.opaque; }, outOpaqueQueue);
+    MergeCommandVectors(chunkResults, [](const GatherChunkResult& c) -> const std::vector<RenderCommand>& { return c.transparent; }, outTransparentQueue);
+}
+
+void RenderGatherSystem::MergeShadowVisibleSetChunks(const std::vector<GatherChunkResult>& chunkResults,
+                                                     RenderQueue& outShadowQueue) const
+{
+    outShadowQueue.Clear();
+    MergeCommandVectors(chunkResults, [](const GatherChunkResult& c) -> const std::vector<RenderCommand>& { return c.shadow; }, outShadowQueue);
+}
+
+void RenderGatherSystem::SortRenderQueue(RenderQueue& queue)
+{
+    queue.Sort();
+}
+
+void RenderGatherSystem::GatherVisibleSet(const VisibleSet& visibleSet,
+                                          const FrameData& frame,
+                                          ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+                                          ResourceStore<MaterialResource, MaterialTag>& matStore,
+                                          ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+                                          const ShaderResolver& resolveShader,
+                                          RenderQueue& outOpaqueQueue,
+                                          RenderQueue& outTransparentQueue,
+                                          const RenderGatherOptions* options,
+                                          JobSystem* jobSystem) const
+{
+    std::vector<GatherChunkResult> chunkResults;
+    GatherVisibleSetChunks(visibleSet, frame, meshStore, matStore, shaderStore, resolveShader, chunkResults, options, jobSystem);
+    MergeVisibleSetChunks(chunkResults, outOpaqueQueue, outTransparentQueue);
+    SortRenderQueue(outOpaqueQueue);
+    SortRenderQueue(outTransparentQueue);
+}
+
+void RenderGatherSystem::GatherShadowVisibleSet(const VisibleSet& visibleSet,
+                                                const FrameData& frame,
+                                                ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+                                                ResourceStore<MaterialResource, MaterialTag>& matStore,
+                                                ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+                                                const ShaderResolver& resolveShader,
+                                                RenderQueue& outShadowQueue,
+                                                const RenderGatherOptions* options,
+                                                JobSystem* jobSystem) const
+{
+    std::vector<GatherChunkResult> chunkResults;
+    GatherShadowVisibleSetChunks(visibleSet, frame, meshStore, matStore, shaderStore, resolveShader, chunkResults, options, jobSystem);
+    MergeShadowVisibleSetChunks(chunkResults, outShadowQueue);
+    SortRenderQueue(outShadowQueue);
 }

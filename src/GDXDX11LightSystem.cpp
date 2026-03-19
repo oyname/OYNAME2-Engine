@@ -137,6 +137,11 @@ void GDXDX11LightSystem::Update(Registry& registry, FrameData& frame, void* ctxP
     if (ctx) UploadBuffer(ctx, frame);
 }
 
+void GDXDX11LightSystem::Upload(const FrameData& frame, void* ctxPtr)
+{
+    UploadBuffer(static_cast<ID3D11DeviceContext*>(ctxPtr), frame);
+}
+
 void GDXDX11LightSystem::UploadBuffer(ID3D11DeviceContext* ctx, const FrameData& frame)
 {
     if (!m_lightBuffer || !ctx) return;

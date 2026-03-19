@@ -1,8 +1,11 @@
 #include "GDXEngine.h"
 #include "Debug.h"
 #include "GDXInput.h"
+#include "GDXECSRenderer.h"
 
 #include <variant>
+#include <string>
+#include <sstream>
 
 template<class... Ts>
 struct Overloaded : Ts... { using Ts::operator()...; };
@@ -16,6 +19,8 @@ GDXEngine::GDXEngine(std::unique_ptr<IGDXWindow>   window,
     , m_renderer(std::move(renderer))
     , m_events(events)
 {
+    if (m_window)
+        m_baseWindowTitle = m_window->GetTitle();
 }
 
 bool GDXEngine::Initialize()
@@ -68,6 +73,19 @@ bool GDXEngine::Step()
     m_renderer->BeginFrame();
     m_renderer->Tick(m_deltaTime);
     m_renderer->EndFrame();
+
+    if (auto* ecsRenderer = dynamic_cast<GDXECSRenderer*>(m_renderer.get()))
+    {
+        const auto& stats = ecsRenderer->GetFrameStats();
+        std::ostringstream oss;
+        oss << m_baseWindowTitle
+            << " | Main total: " << stats.mainCulling.totalCandidates
+            << " visible: " << stats.mainCulling.visibleCandidates
+            << " | Shadow visible: " << stats.shadowCulling.visibleCandidates
+            << " | RTT views: " << stats.rttViewCount
+            << " | Draws: " << stats.drawCalls;
+        m_window->SetTitle(oss.str().c_str());
+    }
 
     return true;
 }

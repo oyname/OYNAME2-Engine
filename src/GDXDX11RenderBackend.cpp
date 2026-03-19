@@ -412,7 +412,9 @@ bool GDXDX11RenderBackend::CreateMaterialGpu(MaterialResource& mat)
 
 void GDXDX11RenderBackend::UpdateLights(Registry& registry, FrameData& frame)
 {
+    (void)registry;
     m_lightSystem.Update(registry, frame, m_ctx);
+    m_lightSystem.Upload(frame, m_ctx);
 }
 
 void GDXDX11RenderBackend::UpdateFrameConstants(const FrameData& frame)

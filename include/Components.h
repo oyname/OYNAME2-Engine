@@ -222,6 +222,54 @@ struct VisibilityComponent
     VisibilityComponent() = default;
 };
 
+
+// ===========================================================================
+// RenderBoundsComponent — renderrelevante lokale Bounds für Visibility/Culling.
+//
+// Bewusst getrennt von Mesh-/Scene-Logik:
+// - nur Daten für vorbereitende Sichtbarkeitsprüfung
+// - keine Objektmethoden
+// - keine Backend-Abfragen im Draw
+//
+// Erste Ausbaustufe:
+// - Bounding Sphere als Hauptpfad
+// - lokale AABB optional für spätere präzisere Tests vorhanden
+// ===========================================================================
+struct RenderBoundsComponent
+{
+    enum class Shape : uint8_t
+    {
+        Sphere = 0,
+        AABB = 1,
+    };
+
+    Shape shape = Shape::Sphere;
+    GIDX::Float3 localCenter = { 0.0f, 0.0f, 0.0f };
+    float localSphereRadius = 0.5f;
+
+    GIDX::Float3 localAabbMin = { -0.5f, -0.5f, -0.5f };
+    float _pad0 = 0.0f;
+    GIDX::Float3 localAabbMax = { 0.5f, 0.5f, 0.5f };
+    float _pad1 = 0.0f;
+
+    bool valid = false;
+    bool enableDistanceCull = false;
+    float maxViewDistance = 0.0f;
+    float _pad2 = 0.0f;
+
+    RenderBoundsComponent() = default;
+
+    static RenderBoundsComponent MakeSphere(const GIDX::Float3& center, float radius)
+    {
+        RenderBoundsComponent b{};
+        b.shape = Shape::Sphere;
+        b.localCenter = center;
+        b.localSphereRadius = radius;
+        b.valid = radius > 0.0f;
+        return b;
+    }
+};
+
 // ===========================================================================
 // CameraComponent — Projektionsparameter.
 //

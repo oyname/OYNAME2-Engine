@@ -8,8 +8,11 @@
 #include "MaterialResource.h"
 #include "GDXShaderResource.h"
 #include "CameraSystem.h"
+#include "RenderViewData.h"
+#include "JobSystem.h"
 #include <functional>
 #include <unordered_map>
+#include <vector>
 
 struct RenderGatherOptions
 {
@@ -54,11 +57,51 @@ public:
         bool valid = false;
     };
 
-    mutable std::unordered_map<EntityID, CachedCommandState> m_mainCache;
-    mutable std::unordered_map<EntityID, CachedCommandState> m_shadowCache;
+    struct GatherChunkResult
+    {
+        std::vector<RenderCommand> opaque;
+        std::vector<RenderCommand> transparent;
+        std::vector<RenderCommand> shadow;
+        std::unordered_map<EntityID, CachedCommandState> mainCache;
+        std::unordered_map<EntityID, CachedCommandState> shadowCache;
+    };
 
-    void Gather(
-        Registry& registry,
+
+    void GatherVisibleSetChunks(
+        const VisibleSet& visibleSet,
+        const FrameData& frame,
+        ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+        ResourceStore<MaterialResource, MaterialTag>& matStore,
+        ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+        const ShaderResolver& resolveShader,
+        std::vector<GatherChunkResult>& outChunkResults,
+        const RenderGatherOptions* options,
+        JobSystem* jobSystem = nullptr) const;
+
+    void GatherShadowVisibleSetChunks(
+        const VisibleSet& visibleSet,
+        const FrameData& frame,
+        ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+        ResourceStore<MaterialResource, MaterialTag>& matStore,
+        ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+        const ShaderResolver& resolveShader,
+        std::vector<GatherChunkResult>& outChunkResults,
+        const RenderGatherOptions* options,
+        JobSystem* jobSystem = nullptr) const;
+
+    void MergeVisibleSetChunks(
+        const std::vector<GatherChunkResult>& chunkResults,
+        RenderQueue& outOpaqueQueue,
+        RenderQueue& outTransparentQueue) const;
+
+    void MergeShadowVisibleSetChunks(
+        const std::vector<GatherChunkResult>& chunkResults,
+        RenderQueue& outShadowQueue) const;
+
+    static void SortRenderQueue(RenderQueue& queue);
+
+    void GatherVisibleSet(
+        const VisibleSet& visibleSet,
         const FrameData& frame,
         ResourceStore<MeshAssetResource, MeshTag>& meshStore,
         ResourceStore<MaterialResource, MaterialTag>& matStore,
@@ -66,15 +109,18 @@ public:
         const ShaderResolver& resolveShader,
         RenderQueue& outOpaqueQueue,
         RenderQueue& outTransparentQueue,
-        const RenderGatherOptions* options) const;
+        const RenderGatherOptions* options,
+        JobSystem* jobSystem = nullptr) const;
 
-    void GatherShadow(
-        Registry& registry,
+    void GatherShadowVisibleSet(
+        const VisibleSet& visibleSet,
         const FrameData& frame,
         ResourceStore<MeshAssetResource, MeshTag>& meshStore,
         ResourceStore<MaterialResource, MaterialTag>& matStore,
         ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
         const ShaderResolver& resolveShader,
         RenderQueue& outShadowQueue,
-        const RenderGatherOptions* options) const;
+        const RenderGatherOptions* options,
+        JobSystem* jobSystem = nullptr) const;
+
 };

@@ -44,7 +44,7 @@ static constexpr float HALF_D = 0.22f;
 static constexpr int   N_RINGS = 2 * N_BONES + 1;
 static constexpr int   VERTS_RING = 4;
 static constexpr int   NUM_ASTEROIDS = 20;
-static constexpr int   NUM_BG_CUBES = 100;
+static constexpr int   NUM_BG_CUBES = 10000;
 
 static bool FileExists(const std::wstring& path)
 {
@@ -1274,6 +1274,12 @@ private:
         vis.layerMask = layerMask;
         reg.Add<VisibilityComponent>(e, vis);
 
+        const float maxScale = (std::max)(scale.x, (std::max)(scale.y, scale.z));
+        RenderBoundsComponent bounds = RenderBoundsComponent::MakeSphere({ 0.0f, 0.0f, 0.0f }, maxScale * 0.9f);
+        bounds.enableDistanceCull = false;
+        bounds.maxViewDistance = 0.0f;
+        reg.Add<RenderBoundsComponent>(e, bounds);
+
         return e;
     }
 
@@ -1447,6 +1453,19 @@ int main()
     auto rendererOwned = std::make_unique<GDXECSRenderer>(std::move(backendOwned));
     GDXECSRenderer* renderer = rendererOwned.get();
     renderer->SetClearColor(0.04f, 0.05f, 0.08f);
+
+    GDXECSRenderer::DebugCullingOptions dbg{};
+    dbg.enabled = true;
+    dbg.drawMainVisibleBounds = false;
+    dbg.drawShadowVisibleBounds = false;
+    dbg.drawRttVisibleBounds = false;
+    dbg.drawMainFrustum = false;
+    dbg.drawShadowFrustum = false;
+    dbg.logStats = true;
+    dbg.logEveryNFrames = 60u;
+    dbg.boundsAlpha = 0.22f;
+    dbg.frustumAlpha = 0.55f;
+    renderer->SetDebugCullingOptions(dbg);
 
     GDXEngine engine(std::move(windowOwned), std::move(rendererOwned), events);
     if (!engine.Initialize())

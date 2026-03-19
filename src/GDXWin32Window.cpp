@@ -179,8 +179,31 @@ void GDXWin32Window::PollEvents()
 bool        GDXWin32Window::ShouldClose() const { return m_shouldClose; }
 int         GDXWin32Window::GetWidth()    const { return m_width; }
 int         GDXWin32Window::GetHeight()   const { return m_height; }
+
 bool        GDXWin32Window::GetBorderless() const{ return m_borderless; }
 const char* GDXWin32Window::GetTitle()    const { return m_desc.title.c_str(); }
+
+void GDXWin32Window::SetTitle(const char* title)
+{
+    if (!title)
+        title = "";
+
+    m_desc.title = title;
+
+    if (!m_handles.hwnd)
+        return;
+
+    const int wLen = MultiByteToWideChar(CP_UTF8, 0, m_desc.title.c_str(), -1, nullptr, 0);
+    if (wLen <= 0)
+    {
+        DBERROR(GDX_SRC_LOC, "SetTitle UTF-8→UTF-16 conversion failed");
+        return;
+    }
+
+    std::wstring wTitle(static_cast<size_t>(wLen - 1), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, m_desc.title.c_str(), -1, wTitle.data(), wLen);
+    SetWindowTextW(reinterpret_cast<HWND>(m_handles.hwnd), wTitle.c_str());
+}
 
 bool GDXWin32Window::QueryNativeHandles(GDXWin32NativeHandles& outHandles) const
 {

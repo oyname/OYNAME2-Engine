@@ -65,7 +65,7 @@ void JobSystem::ParallelFor(size_t itemCount,
         return;
 
 #ifdef _DEBUG
-    minBatchSize = std::max(minBatchSize, size_t(512u));
+    minBatchSize = std::max(minBatchSize, size_t(32u));
 #endif
 
     if (!IsParallel() || itemCount <= minBatchSize)

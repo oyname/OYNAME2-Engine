@@ -485,8 +485,8 @@ namespace Engine
         auto* tc = _::renderer->GetRegistry().Get<TransformComponent>(e);
         if (!tc) { DBERROR(GDX_SRC_LOC, "Engine::TurnEntity: kein TransformComponent"); return; }
 
-        const Float4 delta = GDXMath::QuaternionFromEulerDeg(pitchDeg, yawDeg, rollDeg);
-        tc->localRotation = GDXMath::QuaternionMultiply(tc->localRotation, delta);
+        const Float4 delta = GIDX::QuaternionFromEulerDeg(pitchDeg, yawDeg, rollDeg);
+        tc->localRotation = GIDX::QuaternionMultiply(tc->localRotation, delta);
         TransformSystem::MarkDirty(_::renderer->GetRegistry(), e);
     }
 
@@ -509,22 +509,22 @@ namespace Engine
         const Float3 pos = tc->localPosition;
         const Float3 target = { tx, ty, tz };
 
-        Float3 forward = GDXMath::Normalize3(
-            GDXMath::Subtract(target, pos),
+        Float3 forward = GIDX::Normalize3(
+            GIDX::Subtract(target, pos),
             { 0.0f, 0.0f, 1.0f });
 
         Float3 up = { 0.0f, 1.0f, 0.0f };
-        if (std::fabs(GDXMath::Dot3(forward, up)) > 0.999f)
+        if (std::fabs(GIDX::Dot3(forward, up)) > 0.999f)
             up = { 0.0f, 0.0f, 1.0f };
 
-        const Float3 right = GDXMath::Normalize3(
-            GDXMath::Cross(up, forward),
+        const Float3 right = GIDX::Normalize3(
+            GIDX::Cross(up, forward),
             { 1.0f, 0.0f, 0.0f });
-        const Float3 newUp = GDXMath::Normalize3(
-            GDXMath::Cross(forward, right),
+        const Float3 newUp = GIDX::Normalize3(
+            GIDX::Cross(forward, right),
             { 0.0f, 1.0f, 0.0f });
 
-        tc->localRotation = GDXMath::QuaternionFromBasis(right, newUp, forward);
+        tc->localRotation = GIDX::QuaternionFromBasis(right, newUp, forward);
         TransformSystem::MarkDirty(_::renderer->GetRegistry(), e);
     }
 

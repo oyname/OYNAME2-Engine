@@ -25,6 +25,7 @@ public:
     int         GetHeight()   const override;
     bool        GetBorderless() const override;
     const char* GetTitle()    const override;
+    void        SetTitle(const char* title) override;
 
     // IGDXWin32NativeAccess
     bool QueryNativeHandles(GDXWin32NativeHandles& outHandles) const override;
