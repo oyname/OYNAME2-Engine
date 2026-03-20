@@ -1,12 +1,7 @@
 #pragma once
 
-//
-// GDXDX11LightSystem ist direkt in GDXDX11RenderBackend eingebettet (m_lightSystem). 
-// Das IGDXLightSystem-Interface existiert, wird aber von keinem anderen Backend implementiert.
-// Es ist also ein Interface ohne zweite Implementierung 
-//
-
-#include "IGDXLightSystem.h"
+#include "Registry.h"
+#include "FrameData.h"
 #include "Components.h"
 
 // Vorwärtsdeklarationen — kein <d3d11.h> im Header nötig.
@@ -15,7 +10,7 @@ struct ID3D11DeviceContext;
 struct ID3D11Buffer;
 
 // ---------------------------------------------------------------------------
-// GDXDX11LightSystem — DirectX 11 Implementierung von IGDXLightSystem.
+// GDXDX11LightSystem — DirectX 11 Lichtsystem.
 //
 // Sammelt LightComponent-Entities → befüllt FrameData.
 //
@@ -27,18 +22,17 @@ struct ID3D11Buffer;
 // cbuffer-Slot: b3 (VS+PS)
 // Kein Konflikt mit b0 (Entity), b1 (Frame), b2 (Material).
 // ---------------------------------------------------------------------------
-class GDXDX11LightSystem final : public IGDXLightSystem
+class GDXDX11LightSystem final
 {
 public:
     GDXDX11LightSystem()  = default;
-    ~GDXDX11LightSystem() override { Shutdown(); }
+    ~GDXDX11LightSystem() { Shutdown(); }
 
-    // IGDXLightSystem — void* wird intern auf ID3D11Device* / ID3D11DeviceContext* gecastet.
-    bool Init(void* device) override;
-    void Shutdown() override;
-    void Update(Registry& registry, FrameData& frame, void* ctx) override;
-    void Upload(const FrameData& frame, void* ctx);
-    bool IsReady() const override { return m_lightBuffer != nullptr; }
+    bool Init(ID3D11Device* device);
+    void Shutdown();
+    void Update(Registry& registry, FrameData& frame, ID3D11DeviceContext* ctx);
+    void Upload(const FrameData& frame, ID3D11DeviceContext* ctx);
+    bool IsReady() const { return m_lightBuffer != nullptr; }
 
 private:
     void UploadBuffer(ID3D11DeviceContext* ctx, const FrameData& frame);

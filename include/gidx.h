@@ -34,11 +34,9 @@
 #include "MeshAssetResource.h"
 #include "SubmeshBuilder.h"
 #include "MeshUtilities.h"
-#include "MeshProcessor.h"
 #include "WindowDesc.h"
 #include "Events.h"
 #include "Debug.h"
-#include "GDXMathHelpers.h"
 
 #include <functional>
 #include <variant>

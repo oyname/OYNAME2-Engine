@@ -1,6 +1,5 @@
 #pragma once
 #include "GDXMath.h"
-#include "GDXMathHelpers.h"
 #include <cstdint>
 #include <array>
 

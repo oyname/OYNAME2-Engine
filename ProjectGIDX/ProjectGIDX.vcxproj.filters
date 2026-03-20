@@ -31,42 +31,6 @@
     <Filter Include="third_party">
       <UniqueIdentifier>{4132ef45-9b48-487e-91c6-6c80e2b19e23}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\ESC Main">
-      <UniqueIdentifier>{a1696cae-911b-4c83-9a1c-66634feefaf2}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="app\gidx Main">
-      <UniqueIdentifier>{84f82f50-210d-4821-a7aa-0723a60980fc}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="app\RTT Example">
-      <UniqueIdentifier>{c0788479-4ffa-4770-a0a0-a71cee510b5b}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="app\Layers esc">
-      <UniqueIdentifier>{b4a8cc87-29fc-41db-aa47-ff98d7bd1c72}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="app\Transparent">
-      <UniqueIdentifier>{4a36576d-571c-4881-add8-22cf54c1d676}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="app\SnakeGame">
-      <UniqueIdentifier>{13c2d461-dbf0-403a-865c-760dd9d91a17}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="app\shader satic opaque">
-      <UniqueIdentifier>{7b6db410-f1f6-4614-b47f-3dc8cc534737}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="app\shader vertexcolor">
-      <UniqueIdentifier>{0ed9faf6-7448-4a9c-afee-00eaa27cb60d}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="app\shader alphatest shadow">
-      <UniqueIdentifier>{f5c61a24-5605-44fd-a737-a32e2b299ce3}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="app\shader skinning">
-      <UniqueIdentifier>{14630285-121d-420f-963c-4c0a55c1b503}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="app\uv dateil cube">
-      <UniqueIdentifier>{8e0fafdb-4d4d-4273-9399-4878acb80cb4}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="app\parenting showcase">
-      <UniqueIdentifier>{dac974b4-a685-453f-bac0-b003a26da59f}</UniqueIdentifier>
-    </Filter>
     <Filter Include="engine\renderer\dx11">
       <UniqueIdentifier>{d322e014-198d-4d94-bd2b-168dbc724d69}</UniqueIdentifier>
     </Filter>
@@ -85,20 +49,59 @@
     <Filter Include="engine\platform\windows">
       <UniqueIdentifier>{753e534a-1b0d-42cb-8ce4-fcbb576e8035}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\RTT NeonShader">
-      <UniqueIdentifier>{35dee395-5f6e-4c59-bcbe-3ea7504d9649}</UniqueIdentifier>
+    <Filter Include="app\_alt">
+      <UniqueIdentifier>{e5c6eee8-a32a-4b4b-8518-9193dfbd1457}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\_bugtest">
+    <Filter Include="app\_alt\_bugtest">
       <UniqueIdentifier>{f58953c2-bc76-4248-ab17-0782a79de059}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\_bugtest\MeshBuilder">
+    <Filter Include="app\_alt\_bugtest\MeshBuilder">
       <UniqueIdentifier>{f944617f-68eb-4179-8a2b-b9886c030f56}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\StatsTest">
+    <Filter Include="app\_alt\ESC Main">
+      <UniqueIdentifier>{a1696cae-911b-4c83-9a1c-66634feefaf2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\_alt\gidx Main">
+      <UniqueIdentifier>{84f82f50-210d-4821-a7aa-0723a60980fc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\_alt\Layers esc">
+      <UniqueIdentifier>{b4a8cc87-29fc-41db-aa47-ff98d7bd1c72}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\_alt\parenting showcase">
+      <UniqueIdentifier>{dac974b4-a685-453f-bac0-b003a26da59f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\_alt\RTT Example">
+      <UniqueIdentifier>{c0788479-4ffa-4770-a0a0-a71cee510b5b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\_alt\RTT NeonShader">
+      <UniqueIdentifier>{35dee395-5f6e-4c59-bcbe-3ea7504d9649}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\_alt\shader alphatest shadow">
+      <UniqueIdentifier>{f5c61a24-5605-44fd-a737-a32e2b299ce3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\_alt\shader satic opaque">
+      <UniqueIdentifier>{7b6db410-f1f6-4614-b47f-3dc8cc534737}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\_alt\shader skinning">
+      <UniqueIdentifier>{14630285-121d-420f-963c-4c0a55c1b503}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\_alt\shader vertexcolor">
+      <UniqueIdentifier>{0ed9faf6-7448-4a9c-afee-00eaa27cb60d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\_alt\SnakeGame">
+      <UniqueIdentifier>{13c2d461-dbf0-403a-865c-760dd9d91a17}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\_alt\StatsTest">
       <UniqueIdentifier>{0dbc030a-ea64-4331-9059-1e775e3e05d0}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\unlit mesh">
+    <Filter Include="app\_alt\Transparent">
+      <UniqueIdentifier>{4a36576d-571c-4881-add8-22cf54c1d676}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\_alt\unlit mesh">
       <UniqueIdentifier>{f65ad90b-bf85-4657-a975-274efa5c98db}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="app\_alt\uv dateil cube">
+      <UniqueIdentifier>{8e0fafdb-4d4d-4273-9399-4878acb80cb4}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -106,52 +109,52 @@
       <Filter>samples</Filter>
     </ClCompile>
     <ClCompile Include="..\app\ECSGame.cpp">
-      <Filter>app\ESC Main</Filter>
+      <Filter>app\_alt\ESC Main</Filter>
     </ClCompile>
     <ClCompile Include="..\app\main_ecs.cpp">
-      <Filter>app\ESC Main</Filter>
+      <Filter>app\_alt\ESC Main</Filter>
     </ClCompile>
     <ClCompile Include="..\app\main.cpp">
-      <Filter>app\gidx Main</Filter>
+      <Filter>app\_alt\gidx Main</Filter>
     </ClCompile>
     <ClCompile Include="..\app\RTT Example.cpp">
-      <Filter>app\RTT Example</Filter>
+      <Filter>app\_alt\RTT Example</Filter>
     </ClCompile>
     <ClCompile Include="..\app\layers.cpp">
-      <Filter>app\Layers esc</Filter>
+      <Filter>app\_alt\Layers esc</Filter>
     </ClCompile>
     <ClCompile Include="..\app\transparent_example.cpp">
-      <Filter>app\Transparent</Filter>
+      <Filter>app\_alt\Transparent</Filter>
     </ClCompile>
     <ClCompile Include="..\app\SnakeGame.cpp">
-      <Filter>app\SnakeGame</Filter>
+      <Filter>app\_alt\SnakeGame</Filter>
     </ClCompile>
     <ClCompile Include="..\app\game_main.cpp">
-      <Filter>app\SnakeGame</Filter>
+      <Filter>app\_alt\SnakeGame</Filter>
     </ClCompile>
     <ClCompile Include="..\app\test_shader_static_opaque.cpp">
-      <Filter>app\shader satic opaque</Filter>
+      <Filter>app\_alt\shader satic opaque</Filter>
     </ClCompile>
     <ClCompile Include="..\app\test_shader_vertexcolor.cpp">
-      <Filter>app\shader vertexcolor</Filter>
+      <Filter>app\_alt\shader vertexcolor</Filter>
     </ClCompile>
     <ClCompile Include="..\app\test_shader_alphatest_shadow.cpp">
-      <Filter>app\shader alphatest shadow</Filter>
+      <Filter>app\_alt\shader alphatest shadow</Filter>
     </ClCompile>
     <ClCompile Include="..\app\test_shader_skinning.cpp">
-      <Filter>app\shader skinning</Filter>
+      <Filter>app\_alt\shader skinning</Filter>
     </ClCompile>
     <ClCompile Include="..\app\bone_animation.cpp">
-      <Filter>app\shader skinning</Filter>
+      <Filter>app\_alt\shader skinning</Filter>
     </ClCompile>
     <ClCompile Include="..\app\uv1_detail_cube.cpp">
-      <Filter>app\uv dateil cube</Filter>
+      <Filter>app\_alt\uv dateil cube</Filter>
     </ClCompile>
     <ClCompile Include="..\app\parenting_showcase.cpp">
-      <Filter>app\parenting showcase</Filter>
+      <Filter>app\_alt\parenting showcase</Filter>
     </ClCompile>
     <ClCompile Include="..\app\meshbuilder.cpp">
-      <Filter>app\_bugtest\MeshBuilder</Filter>
+      <Filter>app\_alt\_bugtest\MeshBuilder</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXECSRenderer.cpp">
       <Filter>engine</Filter>
@@ -198,16 +201,7 @@
     <ClCompile Include="..\src\GDXDX11RenderExecutor.cpp">
       <Filter>engine\renderer\dx11</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\GDXDX11LightSystem.cpp">
-      <Filter>engine\renderer\dx11</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\GDXDX11Renderer.cpp">
-      <Filter>engine\renderer\dx11</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\GDXOpenGLRenderBackend.cpp">
-      <Filter>engine\renderer\opengl</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\GDXOpenGLRenderer.cpp">
       <Filter>engine\renderer\opengl</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXDX12RenderBackend.cpp">
@@ -217,22 +211,22 @@
       <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\app\RTT Shader Example\0_example_Multishaderexample_GIDX.cpp">
-      <Filter>app\RTT NeonShader</Filter>
+      <Filter>app\_alt\RTT NeonShader</Filter>
     </ClCompile>
     <ClCompile Include="..\app\RTT Shader Example\1_example_MultitexturRTTExample_GIDX.cpp">
-      <Filter>app\RTT NeonShader</Filter>
+      <Filter>app\_alt\RTT NeonShader</Filter>
     </ClCompile>
     <ClCompile Include="..\app\RTT Shader Example\NeonTimeBuffer.cpp">
-      <Filter>app\RTT NeonShader</Filter>
+      <Filter>app\_alt\RTT NeonShader</Filter>
     </ClCompile>
     <ClCompile Include="..\app\SchattenBugTest.cpp">
-      <Filter>app\_bugtest</Filter>
+      <Filter>app\_alt\_bugtest</Filter>
     </ClCompile>
     <ClCompile Include="..\app\stats.cpp">
-      <Filter>app\StatsTest</Filter>
+      <Filter>app\_alt\StatsTest</Filter>
     </ClCompile>
     <ClCompile Include="..\app\unlit_mesh_example.cpp">
-      <Filter>app\unlit mesh</Filter>
+      <Filter>app\_alt\unlit mesh</Filter>
     </ClCompile>
     <ClCompile Include="..\app\test_scene.cpp">
       <Filter>app</Filter>
@@ -240,11 +234,20 @@
     <ClCompile Include="..\src\JobSystem.cpp">
       <Filter>util</Filter>
     </ClCompile>
-    <ClCompile Include="..\app\postprocess_example.cpp">
-      <Filter>app</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\ViewCullingSystem.cpp">
       <Filter>util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\postprocess_example.cpp">
+      <Filter>app\_alt</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HO\Downloads\triangle_vertex_color_gidx.cpp">
+      <Filter>app</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HO\Downloads\triangle_vertex_color.cpp">
+      <Filter>app</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXDX11LightSystem.cpp">
+      <Filter>engine\renderer\dx11</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -252,10 +255,10 @@
       <Filter>third_party</Filter>
     </ClInclude>
     <ClInclude Include="..\app\ECSGame.h">
-      <Filter>app\ESC Main</Filter>
+      <Filter>app\_alt\ESC Main</Filter>
     </ClInclude>
     <ClInclude Include="..\app\SnakeGame.h">
-      <Filter>app\SnakeGame</Filter>
+      <Filter>app\_alt\SnakeGame</Filter>
     </ClInclude>
     <ClInclude Include="..\include\Components.h">
       <Filter>engine</Filter>
@@ -407,16 +410,7 @@
     <ClInclude Include="..\include\GDXDX11RenderExecutor.h">
       <Filter>engine\renderer\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\GDXDX11LightSystem.h">
-      <Filter>engine\renderer\dx11</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\GDXDX11Renderer.h">
-      <Filter>engine\renderer\dx11</Filter>
-    </ClInclude>
     <ClInclude Include="..\include\GDXOpenGLRenderBackend.h">
-      <Filter>engine\renderer\opengl</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\GDXOpenGLRenderer.h">
       <Filter>engine\renderer\opengl</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXOpenGLIncludes.h">
@@ -459,7 +453,7 @@
       <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\app\RTT Shader Example\NeonTimeBuffer.h">
-      <Filter>app\RTT NeonShader</Filter>
+      <Filter>app\_alt\RTT NeonShader</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXMath.h">
       <Filter>util</Filter>
@@ -469,9 +463,6 @@
     </ClInclude>
     <ClInclude Include="..\include\GDXResourceBinding.h">
       <Filter>engine</Filter>
-    </ClInclude>
-    <ClInclude Include="..\app\NeonTimeBuffer.h">
-      <Filter>app</Filter>
     </ClInclude>
     <ClInclude Include="..\include\JobSystem.h">
       <Filter>util</Filter>
@@ -490,6 +481,12 @@
     </ClInclude>
     <ClInclude Include="..\include\RenderFramePipeline.h">
       <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\app\NeonTimeBuffer.h">
+      <Filter>app\_alt</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXDX11LightSystem.h">
+      <Filter>engine\renderer\dx11</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

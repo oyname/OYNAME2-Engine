@@ -1,5 +1,12 @@
 #pragma once
 
+// ---------------------------------------------------------------------------
+// GDXMathHelpers — DirectX-spezifische Math-Hilfsfunktionen (XMVECTOR/XMMATRIX).
+// Hinweis: Dieser Header ist DX-abhängig (DirectXMath.h).
+// Für ein backend-neutrales OpenGL- oder Vulkan-Ziel muss ein äquivalenter
+// Header ohne DirectXMath.h bereitgestellt werden.
+// ---------------------------------------------------------------------------
+
 #include "GDXMath.h"
 #include <DirectXMath.h>
 

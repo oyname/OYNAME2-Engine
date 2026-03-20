@@ -17,6 +17,7 @@
 #include <vector>
 #include <cmath>
 #include <DirectXMath.h>
+#include "GDXMathHelpers.h"
 
 // -----------------------------------------------------------------------------
 // Mesh-Parameter

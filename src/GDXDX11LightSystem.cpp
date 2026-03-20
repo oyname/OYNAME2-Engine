@@ -1,4 +1,4 @@
-// GDXDX11LightSystem.cpp — DirectX 11 Implementierung von IGDXLightSystem.
+// GDXDX11LightSystem.cpp — DirectX 11 Lichtsystem.
 // Scannt LightComponent + WorldTransformComponent.
 // Befüllt FrameData.lights (Directional, Point, Spot).
 // Berechnet Shadow-ViewProj für erstes castShadows-Licht.
@@ -18,9 +18,8 @@ using namespace DirectX;
 
 static constexpr float DEG2RAD = GIDX::Pi / 180.0f;
 
-bool GDXDX11LightSystem::Init(void* devicePtr)
+bool GDXDX11LightSystem::Init(ID3D11Device* device)
 {
-    ID3D11Device* device = static_cast<ID3D11Device*>(devicePtr);
     if (!device) return false;
 
     D3D11_BUFFER_DESC desc = {};
@@ -37,7 +36,7 @@ void GDXDX11LightSystem::Shutdown()
     if (m_lightBuffer) { m_lightBuffer->Release(); m_lightBuffer = nullptr; }
 }
 
-void GDXDX11LightSystem::Update(Registry& registry, FrameData& frame, void* ctxPtr)
+void GDXDX11LightSystem::Update(Registry& registry, FrameData& frame, ID3D11DeviceContext* ctx)
 {
     frame.lightCount       = 0u;
     frame.hasShadowPass    = false;
@@ -63,10 +62,6 @@ void GDXDX11LightSystem::Update(Registry& registry, FrameData& frame, void* ctxP
             else                                   le.position.w = 0.0f; // Directional
 
             // --- Richtung: +Z Achse der World-Matrix ---
-            // Muss zur alten OYNAME-Logik passen:
-            // Transform::LookAt() erzeugt forward = target - position,
-            // und Light::Update() übernimmt genau diesen forward-Vektor
-            // als Licht-Richtung. Keine Negierung.
             le.direction.x = wt.matrix._31;
             le.direction.y = wt.matrix._32;
             le.direction.z = wt.matrix._33;
@@ -86,8 +81,6 @@ void GDXDX11LightSystem::Update(Registry& registry, FrameData& frame, void* ctxP
             le.outerCosAngle = cosf(lc.outerConeAngle * DEG2RAD);
 
             // --- Shadow: erstes Directional mit castShadows ---
-            // Wichtig: Die Licht-Richtung kommt direkt aus dem Transform.
-            // Die Shadow-Kamera ist davon getrennt und wird kamera-relativ erzeugt.
             if (!frame.hasShadowPass
                 && lc.kind == LightKind::Directional
                 && lc.castShadows)
@@ -100,14 +93,11 @@ void GDXDX11LightSystem::Update(Registry& registry, FrameData& frame, void* ctxP
                 const XMVECTOR cameraForward = XMVector3Normalize(XMVectorSet(
                     frame.cameraForward.x, frame.cameraForward.y, frame.cameraForward.z, 0.0f));
 
-                // Shadow-Zentrum leicht vor die aktive Kamera legen, nicht stumpf auf den Ursprung.
                 const float focusDistance = lc.shadowOrthoSize * 0.5f;
                 const XMVECTOR focusPoint = XMVectorAdd(
                     cameraPos,
                     XMVectorScale(cameraForward, focusDistance));
 
-                // Directional Light hat keine echte Position.
-                // Für Shadow Mapping bauen wir eine temporäre Licht-Kamera entlang der Licht-Richtung.
                 const float shadowDistance = (lc.shadowFar > lc.shadowNear)
                     ? (lc.shadowFar * 0.5f)
                     : 100.0f;
@@ -133,13 +123,12 @@ void GDXDX11LightSystem::Update(Registry& registry, FrameData& frame, void* ctxP
             }
         });
 
-    ID3D11DeviceContext* ctx = static_cast<ID3D11DeviceContext*>(ctxPtr);
     if (ctx) UploadBuffer(ctx, frame);
 }
 
-void GDXDX11LightSystem::Upload(const FrameData& frame, void* ctxPtr)
+void GDXDX11LightSystem::Upload(const FrameData& frame, ID3D11DeviceContext* ctx)
 {
-    UploadBuffer(static_cast<ID3D11DeviceContext*>(ctxPtr), frame);
+    UploadBuffer(ctx, frame);
 }
 
 void GDXDX11LightSystem::UploadBuffer(ID3D11DeviceContext* ctx, const FrameData& frame)

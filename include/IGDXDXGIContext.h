@@ -6,10 +6,10 @@
 // ---------------------------------------------------------------------------
 // Forward declarations for D3D11 COM interfaces.
 //
-// Consumers of this header (e.g. GDXDX11Renderer) still include <d3d11.h>
-// themselves to actually call methods on these types.  What we avoid here is
-// forcing every translation unit that merely holds an IGDXDXGIContext pointer
-// to transitively pull in the entire D3D11 / DXGI header chain.
+// Consumers of this header still include <d3d11.h> themselves to actually
+// call methods on these types.  What we avoid here is forcing every
+// translation unit that merely holds an IGDXDXGIContext pointer to
+// transitively pull in the entire D3D11 / DXGI header chain.
 //
 // These forward declarations match the structs defined in d3d11.h exactly —
 // they are COM interfaces and therefore plain structs at the ABI level.
@@ -39,7 +39,7 @@ struct GDXDXGIDeviceInfo
 };
 
 // IGDXDXGIContext owns the DX11 device, immediate context, and swap chain
-// for one window surface.  GDXDX11Renderer receives a fully constructed
+// for one window surface.  GDXDX11RenderBackend receives a fully constructed
 // context — it never touches HWND, DXGI, or COM directly.
 class IGDXDXGIContext
 {

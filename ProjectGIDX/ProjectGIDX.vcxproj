@@ -119,8 +119,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\app\AdapterEnum.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\app\bone_animation.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
@@ -212,7 +212,6 @@
     <ClCompile Include="..\src\CameraSystem.cpp" />
     <ClCompile Include="..\src\GDXDX11LightSystem.cpp" />
     <ClCompile Include="..\src\GDXDX11RenderBackend.cpp" />
-    <ClCompile Include="..\src\GDXDX11Renderer.cpp" />
     <ClCompile Include="..\src\GDXDX12RenderBackend.cpp" />
     <ClCompile Include="..\src\GDXInput.cpp" />
     <ClCompile Include="..\src\GDXOpenGLRenderBackend.cpp" />
@@ -226,12 +225,19 @@
     <ClCompile Include="..\src\GDXECSRenderer.cpp" />
     <ClCompile Include="..\src\GDXDX11RenderExecutor.cpp" />
     <ClCompile Include="..\src\GIDXEngine.cpp" />
-    <ClCompile Include="..\src\GDXOpenGLRenderer.cpp" />
     <ClCompile Include="..\src\GDXWin32DX11ContextFactory.cpp" />
     <ClCompile Include="..\src\GDXWin32OpenGLContextFactory.cpp" />
     <ClCompile Include="..\src\GDXWin32Platform.cpp" />
     <ClCompile Include="..\src\GDXWin32Window.cpp" />
     <ClCompile Include="..\src\ViewCullingSystem.cpp" />
+    <ClCompile Include="C:\Users\HO\Downloads\triangle_vertex_color_gidx.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HO\Downloads\triangle_vertex_color.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\app\ECSGame.h" />
@@ -250,7 +256,6 @@
     <ClInclude Include="..\include\FrameTransientResources.h" />
     <ClInclude Include="..\include\GDXDX11LightSystem.h" />
     <ClInclude Include="..\include\GDXDX11RenderBackend.h" />
-    <ClInclude Include="..\include\GDXDX11Renderer.h" />
     <ClInclude Include="..\include\GDXDX11RenderExecutor.h" />
     <ClInclude Include="..\include\GDXDX12RenderBackend.h" />
     <ClInclude Include="..\include\GDXECSRenderer.h" />
@@ -262,7 +267,6 @@
     <ClInclude Include="..\include\GDXMathHelpers.h" />
     <ClInclude Include="..\include\GDXOpenGLIncludes.h" />
     <ClInclude Include="..\include\GDXOpenGLRenderBackend.h" />
-    <ClInclude Include="..\include\GDXOpenGLRenderer.h" />
     <ClInclude Include="..\include\GDXPipelineState.h" />
     <ClInclude Include="..\include\GDXRenderTargetResource.h" />
     <ClInclude Include="..\include\GDXResourceBinding.h" />

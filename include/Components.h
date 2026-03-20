@@ -21,7 +21,6 @@
 #include <string>
 #include <vector>
 #include "GDXMath.h"
-#include "GDXMathHelpers.h"
 
 // ===========================================================================
 // TagComponent — lesbarer Name einer Entity. Kein funktionaler Einfluss.

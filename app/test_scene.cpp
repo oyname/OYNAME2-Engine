@@ -26,6 +26,7 @@
 #include <system_error>
 #include <cstdio>
 #include <DirectXMath.h>
+#include "GDXMathHelpers.h"
 
 static constexpr uint32_t LAYER_DEFAULT = 1u << 0;
 static constexpr uint32_t LAYER_FX = 1u << 1;
