@@ -12,6 +12,9 @@ obj/
 *.opendb
 *.log
 
+# Ignore app folder
+/app/
+
 # Optional: VS Code
 .vscode/
 
