@@ -1,8 +1,10 @@
 # OYNAME2 Engine
 
-OYNAME2 Engine is a C++ 3D engine based on **DirectX 11**.
+OYNAME2 Engine is a custom C++ 3D engine currently built on **DirectX 11**.
 
-You can download the source code from GitHub, open it in **Visual Studio 2022**, and use example files from the official website to test the engine.
+The engine is designed with a flexible architecture, so other graphics backends such as **OpenGL**, **DirectX 12**, and **Vulkan** can be integrated later. The structure also leaves room for future support of additional operating systems.
+
+The project follows a simple idea: **The engine is under continuous development.**
 
 ## Requirements
 
