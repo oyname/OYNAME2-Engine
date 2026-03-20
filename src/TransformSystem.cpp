@@ -1,13 +1,11 @@
 #include "TransformSystem.h"
 #include "Components.h"
 #include "Debug.h"
-#include "GDXMathHelpers.h"
+#include "GDXMath.h"
 #include "JobSystem.h"
 #include <vector>
 #include <atomic>
 #include <algorithm>
-
-using namespace DirectX;
 
 namespace
 {
@@ -131,26 +129,21 @@ namespace
 
 GIDX::Float4x4 TransformSystem::ComputeLocalMatrix(const TransformComponent& t)
 {
-    const XMVECTOR s = GDXMathHelpers::LoadFloat3(t.localScale);
-    const XMVECTOR r = GDXMathHelpers::LoadFloat4(t.localRotation);
-    const XMVECTOR p = GDXMathHelpers::LoadFloat3(t.localPosition);
-
-    XMMATRIX m = XMMatrixScalingFromVector(s)
-        * XMMatrixRotationQuaternion(r)
-        * XMMatrixTranslationFromVector(p);
-
-    GIDX::Float4x4 result;
-    GDXMathHelpers::StoreFloat4x4(result, m);
-    return result;
+    // S * R * T  (row-vector Konvention: v * S * R * T)
+    const GIDX::Float4x4 S = GIDX::Scaling(
+        t.localScale.x, t.localScale.y, t.localScale.z);
+    const GIDX::Float4x4 R = GIDX::RotationQuaternion(t.localRotation);
+    const GIDX::Float4x4 T = GIDX::Translation(
+        t.localPosition.x, t.localPosition.y, t.localPosition.z);
+    return GIDX::Multiply(GIDX::Multiply(S, R), T);
 }
 
 void TransformSystem::UpdateRoot(TransformComponent& t, WorldTransformComponent& wt)
 {
     wt.matrix = ComputeLocalMatrix(t);
-
-    XMMATRIX m = GDXMathHelpers::LoadFloat4x4(wt.matrix);
-    XMVECTOR det = XMMatrixDeterminant(m);
-    XMMATRIX inv = XMMatrixInverse(&det, m);
+    // Inverse wird für Root-Entities nicht gespeichert
+    // (preserviert Originalverhalten: berechnet aber nicht assigned)
+    (void)GIDX::Inverse(wt.matrix);
 
     t.dirty = false;
     ++t.worldVersion;
@@ -160,16 +153,9 @@ void TransformSystem::UpdateChild(TransformComponent& t,
     WorldTransformComponent& wt,
     const WorldTransformComponent& parentWT)
 {
-    GIDX::Float4x4 local = ComputeLocalMatrix(t);
-
-    XMMATRIX localM = GDXMathHelpers::LoadFloat4x4(local);
-    XMMATRIX parentM = GDXMathHelpers::LoadFloat4x4(parentWT.matrix);
-    XMMATRIX worldM = XMMatrixMultiply(localM, parentM);
-
-    GDXMathHelpers::StoreFloat4x4(wt.matrix, worldM);
-
-    XMMATRIX inv = XMMatrixInverse(nullptr, worldM);
-    GDXMathHelpers::StoreFloat4x4(wt.inverse, inv);
+    const GIDX::Float4x4 local = ComputeLocalMatrix(t);
+    wt.matrix  = GIDX::Multiply(local, parentWT.matrix);
+    wt.inverse = GIDX::Inverse(wt.matrix);
 
     t.dirty = false;
     ++t.worldVersion;

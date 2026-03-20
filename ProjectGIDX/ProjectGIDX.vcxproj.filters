@@ -538,5 +538,14 @@
     <Text Include="..\shader\PostProcessTintPS.hlsl">
       <Filter>shader</Filter>
     </Text>
+    <Text Include="..\shader\PostProcessBloomBlurPS.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\PostProcessBloomBrightPS.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\PostProcessBloomCompositePS.hlsl">
+      <Filter>shader</Filter>
+    </Text>
   </ItemGroup>
 </Project>

@@ -1,5 +1,5 @@
 Texture2D gSceneColor : register(t0);
-SamplerState gSampler : register(s0);
+SamplerState gSampler : register(s1);
 
 cbuffer BloomBlurParams : register(b0)
 {

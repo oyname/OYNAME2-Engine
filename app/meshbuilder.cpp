@@ -12,7 +12,7 @@
 #include "MeshAssetResource.h"
 #include "MaterialResource.h"
 #include "SubmeshBuilder.h"
-#include "MeshUtilities.h"
+#include "MeshProcessor.h"
 
 #include <memory>
 #include <filesystem>

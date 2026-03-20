@@ -1,13 +1,12 @@
 #include "GIDXEngine.h"
 #include "GDXEventQueue.h"
+#include "GDXMathHelpers.h"
 #include "WindowDesc.h"
 #include "GDXWin32Window.h"
 #include "GDXWin32DX11ContextFactory.h"
 #include "Debug.h"
-
 #include "GDXECSRenderer.h"
 #include "GDXDX11RenderBackend.h"
-
 #include "Components.h"
 #include "MeshAssetResource.h"
 #include "MaterialResource.h"
@@ -16,7 +15,6 @@
 #include "GDXShaderResource.h"
 #include "GDXVertexFlags.h"
 #include "NeonTimeBuffer.h"
-
 #include <memory>
 #include <vector>
 #include <array>
@@ -25,19 +23,22 @@
 #include <filesystem>
 #include <system_error>
 #include <cstdio>
+#include <algorithm>
 #include <DirectXMath.h>
-#include "GDXMathHelpers.h"
 
 static constexpr uint32_t LAYER_DEFAULT = 1u << 0;
 static constexpr uint32_t LAYER_FX = 1u << 1;
 static constexpr uint32_t LAYER_REFLECTION = 1u << 2;
+static constexpr uint32_t LAYER_UI = 1u << 3;
+static constexpr uint32_t LAYER_EDITOR = 1u << 4;
+static constexpr uint32_t LAYER_SHADOWONLY = 1u << 5;
+static constexpr uint32_t LAYER_SKYBOX = 1u << 6;
+static constexpr uint32_t LAYER_DEBUG = 1u << 7;
+static constexpr uint32_t LAYER_ONOFF = 1u << 8;
 static constexpr uint32_t LAYER_ALL = 0xFFFFFFFFu;
 
 static constexpr float PI = 3.14159265358979f;
 
-// -----------------------------------------------------------------------------
-// Bone animation data
-// -----------------------------------------------------------------------------
 static constexpr int   N_BONES = 6;
 static constexpr float SEG_H = 1.5f;
 static constexpr float HALF_W = 0.38f;
@@ -57,6 +58,15 @@ static void WrapDeg(float& v)
 {
     while (v >= 360.0f) v -= 360.0f;
     while (v < 0.0f) v += 360.0f;
+}
+
+static Float3 LerpFloat3(const Float3& a, const Float3& b, float t)
+{
+    return {
+        a.x + (b.x - a.x) * t,
+        a.y + (b.y - a.y) * t,
+        a.z + (b.z - a.z) * t
+    };
 }
 
 static void SetLookAt(
@@ -243,14 +253,12 @@ struct TintParams
     float tint[4] = { 0.7f, 0.7f, 1.0f, 1.0f };
 };
 
-// Added flexible bloom postprocess
-
 struct BloomBrightParams
 {
     float threshold = 2.0f;
     float intensity = 10.5f;
-    float pad0 = 0.0f; // platzhalter
-    float pad1 = 0.0f; // platzhalter
+    float pad0 = 0.0f;
+    float pad1 = 0.0f;
 };
 
 struct BloomBlurParams
@@ -297,22 +305,13 @@ public:
 
         m_renderer.SetSceneAmbient(0.18f, 0.18f, 0.22f);
 
-        if (auto* tc = reg.Get<TransformComponent>(m_camera))
-            SetLookAt(*tc, { 0.0f, 10.0f, -28.0f }, { 0.0f, 3.0f, 0.0f });
+        BuildShowcases();
+        JumpToShowcase(0);
 
-        Debug::Log("Controls: D = toggle cube visible, F = toggle cube active, G = toggle main camera FX layer");
+        Debug::Log("Controls: Left/Right = next showcase area, D = toggle cube visible, F = toggle cube active, G = toggle main camera FX layer");
         Debug::Log("bone_animation.cpp: integrated test scene ready");
 
         CreateBloomChain();
-
-        //PostProcessPassDesc ppDesc{};
-        //ppDesc.vertexShaderFile = L"PostProcessFullscreenVS.hlsl";
-        //ppDesc.pixelShaderFile = L"PostProcessTintPS.hlsl";
-        //ppDesc.debugName = L"Tint PostProcess";
-        //ppDesc.constantBufferBytes = sizeof(TintParams);
-        //
-        //m_tintPass = m_renderer.CreatePostProcessPass(ppDesc);
-        //m_renderer.SetPostProcessConstants(m_tintPass, &m_tintParams, sizeof(m_tintParams));
     }
 
     void CreateBloomChain()
@@ -366,7 +365,7 @@ public:
         WrapDeg(m_demoYawB);
         WrapDeg(m_cutoutYaw);
 
-        UpdateOrbitCamera(dt);
+        UpdateShowcaseCamera(dt);
         UpdateBoneAnimation();
         UpdateVertexColorArea();
         UpdateNeonArea(dt);
@@ -386,7 +385,6 @@ public:
 
         if (auto* tc = reg.Get<TransformComponent>(m_rttCube))
         {
-            m_rttCubeYaw += 0.0f * dt;
             WrapDeg(m_rttCubeYaw);
             tc->SetEulerDeg(0.0f, m_rttCubeYaw, 0.0f);
         }
@@ -412,6 +410,12 @@ public:
                     case Key::Escape:
                         engine.Shutdown();
                         break;
+                    case Key::Left:
+                        PrevShowcase();
+                        break;
+                    case Key::Right:
+                        NextShowcase();
+                        break;
                     case Key::D:
                         ToggleVisibility(m_toggleCube);
                         break;
@@ -429,6 +433,93 @@ public:
     }
 
 private:
+    struct ShowcaseScene
+    {
+        const char* name = "";
+        Float3 cameraPos{};
+        Float3 cameraTarget{};
+    };
+
+    void BuildShowcases()
+    {
+        m_showcases.clear();
+        m_showcases.push_back({ "Bone Animation",  { 0.0f, 7.0f, -14.0f }, { 0.0f, 4.0f, 0.0f } });
+        m_showcases.push_back({ "Vertex Colors",   { -8.5f, 4.0f, -8.5f }, { -8.2f, 1.0f, -0.5f } });
+        m_showcases.push_back({ "Alpha Test",      { 8.5f, 3.5f, -12.5f }, { 8.0f, 1.3f, -6.0f } });
+        m_showcases.push_back({ "Neon / Textures", { 8.5f, 5.0f, -4.0f }, { 8.5f, 2.0f, 4.5f } });
+        m_showcases.push_back({ "Transparency",    { 0.0f, 6.0f, -28.0f }, { 0.0f, 4.0f, -16.0f } });
+        m_showcases.push_back({ "Parenting / Orbit", { 0.0f, 18.0f, -16.0f }, { 0.0f, 15.0f, 0.0f } });
+        m_showcases.push_back({ "RTT",             { 0.0f, 7.0f, 4.0f }, { 0.0f, 6.5f, 16.0f } });
+    }
+
+    void JumpToShowcase(int index)
+    {
+        if (m_showcases.empty())
+            return;
+
+        if (index < 0)
+            index = static_cast<int>(m_showcases.size()) - 1;
+        if (index >= static_cast<int>(m_showcases.size()))
+            index = 0;
+
+        m_activeShowcase = index;
+        m_desiredCameraPos = m_showcases[m_activeShowcase].cameraPos;
+        m_desiredCameraTarget = m_showcases[m_activeShowcase].cameraTarget;
+        m_currentCameraPos = m_desiredCameraPos;
+        m_currentCameraTarget = m_desiredCameraTarget;
+
+        Registry& reg = m_renderer.GetRegistry();
+        if (auto* tc = reg.Get<TransformComponent>(m_camera))
+            SetLookAt(*tc, m_currentCameraPos, m_currentCameraTarget);
+
+        Debug::Log("Showcase: ", m_showcases[m_activeShowcase].name);
+    }
+
+    void NextShowcase()
+    {
+        if (m_showcases.empty())
+            return;
+
+        m_activeShowcase = (m_activeShowcase + 1) % static_cast<int>(m_showcases.size());
+        m_desiredCameraPos = m_showcases[m_activeShowcase].cameraPos;
+        m_desiredCameraTarget = m_showcases[m_activeShowcase].cameraTarget;
+        Debug::Log("Showcase: ", m_showcases[m_activeShowcase].name);
+    }
+
+    void PrevShowcase()
+    {
+        if (m_showcases.empty())
+            return;
+
+        m_activeShowcase = (m_activeShowcase - 1 + static_cast<int>(m_showcases.size())) % static_cast<int>(m_showcases.size());
+        m_desiredCameraPos = m_showcases[m_activeShowcase].cameraPos;
+        m_desiredCameraTarget = m_showcases[m_activeShowcase].cameraTarget;
+        Debug::Log("Showcase: ", m_showcases[m_activeShowcase].name);
+    }
+
+    void UpdateShowcaseCamera(float dt)
+    {
+        Registry& reg = m_renderer.GetRegistry();
+        auto* tc = reg.Get<TransformComponent>(m_camera);
+        if (!tc)
+            return;
+
+        const float t = std::clamp(dt * m_cameraLerpSpeed, 0.0f, 1.0f);
+        m_currentCameraPos = LerpFloat3(m_currentCameraPos, m_desiredCameraPos, t);
+        m_currentCameraTarget = LerpFloat3(m_currentCameraTarget, m_desiredCameraTarget, t);
+        SetLookAt(*tc, m_currentCameraPos, m_currentCameraTarget);
+
+        if (auto* redTc = reg.Get<TransformComponent>(m_redLight))
+        {
+            redTc->localPosition = { -10.0f + 5.0f * std::cos(m_timeAcc), 4.5f, 4.0f * std::sin(m_timeAcc) };
+            redTc->dirty = true;
+        }
+        if (auto* blueTc = reg.Get<TransformComponent>(m_blueLight))
+        {
+            blueTc->localPosition = { 10.0f + 5.0f * std::cos(-m_timeAcc * 0.8f), 4.5f, 4.0f * std::sin(-m_timeAcc * 0.8f) };
+            blueTc->dirty = true;
+        }
+    }
 
     void CreateMeshes()
     {
@@ -559,11 +650,7 @@ private:
             mat.data.alphaCutoff = 0.5f;
             mat.data.receiveShadows = 1.0f;
             mat.data.emissiveColor = { 20.0f, 8.0f, 2.5f, 1.0f };
-
             mat.SetTexture(MaterialTextureSlot::Albedo, m_texAlphaMask);
-            // erstmal keine Emissive-Textur
-            // mat.SetTexture(MaterialTextureSlot::Emissive, ...);
-
             m_hEngineTexGlow = m_renderer.CreateMaterial(mat);
         }
 
@@ -714,7 +801,7 @@ private:
             cam.nearPlane = 0.1f;
             cam.farPlane = 250.0f;
             cam.fovDeg = 65.0f;
-            cam.cullMask = LAYER_DEFAULT | LAYER_REFLECTION;
+            cam.cullMask = LAYER_DEFAULT | LAYER_REFLECTION | LAYER_ONOFF;
             reg.Add<CameraComponent>(m_rttCamera, cam);
         }
 
@@ -827,10 +914,10 @@ private:
             { -6.5f, 1.0f, -1.0f }, { 1.6f, 1.6f, 1.6f }, true, LAYER_DEFAULT | LAYER_REFLECTION);
 
         m_toggleCube = MakeEntity("ToggleCube", m_hCube, m_hBlue,
-            { -9.0f, 0.9f, 2.8f }, { 1.2f, 1.2f, 1.2f }, true, LAYER_FX);
+            { -4.0f, 0.9f, -2.8f }, { 1.2f, 1.2f, 1.2f }, true, LAYER_ONOFF);
 
         MakeEntity("VertexColorPedestal", m_hCube, m_hGray,
-            { -8.2f, -0.3f, -1.5f }, { 6.0f, 0.4f, 4.0f }, false, LAYER_DEFAULT | LAYER_REFLECTION);
+            { -8.2f, -0.3f, -1.5f }, { 10.0f, 0.4f, 10.0f }, false, LAYER_DEFAULT | LAYER_REFLECTION);
     }
 
     void CreateAlphaTestArea()
@@ -844,23 +931,23 @@ private:
         if (auto* tc = m_renderer.GetRegistry().Get<TransformComponent>(m_cutoutB))
             tc->SetEulerDeg(0.0f, -35.0f, 0.0f);
 
+        m_glowTexturedCube = MakeEntity("GlowTexturedCube", m_hCube, m_hEngineTexGlow,
+            { 10.5f, 3.0f, -5.5f }, { 2.5f, 2.5f, 2.5f }, true, LAYER_DEFAULT | LAYER_REFLECTION);
+
         MakeEntity("CutoutBase", m_hCube, m_hGray,
-            { 8.2f, -0.45f, -6.2f }, { 5.0f, 0.3f, 4.0f }, false, LAYER_DEFAULT | LAYER_REFLECTION);
+            { 8.2f, -0.45f, -6.2f }, { 7.0f, 0.3f, 5.0f }, false, LAYER_DEFAULT | LAYER_REFLECTION);
     }
 
     void CreateNeonArea()
     {
         m_neonCube = MakeEntity("NeonCube", m_hCube, m_hNeon,
-            { 10.0f, 7.0f, 5.0f }, { 2.7f, 2.7f, 2.7f }, true, LAYER_DEFAULT | LAYER_REFLECTION);
+            { 12.0f, 3.0f, 5.0f }, { 2.7f, 2.7f, 2.7f }, true, LAYER_DEFAULT | LAYER_REFLECTION);
 
         m_texturedCube = MakeEntity("TexturedCube", m_hCube, m_hEngineTex,
-            { 6.5f, 0.5f, 4.0f }, { 1.7f, 1.7f, 1.7f }, true, LAYER_DEFAULT | LAYER_REFLECTION);
+            { 8.5f, 0.5f, 4.0f }, { 1.7f, 1.7f, 1.7f }, true, LAYER_DEFAULT | LAYER_REFLECTION);
 
         m_unlitTexturedCube = MakeEntity("UnlitTexturedCube", m_hCube, m_hEngineTexUnlit,
-            { 2.0f, 2.0f, 6.5f }, { 2.5f, 2.5f, 2.5f }, true, LAYER_DEFAULT | LAYER_REFLECTION);
-
-        m_glowTexturedCube = MakeEntity("GlowTexturedCube", m_hCube, m_hEngineTexGlow,
-            { 13.0f, 2.0f, 4.4f }, { 2.5f, 2.5f, 2.5f }, true, LAYER_DEFAULT | LAYER_REFLECTION);
+            { 3.5f, 2.0f, 6.5f }, { 2.5f, 2.5f, 2.5f }, true, LAYER_DEFAULT | LAYER_REFLECTION);
 
         MakeEntity("NeonBase", m_hCube, m_hGray,
             { 8.3f, -0.35f, 4.4f }, { 10.5f, 0.3f, 4.5f }, true, LAYER_DEFAULT | LAYER_REFLECTION);
@@ -882,9 +969,6 @@ private:
 
         m_transCubeNear = MakeEntity("TransparencyNear", m_hCube, m_hTransNear,
             { 0.0f, 4.0f, -13.0f }, { 1.0f, 1.0f, 1.0f }, true, LAYER_DEFAULT | LAYER_REFLECTION);
-
-        //MakeEntity("TransparencyBase", m_hCube, m_hGray,
-        //    { 0.0f, -0.55f, 26.0f }, { 6.0f, 0.35f, 10.5f }, false, LAYER_DEFAULT | LAYER_REFLECTION);
     }
 
     void CreateParentingArea()
@@ -948,10 +1032,15 @@ private:
 
     void CreateBackgroundCubeField()
     {
-        Registry& reg = m_renderer.GetRegistry();
+        m_bgCubes.resize(NUM_BG_CUBES);
+        m_bgYaw.resize(NUM_BG_CUBES);
+        m_bgPitch.resize(NUM_BG_CUBES);
+        m_bgRoll.resize(NUM_BG_CUBES);
+        m_bgYawSpeed.resize(NUM_BG_CUBES);
+        m_bgPitchSpeed.resize(NUM_BG_CUBES);
+        m_bgRollSpeed.resize(NUM_BG_CUBES);
 
         const int cols = 25;
-        const int rows = 20;
         const float startX = -50.0f;
         const float startY = 8.0f;
         const float stepX = 7.5f;
@@ -992,32 +1081,6 @@ private:
         }
 
         Debug::Log("Background cube field created: ", NUM_BG_CUBES, " cubes");
-    }
-
-    void UpdateOrbitCamera(float dt)
-    {
-        Registry& reg = m_renderer.GetRegistry();
-        m_mainCamAngle += 10.0f * dt;
-        const float rad = m_mainCamAngle * PI / 180.0f;
-        const Float3 pos = {
-            24.0f * std::sin(rad),
-            10.5f,
-            -24.0f * std::cos(rad)
-        };
-
-        if (auto* tc = reg.Get<TransformComponent>(m_camera))
-            SetLookAt(*tc, pos, { 0.0f, 3.0f, 0.0f });
-
-        if (auto* tc = reg.Get<TransformComponent>(m_redLight))
-        {
-            tc->localPosition = { -10.0f + 5.0f * std::cos(m_timeAcc), 4.5f, 4.0f * std::sin(m_timeAcc) };
-            tc->dirty = true;
-        }
-        if (auto* tc = reg.Get<TransformComponent>(m_blueLight))
-        {
-            tc->localPosition = { 10.0f + 5.0f * std::cos(-m_timeAcc * 0.8f), 4.5f, 4.0f * std::sin(-m_timeAcc * 0.8f) };
-            tc->dirty = true;
-        }
     }
 
     void UpdateBoneAnimation()
@@ -1320,7 +1383,7 @@ private:
     EntityID m_flag = NULL_ENTITY;
     EntityID m_rttCube = NULL_ENTITY;
     std::array<EntityID, NUM_ASTEROIDS> m_asteroids{};
-    std::array<EntityID, NUM_BG_CUBES> m_bgCubes{};
+    std::vector<EntityID> m_bgCubes;
 
     MeshHandle m_hCube;
     MeshHandle m_hSphere;
@@ -1366,10 +1429,8 @@ private:
     TextureHandle m_texORM;
     TextureHandle m_texAlphaMask;
 
-    // Example 1
     PostProcessHandle m_tintPass = PostProcessHandle::Invalid();
     TintParams m_tintParams{};
-    // Example 2
     PostProcessHandle m_brightPass = PostProcessHandle::Invalid();
     PostProcessHandle m_blurPassH = PostProcessHandle::Invalid();
     PostProcessHandle m_blurPassV = PostProcessHandle::Invalid();
@@ -1379,11 +1440,10 @@ private:
     BloomBlurParams m_blurParamsV{};
     BloomCompositeParams m_compositeParams{};
 
-
     std::vector<DirectX::XMMATRIX> m_invBind;
+    std::vector<ShowcaseScene> m_showcases;
 
     float m_timeAcc = 0.0f;
-    float m_mainCamAngle = 0.0f;
     float m_demoYawA = 0.0f;
     float m_demoYawB = 0.0f;
     float m_cutoutYaw = 0.0f;
@@ -1395,9 +1455,6 @@ private:
     float m_sunYaw = 0.0f;
     float m_earthYaw = 0.0f;
     float m_moonAngle = 0.0f;
-    float m_earthOrbitYaw = 0.0f;
-    float m_earthOrbitAngle = 0.0f;
-    float m_moonOrbitAngle = 0.0f;
 
     float m_transRotFar = 0.0f;
     float m_transRotMid = 0.0f;
@@ -1405,12 +1462,19 @@ private:
 
     std::array<float, NUM_ASTEROIDS> m_asteroidYaw{};
 
-    std::array<float, NUM_BG_CUBES> m_bgYaw{};
-    std::array<float, NUM_BG_CUBES> m_bgPitch{};
-    std::array<float, NUM_BG_CUBES> m_bgRoll{};
-    std::array<float, NUM_BG_CUBES> m_bgYawSpeed{};
-    std::array<float, NUM_BG_CUBES> m_bgPitchSpeed{};
-    std::array<float, NUM_BG_CUBES> m_bgRollSpeed{};
+    std::vector<float> m_bgYaw;
+    std::vector<float> m_bgPitch;
+    std::vector<float> m_bgRoll;
+    std::vector<float> m_bgYawSpeed;
+    std::vector<float> m_bgPitchSpeed;
+    std::vector<float> m_bgRollSpeed;
+
+    int m_activeShowcase = 0;
+    float m_cameraLerpSpeed = 6.0f;
+    Float3 m_currentCameraPos{ 0.0f, 10.0f, -28.0f };
+    Float3 m_currentCameraTarget{ 0.0f, 3.0f, 0.0f };
+    Float3 m_desiredCameraPos{ 0.0f, 10.0f, -28.0f };
+    Float3 m_desiredCameraTarget{ 0.0f, 3.0f, 0.0f };
 };
 
 #include <windows.h>
@@ -1422,21 +1486,19 @@ int main()
     WindowDesc desc;
     desc.width = 1280;
     desc.height = 720;
-    desc.title = "GIDX - Bone Animation Integrated Test Scene";
+    desc.title = "GIDX - Test Scene";
     desc.resizable = true;
-    desc.borderless = false;
+    desc.borderless = true;
 
     auto windowOwned = std::make_unique<GDXWin32Window>(desc, events);
     if (!windowOwned->Create())
     {
-        Debug::LogError("bone_animation.cpp: window creation failed");
         return 1;
     }
 
     auto adapters = GDXWin32DX11ContextFactory::EnumerateAdapters();
     if (adapters.empty())
     {
-        Debug::LogError("bone_animation.cpp: no DX11 adapter found");
         return 2;
     }
 
@@ -1446,7 +1508,7 @@ int main()
     auto dxContext = dx11Factory.Create(*windowOwned, adapterIdx);
     if (!dxContext)
     {
-        Debug::LogError("bone_animation.cpp: DX11 context creation failed");
+        Debug::LogError("DX11 context creation failed");
         return 3;
     }
 
@@ -1471,25 +1533,25 @@ int main()
     GIDXEngine engine(std::move(windowOwned), std::move(rendererOwned), events);
     if (!engine.Initialize())
     {
-        Debug::LogError("bone_animation.cpp: engine initialize failed");
+        Debug::LogError("engine initialize failed");
         return 4;
     }
 
-    BoneAnimationTestScene app(*renderer);
-    app.Init();
+    auto app = std::make_unique<BoneAnimationTestScene>(*renderer);
+    app->Init();
 
     renderer->SetTickCallback([&](float dt)
         {
-            app.Update(dt);
+            app->Update(dt);
         });
 
     engine.SetEventCallback([&](const Event& e)
         {
-            app.OnEvent(e, engine);
+            app->OnEvent(e, engine);
         });
 
     engine.Run();
-    app.Shutdown();
+    app->Shutdown();
     engine.Shutdown();
     return 0;
 }

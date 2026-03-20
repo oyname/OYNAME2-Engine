@@ -1,9 +1,7 @@
 #include "HierarchySystem.h"
-#include "GDXMathHelpers.h"
+#include "GDXMath.h"
 #include <vector>
 #include <cstring>
-
-using namespace DirectX;
 
 // ---------------------------------------------------------------------------
 // DecomposeWorldIntoLocal
@@ -13,27 +11,27 @@ using namespace DirectX;
 //
 // Mathematik:
 //   - Scale:    Länge der Basisvektoren (Zeilen 0-2 der Matrix)
-//   - Rotation: Matrix ohne Scale → XMQuaternionRotationMatrix
+//   - Rotation: Matrix ohne Scale → Quaternion (Shepperd's method)
 //   - Position: Zeile 3 (row-major, Translation am Ende)
 // ---------------------------------------------------------------------------
 void HierarchySystem::DecomposeWorldIntoLocal(TransformComponent&      tc,
                                                const GIDX::Float4x4& worldMatrix)
 {
-    XMVECTOR scaleV, rotV, transV;
-    const XMMATRIX m = GDXMathHelpers::LoadFloat4x4(worldMatrix);
+    GIDX::Float3 scale, translation;
+    GIDX::Float4 rotation;
 
-    if (!XMMatrixDecompose(&scaleV, &rotV, &transV, m))
+    if (!GIDX::Decompose(worldMatrix, scale, rotation, translation))
     {
-        // Degenerate matrix (z. B. Scale = 0) — Fallback auf Identity-Werte
+        // Degenerierte Matrix (z. B. Scale = 0) — Fallback auf Identity-Werte
         tc.localPosition = { 0.0f, 0.0f, 0.0f };
         tc.localRotation = { 0.0f, 0.0f, 0.0f, 1.0f };
         tc.localScale    = { 1.0f, 1.0f, 1.0f };
     }
     else
     {
-        GDXMathHelpers::StoreFloat3(tc.localPosition, transV);
-        GDXMathHelpers::StoreFloat4(tc.localRotation, rotV);
-        GDXMathHelpers::StoreFloat3(tc.localScale, scaleV);
+        tc.localPosition = translation;
+        tc.localRotation = rotation;
+        tc.localScale    = scale;
     }
     tc.dirty = true;
     ++tc.localVersion;
@@ -158,11 +156,8 @@ bool HierarchySystem::SetParent(Registry& registry,
 
         if (childWT && newParentWT)
         {
-            const XMMATRIX childWorld     = GDXMathHelpers::LoadFloat4x4(childWT->matrix);
-            const XMMATRIX parentWorldInv = XMMatrixInverse(nullptr,
-                                                GDXMathHelpers::LoadFloat4x4(newParentWT->matrix));
-            const XMMATRIX localM         = XMMatrixMultiply(childWorld, parentWorldInv);
-            GDXMathHelpers::StoreFloat4x4(newLocalMatrix, localM);
+            const GIDX::Float4x4 parentWorldInv = GIDX::Inverse(newParentWT->matrix);
+            newLocalMatrix = GIDX::Multiply(childWT->matrix, parentWorldInv);
             hasNewLocal = true;
         }
     }
@@ -342,46 +337,34 @@ GIDX::Float3 HierarchySystem::GetWorldPosition(Registry& registry, EntityID id)
 }
 
 // ---------------------------------------------------------------------------
-// GetWorldForward (−Z in LH, also +Z-Achse der Matrix)
+// GetWorldForward — Z-Achse (row 2) der Weltmatrix
 // ---------------------------------------------------------------------------
 GIDX::Float3 HierarchySystem::GetWorldForward(Registry& registry, EntityID id)
 {
     const auto* wt = registry.Get<WorldTransformComponent>(id);
     if (!wt) return { 0.0f, 0.0f, 1.0f };
-
-    const XMMATRIX m = GDXMathHelpers::LoadFloat4x4(wt->matrix);
-    const XMVECTOR forward = XMVector3Normalize(m.r[2]);
-    GIDX::Float3 result;
-    GDXMathHelpers::StoreFloat3(result, forward);
-    return result;
+    // Zeile 2 = Z-Basis (Forward in LH)
+    return GIDX::Normalize3({ wt->matrix._31, wt->matrix._32, wt->matrix._33 });
 }
 
 // ---------------------------------------------------------------------------
-// GetWorldUp (+Y)
+// GetWorldUp — Y-Achse (row 1) der Weltmatrix
 // ---------------------------------------------------------------------------
 GIDX::Float3 HierarchySystem::GetWorldUp(Registry& registry, EntityID id)
 {
     const auto* wt = registry.Get<WorldTransformComponent>(id);
     if (!wt) return { 0.0f, 1.0f, 0.0f };
-
-    const XMMATRIX m = GDXMathHelpers::LoadFloat4x4(wt->matrix);
-    const XMVECTOR up = XMVector3Normalize(m.r[1]);
-    GIDX::Float3 result;
-    GDXMathHelpers::StoreFloat3(result, up);
-    return result;
+    // Zeile 1 = Y-Basis (Up)
+    return GIDX::Normalize3({ wt->matrix._21, wt->matrix._22, wt->matrix._23 });
 }
 
 // ---------------------------------------------------------------------------
-// GetWorldRight (+X)
+// GetWorldRight — X-Achse (row 0) der Weltmatrix
 // ---------------------------------------------------------------------------
 GIDX::Float3 HierarchySystem::GetWorldRight(Registry& registry, EntityID id)
 {
     const auto* wt = registry.Get<WorldTransformComponent>(id);
     if (!wt) return { 1.0f, 0.0f, 0.0f };
-
-    const XMMATRIX m = GDXMathHelpers::LoadFloat4x4(wt->matrix);
-    const XMVECTOR right = XMVector3Normalize(m.r[0]);
-    GIDX::Float3 result;
-    GDXMathHelpers::StoreFloat3(result, right);
-    return result;
+    // Zeile 0 = X-Basis (Right)
+    return GIDX::Normalize3({ wt->matrix._11, wt->matrix._12, wt->matrix._13 });
 }

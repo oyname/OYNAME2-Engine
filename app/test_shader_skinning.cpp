@@ -17,7 +17,8 @@
 #include <variant>
 #include <cmath>
 #include <DirectXMath.h>
-#include "GDXMathHelpers.h"
+
+static SubmeshData MakeSkinnedStrip()
 {
     SubmeshData s;
     s.positions = {

@@ -1,47 +1,38 @@
 #include "CameraSystem.h"
-#include "GDXMathHelpers.h"
-
-using namespace DirectX;
+#include "GDXMath.h"
 
 void CameraSystem::Update(Registry& registry, FrameData& frame) const
 {
     registry.View<WorldTransformComponent, CameraComponent, ActiveCameraTag>(
         [&](EntityID, WorldTransformComponent& wt, CameraComponent& cam, ActiveCameraTag&)
         {
-            const XMMATRIX world = GDXMathHelpers::LoadFloat4x4(wt.matrix);
+            // Kameraposition: Zeile 3 der Weltmatrix (row-vector Konvention)
+            const GIDX::Float3 position = { wt.matrix._41, wt.matrix._42, wt.matrix._43 };
+            frame.cameraPos = position;
+            frame.cullMask  = cam.cullMask;
 
-            // Kameraposition aus Weltmatrix
-            const XMVECTOR position = world.r[3];
-            GDXMathHelpers::StoreFloat3(frame.cameraPos, position);
-            frame.cullMask = cam.cullMask;
+            // Rotationsteil: Translation auf null setzen
+            GIDX::Float4x4 rot = wt.matrix;
+            rot._41 = 0.0f;  rot._42 = 0.0f;  rot._43 = 0.0f;  rot._44 = 1.0f;
 
-            // Rotationsteil aus Weltmatrix extrahieren
-            XMMATRIX rot = world;
-            rot.r[3] = XMVectorSet(0.0f, 0.0f, 0.0f, 1.0f);
+            // Vorwärts- und Up-Vektor aus der Rotation ableiten
+            const GIDX::Float3 forward = GIDX::Normalize3(
+                GIDX::TransformVector({ 0.0f, 0.0f, 1.0f }, rot));
+            const GIDX::Float3 up = GIDX::Normalize3(
+                GIDX::TransformVector({ 0.0f, 1.0f, 0.0f }, rot));
 
-            // Vorwärts- und Up-Vektor wie in der alten Engine aus der Rotation ableiten
-            const XMVECTOR baseForward = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
-            const XMVECTOR baseUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+            frame.cameraForward = forward;
+            const GIDX::Float3 target = GIDX::Add(position, forward);
 
-            const XMVECTOR forward = XMVector3Normalize(
-                XMVector3TransformNormal(baseForward, rot));
-            const XMVECTOR up = XMVector3Normalize(
-                XMVector3TransformNormal(baseUp, rot));
+            // View-Matrix per LookAtLH (wie in der alten Engine)
+            const GIDX::Float4x4 view = GIDX::LookAtLH(position, target, up);
+            frame.viewMatrix = view;
 
-            GDXMathHelpers::StoreFloat3(frame.cameraForward, forward);
-
-            const XMVECTOR target = XMVectorAdd(position, forward);
-
-            // WICHTIG: View wie in der alten Engine per LookAtLH bauen,
-            // nicht per inverse(world)
-            const XMMATRIX view = XMMatrixLookAtLH(position, target, up);
-            GDXMathHelpers::StoreFloat4x4(frame.viewMatrix, view);
-
-            // Projektion
-            XMMATRIX proj;
+            // Projektionsmatrix
+            GIDX::Float4x4 proj;
             if (cam.isOrtho)
             {
-                proj = XMMatrixOrthographicLH(
+                proj = GIDX::OrthographicLH(
                     cam.orthoWidth,
                     cam.orthoHeight,
                     cam.nearPlane,
@@ -50,37 +41,28 @@ void CameraSystem::Update(Registry& registry, FrameData& frame) const
             else
             {
                 const float fovRad = GIDX::ToRadians(cam.fovDeg);
-                proj = XMMatrixPerspectiveFovLH(
+                proj = GIDX::PerspectiveFovLH(
                     fovRad,
                     cam.aspectRatio,
                     cam.nearPlane,
                     cam.farPlane);
             }
 
-            GDXMathHelpers::StoreFloat4x4(frame.projMatrix, proj);
-            GDXMathHelpers::StoreFloat4x4(frame.viewProjMatrix, XMMatrixMultiply(view, proj));
+            frame.projMatrix     = proj;
+            frame.viewProjMatrix = GIDX::Multiply(view, proj);
         });
 }
 
 float CameraSystem::ComputeNDCDepth(const GIDX::Float4x4& worldMatrix,
     const GIDX::Float4x4& viewProjMatrix)
 {
-    const XMMATRIX world = GDXMathHelpers::LoadFloat4x4(worldMatrix);
-    const XMMATRIX viewProj = GDXMathHelpers::LoadFloat4x4(viewProjMatrix);
+    // Weltposition: Zeile 3 der Weltmatrix
+    const GIDX::Float4 clip = GIDX::TransformFloat4(
+        { worldMatrix._41, worldMatrix._42, worldMatrix._43, 1.0f },
+        viewProjMatrix);
 
-    const XMVECTOR worldPos = world.r[3];
-
-    XMVECTOR clip = XMVector4Transform(
-        XMVectorSet(
-            XMVectorGetX(worldPos),
-            XMVectorGetY(worldPos),
-            XMVectorGetZ(worldPos),
-            1.0f),
-        viewProj);
-
-    const float w = XMVectorGetW(clip);
-    if (w <= 0.0f)
+    if (clip.w <= 0.0f)
         return 1.0f;
 
-    return XMVectorGetZ(clip) / w;
+    return clip.z / clip.w;
 }

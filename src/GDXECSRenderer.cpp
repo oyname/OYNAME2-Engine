@@ -5,7 +5,6 @@
 #include "RenderPassTargetDesc.h"
 
 #include "GDXMath.h"
-#include "GDXMathHelpers.h"
 #include "BasicMeshGenerator.h"
 
 #include <sstream>
@@ -30,40 +29,36 @@ namespace
 
     bool BuildFrameDataFromWorldAndCamera(const WorldTransformComponent& wt, const CameraComponent& cam, FrameData& frame)
     {
-        using namespace DirectX;
+        // Kameraposition: Zeile 3 der Weltmatrix (row-vector Konvention)
+        const GIDX::Float3 position = { wt.matrix._41, wt.matrix._42, wt.matrix._43 };
+        frame.cameraPos = position;
+        frame.cullMask  = cam.cullMask;
 
-        const XMMATRIX world = GDXMathHelpers::LoadFloat4x4(wt.matrix);
-        const XMVECTOR position = world.r[3];
-        GDXMathHelpers::StoreFloat3(frame.cameraPos, position);
-        frame.cullMask = cam.cullMask;
+        // Rotationsteil: Translation auf null setzen
+        GIDX::Float4x4 rot = wt.matrix;
+        rot._41 = 0.0f;  rot._42 = 0.0f;  rot._43 = 0.0f;  rot._44 = 1.0f;
 
-        XMMATRIX rot = world;
-        rot.r[3] = XMVectorSet(0.0f, 0.0f, 0.0f, 1.0f);
+        const GIDX::Float3 forward = GIDX::Normalize3(GIDX::TransformVector({ 0.0f, 0.0f, 1.0f }, rot));
+        const GIDX::Float3 up      = GIDX::Normalize3(GIDX::TransformVector({ 0.0f, 1.0f, 0.0f }, rot));
+        frame.cameraForward = forward;
+        const GIDX::Float3 target = GIDX::Add(position, forward);
 
-        const XMVECTOR baseForward = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
-        const XMVECTOR baseUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+        const GIDX::Float4x4 view = GIDX::LookAtLH(position, target, up);
+        frame.viewMatrix = view;
 
-        const XMVECTOR forward = XMVector3Normalize(XMVector3TransformNormal(baseForward, rot));
-        const XMVECTOR up = XMVector3Normalize(XMVector3TransformNormal(baseUp, rot));
-        GDXMathHelpers::StoreFloat3(frame.cameraForward, forward);
-        const XMVECTOR target = XMVectorAdd(position, forward);
-
-        const XMMATRIX view = XMMatrixLookAtLH(position, target, up);
-        GDXMathHelpers::StoreFloat4x4(frame.viewMatrix, view);
-
-        XMMATRIX proj;
+        GIDX::Float4x4 proj;
         if (cam.isOrtho)
         {
-            proj = XMMatrixOrthographicLH(cam.orthoWidth, cam.orthoHeight, cam.nearPlane, cam.farPlane);
+            proj = GIDX::OrthographicLH(cam.orthoWidth, cam.orthoHeight, cam.nearPlane, cam.farPlane);
         }
         else
         {
             const float fovRad = GIDX::ToRadians(cam.fovDeg);
-            proj = XMMatrixPerspectiveFovLH(fovRad, cam.aspectRatio, cam.nearPlane, cam.farPlane);
+            proj = GIDX::PerspectiveFovLH(fovRad, cam.aspectRatio, cam.nearPlane, cam.farPlane);
         }
 
-        GDXMathHelpers::StoreFloat4x4(frame.projMatrix, proj);
-        GDXMathHelpers::StoreFloat4x4(frame.viewProjMatrix, XMMatrixMultiply(view, proj));
+        frame.projMatrix     = proj;
+        frame.viewProjMatrix = GIDX::Multiply(view, proj);
         return true;
     }
 
@@ -83,11 +78,9 @@ namespace
     }
     GIDX::Float4x4 BuildBoxWorldMatrix(const GIDX::Float3& center, const GIDX::Float3& scale)
     {
-        using namespace DirectX;
-        XMMATRIX m = XMMatrixScaling(scale.x, scale.y, scale.z) * XMMatrixTranslation(center.x, center.y, center.z);
-        GIDX::Float4x4 out{};
-        GDXMathHelpers::StoreFloat4x4(out, m);
-        return out;
+        return GIDX::Multiply(
+            GIDX::Scaling(scale.x, scale.y, scale.z),
+            GIDX::Translation(center.x, center.y, center.z));
     }
 
     GIDX::Float3 LerpPoint(const GIDX::Float3& a, const GIDX::Float3& b, float t)
@@ -97,17 +90,13 @@ namespace
 
     bool BuildFrustumCorners(const GIDX::Float4x4& viewProj, GIDX::Float3 outCorners[8])
     {
-        using namespace DirectX;
-
-        const XMMATRIX vp = GDXMathHelpers::LoadFloat4x4(viewProj);
-
-        XMVECTOR det = XMMatrixDeterminant(vp);
-        if (XMVectorGetX(det) == 0.0f)
+        const float det = GIDX::Determinant(viewProj);
+        if (det == 0.0f)
             return false;
 
-        const XMMATRIX inv = XMMatrixInverse(&det, vp);
+        const GIDX::Float4x4 inv = GIDX::Inverse(viewProj);
 
-        const XMFLOAT3 ndc[8] =
+        const GIDX::Float3 ndc[8] =
         {
             { -1.0f, -1.0f, 0.0f },
             { -1.0f,  1.0f, 0.0f },
@@ -121,15 +110,14 @@ namespace
 
         for (int i = 0; i < 8; ++i)
         {
-            XMVECTOR p = XMVectorSet(ndc[i].x, ndc[i].y, ndc[i].z, 1.0f);
-            p = XMVector4Transform(p, inv);
+            const GIDX::Float4 p = GIDX::TransformFloat4(
+                { ndc[i].x, ndc[i].y, ndc[i].z, 1.0f }, inv);
 
-            const float w = XMVectorGetW(p);
-            if (std::fabs(w) <= 1e-6f)
+            if (std::fabs(p.w) <= 1e-6f)
                 return false;
 
-            p = XMVectorScale(p, 1.0f / w);
-            GDXMathHelpers::StoreFloat3(outCorners[i], p);
+            const float invW = 1.0f / p.w;
+            outCorners[i] = { p.x * invW, p.y * invW, p.z * invW };
         }
 
         return true;
