@@ -13,7 +13,7 @@
 // Lokale Positionen pro Frame über TransformComponent::localPosition.
 // TransformSystem::Update() propagiert dirty-Flags und berechnet Weltmatrizen.
 
-#include "GDXEngine.h"
+#include "GIDXEngine.h"
 #include "GDXEventQueue.h"
 #include "WindowDesc.h"
 #include "GDXWin32Window.h"
@@ -264,7 +264,7 @@ public:
         }
     }
 
-    void OnEvent(const Event& e, GDXEngine& engine)
+    void OnEvent(const Event& e, GIDXEngine& engine)
     {
         std::visit([&](auto&& ev)
             {
@@ -345,6 +345,7 @@ int main()
     desc.height = 720;
     desc.title = "GIDX - Sonnensystem Parenting Demo";
     desc.resizable = true;
+    desc.borderless = false;
 
     auto windowOwned = std::make_unique<GDXWin32Window>(desc, events);
     if (!windowOwned->Create())
@@ -368,7 +369,7 @@ int main()
 
     renderer->SetClearColor(0.02f, 0.02f, 0.06f);
 
-    GDXEngine engine(std::move(windowOwned), std::move(rendererOwned), events);
+    GIDXEngine engine(std::move(windowOwned), std::move(rendererOwned), events);
     if (!engine.Initialize())
     {
         Debug::LogError("parenting_showcase: Engine-Initialisierung fehlgeschlagen");

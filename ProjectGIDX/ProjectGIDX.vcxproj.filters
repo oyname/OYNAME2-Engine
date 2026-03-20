@@ -177,7 +177,7 @@
     <ClCompile Include="..\src\RenderGatherSystem.cpp">
       <Filter>ecs</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\GDXEngine.cpp">
+    <ClCompile Include="..\src\GIDXEngine.cpp">
       <Filter>engine\core</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXWin32Window.cpp">
@@ -305,7 +305,7 @@
     <ClInclude Include="..\include\RenderGatherSystem.h">
       <Filter>ecs</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\GDXEngine.h">
+    <ClInclude Include="..\include\GIDXEngine.h">
       <Filter>engine\core</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXEventQueue.h">

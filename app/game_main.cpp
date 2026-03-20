@@ -1,4 +1,4 @@
-#include "GDXEngine.h"
+#include "GIDXEngine.h"
 #include "GDXEventQueue.h"
 #include "WindowDesc.h"
 #include "GDXWin32Window.h"
@@ -20,6 +20,7 @@ int main()
     desc.height = 720;
     desc.title = "GIDX - Snake | Pfeile/WASD: Bewegen | Space: Start/Pause/Neustart | ESC: Beenden";
     desc.resizable = true;
+    desc.borderless = false;
 
     auto windowOwned = std::make_unique<GDXWin32Window>(desc, events);
     if (!windowOwned->Create())
@@ -55,7 +56,7 @@ int main()
     auto rendererOwned = std::make_unique<GDXECSRenderer>(std::move(backendOwned));
     GDXECSRenderer* renderer = rendererOwned.get();
 
-    GDXEngine engine(std::move(windowOwned), std::move(rendererOwned), events);
+    GIDXEngine engine(std::move(windowOwned), std::move(rendererOwned), events);
 
     if (!engine.Initialize())
     {

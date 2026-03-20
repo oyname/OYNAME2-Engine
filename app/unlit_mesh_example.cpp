@@ -1,4 +1,4 @@
-#include "GDXEngine.h"
+#include "GIDXEngine.h"
 #include "GDXEventQueue.h"
 #include "WindowDesc.h"
 #include "GDXWin32Window.h"
@@ -142,7 +142,7 @@ public:
             tc->SetEulerDeg(50.0f, m_lightYaw, 0.0f);
     }
 
-    void OnEvent(const Event& e, GDXEngine& engine)
+    void OnEvent(const Event& e, GIDXEngine& engine)
     {
         std::visit([&](auto&& ev)
         {
@@ -190,7 +190,7 @@ int main()
     auto rendererOwned = std::make_unique<GDXECSRenderer>(std::move(backendOwned));
     GDXECSRenderer* renderer = rendererOwned.get();
 
-    GDXEngine engine(std::move(windowOwned), std::move(rendererOwned), events);
+    GIDXEngine engine(std::move(windowOwned), std::move(rendererOwned), events);
     if (!engine.Initialize()) return 4;
 
     UnlitMeshTest app(*renderer);

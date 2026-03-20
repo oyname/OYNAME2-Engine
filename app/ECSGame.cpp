@@ -1,5 +1,5 @@
 #include "ECSGame.h"
-#include "GDXEngine.h"
+#include "GIDXEngine.h"
 #include "Debug.h"
 #include <filesystem>
 #include <variant>
@@ -295,7 +295,7 @@ void ECSGame::Update(float dt)
 // Analog zu OYNAME wo ESC über WindowProc → Windows::MainLoop(false) lief,
 // ruft das Spiel hier direkt engine.Shutdown() auf.
 // ---------------------------------------------------------------------------
-void ECSGame::OnEvent(const Event& e, GDXEngine& engine)
+void ECSGame::OnEvent(const Event& e, GIDXEngine& engine)
 {
     std::visit([&](auto&& ev)
         {

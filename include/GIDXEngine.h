@@ -9,13 +9,13 @@
 #include "IGDXWindow.h"
 #include "IGDXRenderer.h"
 
-class GDXEngine
+class GIDXEngine
 {
 public:
-    // GDXEngine takes ownership of the window and renderer.
+    // GIDXEngine takes ownership of the window and renderer.
     // The event queue is owned externally so platform code (WndProc) can push
     // events into it before the engine reads them each frame.
-    GDXEngine(std::unique_ptr<IGDXWindow>   window,
+    GIDXEngine(std::unique_ptr<IGDXWindow>   window,
         std::unique_ptr<IGDXRenderer> renderer,
         GDXEventQueue& events);
 

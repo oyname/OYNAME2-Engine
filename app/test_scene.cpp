@@ -1,4 +1,4 @@
-#include "GDXEngine.h"
+#include "GIDXEngine.h"
 #include "GDXEventQueue.h"
 #include "WindowDesc.h"
 #include "GDXWin32Window.h"
@@ -396,7 +396,7 @@ public:
         m_neonTime.Shutdown();
     }
 
-    void OnEvent(const Event& e, GDXEngine& engine)
+    void OnEvent(const Event& e, GIDXEngine& engine)
     {
         std::visit([&](auto&& ev)
             {
@@ -1467,7 +1467,7 @@ int main()
     dbg.frustumAlpha = 0.55f;
     renderer->SetDebugCullingOptions(dbg);
 
-    GDXEngine engine(std::move(windowOwned), std::move(rendererOwned), events);
+    GIDXEngine engine(std::move(windowOwned), std::move(rendererOwned), events);
     if (!engine.Initialize())
     {
         Debug::LogError("bone_animation.cpp: engine initialize failed");

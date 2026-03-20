@@ -1,4 +1,4 @@
-#include "GDXEngine.h"
+#include "GIDXEngine.h"
 #include "GDXEventQueue.h"
 #include "WindowDesc.h"
 #include "GDXWin32Window.h"
@@ -316,7 +316,7 @@ public:
         }
     }
 
-    void OnEvent(const Event& e, GDXEngine& engine)
+    void OnEvent(const Event& e, GIDXEngine& engine)
     {
         std::visit([&](auto&& ev)
             {
@@ -482,7 +482,7 @@ int main()
 
     renderer->SetClearColor(0.0f, 0.25f, 0.5f);
 
-    GDXEngine engine(std::move(windowOwned), std::move(rendererOwned), events);
+    GIDXEngine engine(std::move(windowOwned), std::move(rendererOwned), events);
 
     if (!engine.Initialize())
     {

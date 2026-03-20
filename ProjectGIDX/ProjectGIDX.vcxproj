@@ -119,8 +119,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\app\AdapterEnum.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\app\bone_animation.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
@@ -174,8 +174,8 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\app\test_scene.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\app\test_shader_alphatest_shadow.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
@@ -225,7 +225,7 @@
     <ClCompile Include="..\src\RenderGatherSystem.cpp" />
     <ClCompile Include="..\src\GDXECSRenderer.cpp" />
     <ClCompile Include="..\src\GDXDX11RenderExecutor.cpp" />
-    <ClCompile Include="..\src\GDXEngine.cpp" />
+    <ClCompile Include="..\src\GIDXEngine.cpp" />
     <ClCompile Include="..\src\GDXOpenGLRenderer.cpp" />
     <ClCompile Include="..\src\GDXWin32DX11ContextFactory.cpp" />
     <ClCompile Include="..\src\GDXWin32OpenGLContextFactory.cpp" />
@@ -254,7 +254,7 @@
     <ClInclude Include="..\include\GDXDX11RenderExecutor.h" />
     <ClInclude Include="..\include\GDXDX12RenderBackend.h" />
     <ClInclude Include="..\include\GDXECSRenderer.h" />
-    <ClInclude Include="..\include\GDXEngine.h" />
+    <ClInclude Include="..\include\GIDXEngine.h" />
     <ClInclude Include="..\include\GDXEventQueue.h" />
     <ClInclude Include="..\include\GDXFrameTimer.h" />
     <ClInclude Include="..\include\GDXInput.h" />

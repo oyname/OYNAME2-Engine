@@ -1,4 +1,4 @@
-#include "GDXEngine.h"
+#include "GIDXEngine.h"
 #include "GDXEventQueue.h"
 #include "WindowDesc.h"
 #include "GDXWin32Window.h"
@@ -74,7 +74,7 @@ int main()
     renderer->SetClearColor(0.08f, 0.08f, 0.10f);
     renderer->SetSceneAmbient(0.18f, 0.18f, 0.18f);
 
-    GDXEngine engine(std::move(window), std::move(rendererOwned), events);
+    GIDXEngine engine(std::move(window), std::move(rendererOwned), events);
     if (!engine.Initialize())
         return 1;
 

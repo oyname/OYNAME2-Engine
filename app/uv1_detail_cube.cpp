@@ -1,4 +1,4 @@
-#include "GDXEngine.h"
+#include "GIDXEngine.h"
 #include "GDXEventQueue.h"
 #include "WindowDesc.h"
 #include "GDXWin32Window.h"
@@ -236,7 +236,7 @@ public:
             tc->SetEulerDeg(20.0f, m_yaw, 0.0f);
     }
 
-    void OnEvent(const Event& e, GDXEngine& engine)
+    void OnEvent(const Event& e, GIDXEngine& engine)
     {
         std::visit([&](auto&& ev)
             {
@@ -327,7 +327,7 @@ int main()
 
     renderer->SetClearColor(0.04f, 0.05f, 0.08f);
 
-    GDXEngine engine(std::move(windowOwned), std::move(rendererOwned), events);
+    GIDXEngine engine(std::move(windowOwned), std::move(rendererOwned), events);
     if (!engine.Initialize())
     {
         Debug::LogError("uv1_detail_cube.cpp: Engine-Initialisierung fehlgeschlagen");

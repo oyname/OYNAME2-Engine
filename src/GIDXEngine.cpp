@@ -1,4 +1,4 @@
-#include "GDXEngine.h"
+#include "GIDXEngine.h"
 #include "Debug.h"
 #include "GDXInput.h"
 #include "GDXECSRenderer.h"
@@ -12,7 +12,7 @@ struct Overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts>
 Overloaded(Ts...) -> Overloaded<Ts...>;
 
-GDXEngine::GDXEngine(std::unique_ptr<IGDXWindow>   window,
+GIDXEngine::GIDXEngine(std::unique_ptr<IGDXWindow>   window,
     std::unique_ptr<IGDXRenderer> renderer,
     GDXEventQueue& events)
     : m_window(std::move(window))
@@ -23,7 +23,7 @@ GDXEngine::GDXEngine(std::unique_ptr<IGDXWindow>   window,
         m_baseWindowTitle = m_window->GetTitle();
 }
 
-bool GDXEngine::Initialize()
+bool GIDXEngine::Initialize()
 {
     if (!m_window || !m_renderer)
     {
@@ -47,12 +47,12 @@ bool GDXEngine::Initialize()
     return true;
 }
 
-void GDXEngine::Run()
+void GIDXEngine::Run()
 {
     while (Step()) {}
 }
 
-bool GDXEngine::Step()
+bool GIDXEngine::Step()
 {
     if (!m_running || m_window->ShouldClose() || m_quitRequested)
         return false;
@@ -90,7 +90,7 @@ bool GDXEngine::Step()
     return true;
 }
 
-void GDXEngine::Shutdown()
+void GIDXEngine::Shutdown()
 {
     if (m_running)
     {
@@ -105,7 +105,7 @@ void GDXEngine::Shutdown()
 }
 
 
-void GDXEngine::ProcessEvents(const std::vector<Event>& events)
+void GIDXEngine::ProcessEvents(const std::vector<Event>& events)
 {
     for (const Event& e : events)
     {

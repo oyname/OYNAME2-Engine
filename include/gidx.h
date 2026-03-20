@@ -22,7 +22,7 @@
 // ---------------------------------------------------------------------------
 
 #include "GDXECSRenderer.h"
-#include "GDXEngine.h"
+#include "GIDXEngine.h"
 #include "GDXInput.h"
 #include "GDXEventQueue.h"
 #include "GDXWin32Window.h"
@@ -67,12 +67,12 @@ namespace Engine
     namespace _
     {
         inline GDXECSRenderer* renderer = nullptr;
-        inline GDXEngine* engine = nullptr;
+        inline GIDXEngine* engine = nullptr;
         inline bool            running = false;
 
         // Ownership  lebt so lange die App luft
         inline std::unique_ptr<GDXEventQueue>  eventQueue;
-        inline std::unique_ptr<GDXEngine>      engineOwned;
+        inline std::unique_ptr<GIDXEngine>      engineOwned;
         inline GDXECSRenderer* rendererRaw = nullptr;
 
         inline std::function<void(float)>        userTickCallback;
@@ -157,7 +157,7 @@ namespace Engine
         renderer->SetClearColor(clearR, clearG, clearB);
         _::rendererRaw = renderer.get();
 
-        _::engineOwned = std::make_unique<GDXEngine>(
+        _::engineOwned = std::make_unique<GIDXEngine>(
             std::move(window), std::move(renderer), *_::eventQueue);
 
         if (!_::engineOwned->Initialize())
@@ -206,7 +206,7 @@ namespace Engine
     // ---------------------------------------------------------------------------
     // Bind  alternativ zu Graphics(), wenn Fenster/Engine extern erstellt wurden.
     // ---------------------------------------------------------------------------
-    inline void Bind(GDXECSRenderer& r, GDXEngine& e)
+    inline void Bind(GDXECSRenderer& r, GIDXEngine& e)
     {
         _::renderer = &r;
         _::engine = &e;

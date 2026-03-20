@@ -5,7 +5,7 @@
 #include "SubmeshData.h"
 #include "Events.h"
 
-class GDXEngine; // forward  kein zirkulrer Include
+class GIDXEngine; // forward  kein zirkulrer Include
 
 class ECSGame
 {
@@ -17,7 +17,7 @@ public:
 
     // Wird von main.cpp ber engine.SetEventCallback() aufgerufen.
     // Das Spiel entscheidet was bei ESC, Fenster schliessen etc. passiert.
-    void OnEvent(const Event& e, GDXEngine& engine);
+    void OnEvent(const Event& e, GIDXEngine& engine);
 
     void ToggleCameraOrbit() { m_orbitCamera = !m_orbitCamera; }
 
