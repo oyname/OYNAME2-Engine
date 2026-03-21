@@ -276,6 +276,14 @@ struct BloomCompositeParams
     float pad1 = 0.0f;
 };
 
+struct ToneMappingParams
+{
+    float exposure = 1.0f;
+    float gamma = 2.2f;
+    int   mode = 0;     // 0 = ACES Filmic, 1 = Reinhard
+    float pad = 0.0f;
+};
+
 class BoneAnimationTestScene
 {
 public:
@@ -309,6 +317,7 @@ public:
         JumpToShowcase(0);
 
         Debug::Log("Controls: Left/Right = next showcase area, D = toggle cube visible, F = toggle cube active, G = toggle main camera FX layer");
+        Debug::Log("T = toggle tonemapper (ACES/Reinhard), +/- = exposure");
         Debug::Log("bone_animation.cpp: integrated test scene ready");
 
         CreateBloomChain();
@@ -351,6 +360,14 @@ public:
         composite.constantBufferBytes = sizeof(BloomCompositeParams);
         m_compositePass = m_renderer.CreatePostProcessPass(composite);
         m_renderer.SetPostProcessConstants(m_compositePass, &m_compositeParams, sizeof(m_compositeParams));
+
+        PostProcessPassDesc toneMap{};
+        toneMap.vertexShaderFile = L"PostProcessFullscreenVS.hlsl";
+        toneMap.pixelShaderFile = L"PostProcessToneMappingPS.hlsl";
+        toneMap.debugName = L"ToneMapping";
+        toneMap.constantBufferBytes = sizeof(ToneMappingParams);
+        m_toneMappingPass = m_renderer.CreatePostProcessPass(toneMap);
+        m_renderer.SetPostProcessConstants(m_toneMappingPass, &m_toneMapParams, sizeof(m_toneMapParams));
     }
 
     void Update(float dt)
@@ -424,6 +441,21 @@ public:
                         break;
                     case Key::G:
                         ToggleMainCameraLayer(LAYER_FX);
+                        break;
+                    case Key::T:
+                        m_toneMapParams.mode = (m_toneMapParams.mode == 0) ? 1 : 0;
+                        m_renderer.SetPostProcessConstants(m_toneMappingPass, &m_toneMapParams, sizeof(m_toneMapParams));
+                        Debug::Log("Tonemapper: ", m_toneMapParams.mode == 0 ? "ACES Filmic" : "Reinhard");
+                        break;
+                    case Key::Up:
+                        m_toneMapParams.exposure = std::clamp(m_toneMapParams.exposure + 0.1f, 0.1f, 5.0f);
+                        m_renderer.SetPostProcessConstants(m_toneMappingPass, &m_toneMapParams, sizeof(m_toneMapParams));
+                        Debug::Log("Exposure: ", m_toneMapParams.exposure);
+                        break;
+                    case Key::Down:
+                        m_toneMapParams.exposure = std::clamp(m_toneMapParams.exposure - 0.1f, 0.1f, 5.0f);
+                        m_renderer.SetPostProcessConstants(m_toneMappingPass, &m_toneMapParams, sizeof(m_toneMapParams));
+                        Debug::Log("Exposure: ", m_toneMapParams.exposure);
                         break;
                     default:
                         break;
@@ -690,8 +722,8 @@ private:
         }
 
         m_neonShader = m_renderer.CreateShader(
-            L"VertexShaderNeon_GIDX.hlsl",
-            L"PixelShaderNeon_GIDX.hlsl",
+            L"VertexShaderNeon.hlsl",
+            L"PixelShaderNeon.hlsl",
             GDX_VERTEX_POSITION);
 
         {
@@ -792,7 +824,7 @@ private:
         reg.Add<ActiveCameraTag>(m_camera);
 
         m_rttCamera = reg.CreateEntity();
-        reg.Add<TagComponent>(m_rttCamera, "RTTCamera");
+        reg.Add<TagComponent>(m_rttCamera, "SideCamera");
         reg.Add<TransformComponent>(m_rttCamera);
         reg.Add<WorldTransformComponent>(m_rttCamera);
         {
@@ -800,7 +832,7 @@ private:
             cam.aspectRatio = 1.0f;
             cam.nearPlane = 0.1f;
             cam.farPlane = 250.0f;
-            cam.fovDeg = 65.0f;
+            cam.fovDeg = 60.0f;
             cam.cullMask = LAYER_DEFAULT | LAYER_REFLECTION | LAYER_ONOFF;
             reg.Add<CameraComponent>(m_rttCamera, cam);
         }
@@ -1027,7 +1059,7 @@ private:
             { 0.0f, 0.2f, 16.0f }, { 10.0f, 0.4f, 10.0f }, false, LAYER_DEFAULT | LAYER_REFLECTION);
 
         if (auto* tc = reg.Get<TransformComponent>(m_rttCamera))
-            SetLookAt(*tc, { -18.0f, 14.0f, -20.0f }, { 0.0f, 3.0f, 0.0f });
+            SetLookAt(*tc, { 30.0f, 8.0f, 0.0f }, { 0.0f, 3.0f, 0.0f });
     }
 
     void CreateBackgroundCubeField()
@@ -1225,7 +1257,7 @@ private:
     {
         Registry& reg = m_renderer.GetRegistry();
         if (auto* tc = reg.Get<TransformComponent>(m_rttCamera))
-            SetLookAt(*tc, { -18.0f, 14.0f, -20.0f }, { 0.0f, 3.0f, 0.0f });
+            SetLookAt(*tc, { 30.0f, 8.0f, 0.0f }, { 0.0f, 3.0f, 0.0f });
     }
 
     void UpdateBackgroundCubeField(float dt)
@@ -1439,6 +1471,8 @@ private:
     BloomBlurParams m_blurParamsH{};
     BloomBlurParams m_blurParamsV{};
     BloomCompositeParams m_compositeParams{};
+    PostProcessHandle m_toneMappingPass = PostProcessHandle::Invalid();
+    ToneMappingParams m_toneMapParams{};
 
     std::vector<DirectX::XMMATRIX> m_invBind;
     std::vector<ShowcaseScene> m_showcases;

@@ -321,47 +321,44 @@
     <ClInclude Include="..\third_party\stb_image.h" />
   </ItemGroup>
   <ItemGroup>
-    <Text Include="..\shader\ECSPixelShader.hlsl">
-      <FileType>Document</FileType>
-    </Text>
-    <Text Include="..\shader\ECSVertexShader.hlsl">
+    <Text Include="..\shader\VertexShader.hlsl">
       <FileType>Document</FileType>
     </Text>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="..\shader\ECSPixelShader_VertexColor.hlsl">
+    <Text Include="..\shader\PixelShader_VertexColor.hlsl">
       <FileType>Document</FileType>
     </Text>
-    <Text Include="..\shader\ECSShadowPixelShader.hlsl">
+    <Text Include="..\shader\ShadowPixelShader.hlsl">
       <FileType>Document</FileType>
     </Text>
-    <Text Include="..\shader\ECSShadowPixelShader_AlphaTest.hlsl">
+    <Text Include="..\shader\ShadowPixelShader_AlphaTest.hlsl">
       <FileType>Document</FileType>
     </Text>
-    <Text Include="..\shader\ECSShadowVertexShader.hlsl">
+    <Text Include="..\shader\ShadowVertexShader.hlsl">
       <FileType>Document</FileType>
     </Text>
-    <Text Include="..\shader\ECSShadowVertexShader_AlphaTest.hlsl">
+    <Text Include="..\shader\ShadowVertexShader_AlphaTest.hlsl">
       <FileType>Document</FileType>
     </Text>
-    <Text Include="..\shader\ECSShadowVertexShader_Skinned.hlsl">
+    <Text Include="..\shader\ShadowVertexShader_Skinned.hlsl">
       <FileType>Document</FileType>
     </Text>
-    <Text Include="..\shader\ECSShadowVertexShader_SkinnedAlphaTest.hlsl">
+    <Text Include="..\shader\ShadowVertexShader_SkinnedAlphaTest.hlsl">
       <FileType>Document</FileType>
     </Text>
-    <Text Include="..\shader\ECSVertexShader_Skinned.hlsl">
+    <Text Include="..\shader\VertexShader_Skinned.hlsl">
       <FileType>Document</FileType>
     </Text>
-    <Text Include="..\shader\ECSVertexShader_SkinnedVertexColor.hlsl">
+    <Text Include="..\shader\VertexShader_SkinnedVertexColor.hlsl">
       <FileType>Document</FileType>
     </Text>
-    <Text Include="..\shader\ECSVertexShader_VertexColor.hlsl">
+    <Text Include="..\shader\VertexShader_VertexColor.hlsl">
       <FileType>Document</FileType>
     </Text>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="..\shader\VertexShaderNeon_GIDX.hlsl">
+    <Text Include="..\shader\VertexShaderNeon.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">4.0</ShaderModel>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Compute</ShaderType>
@@ -374,7 +371,7 @@
     </Text>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="..\shader\PixelShaderNeon_GIDX.hlsl">
+    <Text Include="..\shader\PixelShaderNeon.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">4.0</ShaderModel>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Compute</ShaderType>
@@ -402,6 +399,11 @@
       <FileType>Document</FileType>
     </Text>
     <Text Include="..\shader\PostProcessBloomCompositePS.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="..\shader\PixelShader.hlsl">
       <FileType>Document</FileType>
     </Text>
   </ItemGroup>

@@ -49,59 +49,65 @@
     <Filter Include="engine\platform\windows">
       <UniqueIdentifier>{753e534a-1b0d-42cb-8ce4-fcbb576e8035}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\_alt">
+    <Filter Include="samples\_alt">
       <UniqueIdentifier>{e5c6eee8-a32a-4b4b-8518-9193dfbd1457}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\_alt\_bugtest">
+    <Filter Include="samples\_alt\_bugtest">
       <UniqueIdentifier>{f58953c2-bc76-4248-ab17-0782a79de059}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\_alt\_bugtest\MeshBuilder">
+    <Filter Include="samples\_alt\_bugtest\MeshBuilder">
       <UniqueIdentifier>{f944617f-68eb-4179-8a2b-b9886c030f56}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\_alt\ESC Main">
+    <Filter Include="samples\_alt\ESC Main">
       <UniqueIdentifier>{a1696cae-911b-4c83-9a1c-66634feefaf2}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\_alt\gidx Main">
+    <Filter Include="samples\_alt\gidx Main">
       <UniqueIdentifier>{84f82f50-210d-4821-a7aa-0723a60980fc}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\_alt\Layers esc">
+    <Filter Include="samples\_alt\Layers esc">
       <UniqueIdentifier>{b4a8cc87-29fc-41db-aa47-ff98d7bd1c72}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\_alt\parenting showcase">
+    <Filter Include="samples\_alt\parenting showcase">
       <UniqueIdentifier>{dac974b4-a685-453f-bac0-b003a26da59f}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\_alt\RTT Example">
+    <Filter Include="samples\_alt\RTT Example">
       <UniqueIdentifier>{c0788479-4ffa-4770-a0a0-a71cee510b5b}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\_alt\RTT NeonShader">
+    <Filter Include="samples\_alt\RTT NeonShader">
       <UniqueIdentifier>{35dee395-5f6e-4c59-bcbe-3ea7504d9649}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\_alt\shader alphatest shadow">
+    <Filter Include="samples\_alt\shader alphatest shadow">
       <UniqueIdentifier>{f5c61a24-5605-44fd-a737-a32e2b299ce3}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\_alt\shader satic opaque">
+    <Filter Include="samples\_alt\shader satic opaque">
       <UniqueIdentifier>{7b6db410-f1f6-4614-b47f-3dc8cc534737}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\_alt\shader skinning">
+    <Filter Include="samples\_alt\shader skinning">
       <UniqueIdentifier>{14630285-121d-420f-963c-4c0a55c1b503}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\_alt\shader vertexcolor">
+    <Filter Include="samples\_alt\shader vertexcolor">
       <UniqueIdentifier>{0ed9faf6-7448-4a9c-afee-00eaa27cb60d}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\_alt\SnakeGame">
+    <Filter Include="samples\_alt\SnakeGame">
       <UniqueIdentifier>{13c2d461-dbf0-403a-865c-760dd9d91a17}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\_alt\StatsTest">
+    <Filter Include="samples\_alt\StatsTest">
       <UniqueIdentifier>{0dbc030a-ea64-4331-9059-1e775e3e05d0}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\_alt\Transparent">
+    <Filter Include="samples\_alt\Transparent">
       <UniqueIdentifier>{4a36576d-571c-4881-add8-22cf54c1d676}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\_alt\unlit mesh">
+    <Filter Include="samples\_alt\unlit mesh">
       <UniqueIdentifier>{f65ad90b-bf85-4657-a975-274efa5c98db}</UniqueIdentifier>
     </Filter>
-    <Filter Include="app\_alt\uv dateil cube">
+    <Filter Include="samples\_alt\uv dateil cube">
       <UniqueIdentifier>{8e0fafdb-4d4d-4273-9399-4878acb80cb4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="shader\PostProcessShader">
+      <UniqueIdentifier>{8dcd229d-bffd-4508-acda-257bd61b8dee}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="shader\Custom Shader">
+      <UniqueIdentifier>{bb6ec6ce-9e9d-4b02-a979-cdda33d3ad28}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -109,52 +115,52 @@
       <Filter>samples</Filter>
     </ClCompile>
     <ClCompile Include="..\app\ECSGame.cpp">
-      <Filter>app\_alt\ESC Main</Filter>
+      <Filter>samples\_alt\ESC Main</Filter>
     </ClCompile>
     <ClCompile Include="..\app\main_ecs.cpp">
-      <Filter>app\_alt\ESC Main</Filter>
+      <Filter>samples\_alt\ESC Main</Filter>
     </ClCompile>
     <ClCompile Include="..\app\main.cpp">
-      <Filter>app\_alt\gidx Main</Filter>
+      <Filter>samples\_alt\gidx Main</Filter>
     </ClCompile>
     <ClCompile Include="..\app\RTT Example.cpp">
-      <Filter>app\_alt\RTT Example</Filter>
+      <Filter>samples\_alt\RTT Example</Filter>
     </ClCompile>
     <ClCompile Include="..\app\layers.cpp">
-      <Filter>app\_alt\Layers esc</Filter>
+      <Filter>samples\_alt\Layers esc</Filter>
     </ClCompile>
     <ClCompile Include="..\app\transparent_example.cpp">
-      <Filter>app\_alt\Transparent</Filter>
+      <Filter>samples\_alt\Transparent</Filter>
     </ClCompile>
     <ClCompile Include="..\app\SnakeGame.cpp">
-      <Filter>app\_alt\SnakeGame</Filter>
+      <Filter>samples\_alt\SnakeGame</Filter>
     </ClCompile>
     <ClCompile Include="..\app\game_main.cpp">
-      <Filter>app\_alt\SnakeGame</Filter>
+      <Filter>samples\_alt\SnakeGame</Filter>
     </ClCompile>
     <ClCompile Include="..\app\test_shader_static_opaque.cpp">
-      <Filter>app\_alt\shader satic opaque</Filter>
+      <Filter>samples\_alt\shader satic opaque</Filter>
     </ClCompile>
     <ClCompile Include="..\app\test_shader_vertexcolor.cpp">
-      <Filter>app\_alt\shader vertexcolor</Filter>
+      <Filter>samples\_alt\shader vertexcolor</Filter>
     </ClCompile>
     <ClCompile Include="..\app\test_shader_alphatest_shadow.cpp">
-      <Filter>app\_alt\shader alphatest shadow</Filter>
+      <Filter>samples\_alt\shader alphatest shadow</Filter>
     </ClCompile>
     <ClCompile Include="..\app\test_shader_skinning.cpp">
-      <Filter>app\_alt\shader skinning</Filter>
+      <Filter>samples\_alt\shader skinning</Filter>
     </ClCompile>
     <ClCompile Include="..\app\bone_animation.cpp">
-      <Filter>app\_alt\shader skinning</Filter>
+      <Filter>samples\_alt\shader skinning</Filter>
     </ClCompile>
     <ClCompile Include="..\app\uv1_detail_cube.cpp">
-      <Filter>app\_alt\uv dateil cube</Filter>
+      <Filter>samples\_alt\uv dateil cube</Filter>
     </ClCompile>
     <ClCompile Include="..\app\parenting_showcase.cpp">
-      <Filter>app\_alt\parenting showcase</Filter>
+      <Filter>samples\_alt\parenting showcase</Filter>
     </ClCompile>
     <ClCompile Include="..\app\meshbuilder.cpp">
-      <Filter>app\_alt\_bugtest\MeshBuilder</Filter>
+      <Filter>samples\_alt\_bugtest\MeshBuilder</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXECSRenderer.cpp">
       <Filter>engine</Filter>
@@ -211,25 +217,22 @@
       <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\app\RTT Shader Example\0_example_Multishaderexample_GIDX.cpp">
-      <Filter>app\_alt\RTT NeonShader</Filter>
+      <Filter>samples\_alt\RTT NeonShader</Filter>
     </ClCompile>
     <ClCompile Include="..\app\RTT Shader Example\1_example_MultitexturRTTExample_GIDX.cpp">
-      <Filter>app\_alt\RTT NeonShader</Filter>
+      <Filter>samples\_alt\RTT NeonShader</Filter>
     </ClCompile>
     <ClCompile Include="..\app\RTT Shader Example\NeonTimeBuffer.cpp">
-      <Filter>app\_alt\RTT NeonShader</Filter>
+      <Filter>samples\_alt\RTT NeonShader</Filter>
     </ClCompile>
     <ClCompile Include="..\app\SchattenBugTest.cpp">
-      <Filter>app\_alt\_bugtest</Filter>
+      <Filter>samples\_alt\_bugtest</Filter>
     </ClCompile>
     <ClCompile Include="..\app\stats.cpp">
-      <Filter>app\_alt\StatsTest</Filter>
+      <Filter>samples\_alt\StatsTest</Filter>
     </ClCompile>
     <ClCompile Include="..\app\unlit_mesh_example.cpp">
-      <Filter>app\_alt\unlit mesh</Filter>
-    </ClCompile>
-    <ClCompile Include="..\app\test_scene.cpp">
-      <Filter>app</Filter>
+      <Filter>samples\_alt\unlit mesh</Filter>
     </ClCompile>
     <ClCompile Include="..\src\JobSystem.cpp">
       <Filter>util</Filter>
@@ -238,16 +241,19 @@
       <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\app\postprocess_example.cpp">
-      <Filter>app\_alt</Filter>
-    </ClCompile>
-    <ClCompile Include="C:\Users\HO\Downloads\triangle_vertex_color_gidx.cpp">
-      <Filter>app</Filter>
-    </ClCompile>
-    <ClCompile Include="C:\Users\HO\Downloads\triangle_vertex_color.cpp">
-      <Filter>app</Filter>
+      <Filter>samples\_alt</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXDX11LightSystem.cpp">
       <Filter>engine\renderer\dx11</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\test_scene.cpp">
+      <Filter>samples</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HO\Downloads\triangle_vertex_color.cpp">
+      <Filter>samples</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HO\Downloads\triangle_vertex_color_gidx.cpp">
+      <Filter>samples</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -255,10 +261,10 @@
       <Filter>third_party</Filter>
     </ClInclude>
     <ClInclude Include="..\app\ECSGame.h">
-      <Filter>app\_alt\ESC Main</Filter>
+      <Filter>samples\_alt\ESC Main</Filter>
     </ClInclude>
     <ClInclude Include="..\app\SnakeGame.h">
-      <Filter>app\_alt\SnakeGame</Filter>
+      <Filter>samples\_alt\SnakeGame</Filter>
     </ClInclude>
     <ClInclude Include="..\include\Components.h">
       <Filter>engine</Filter>
@@ -453,7 +459,7 @@
       <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\app\RTT Shader Example\NeonTimeBuffer.h">
-      <Filter>app\_alt\RTT NeonShader</Filter>
+      <Filter>samples\_alt\RTT NeonShader</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXMath.h">
       <Filter>util</Filter>
@@ -483,68 +489,68 @@
       <Filter>engine</Filter>
     </ClInclude>
     <ClInclude Include="..\app\NeonTimeBuffer.h">
-      <Filter>app\_alt</Filter>
+      <Filter>samples\_alt</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXDX11LightSystem.h">
       <Filter>engine\renderer\dx11</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="..\shader\ECSPixelShader.hlsl">
-      <Filter>shader</Filter>
-    </Text>
-    <Text Include="..\shader\ECSVertexShader.hlsl">
-      <Filter>shader</Filter>
-    </Text>
-    <Text Include="..\shader\ECSVertexShader_VertexColor.hlsl">
-      <Filter>shader</Filter>
-    </Text>
-    <Text Include="..\shader\ECSVertexShader_SkinnedVertexColor.hlsl">
-      <Filter>shader</Filter>
-    </Text>
-    <Text Include="..\shader\ECSPixelShader_VertexColor.hlsl">
-      <Filter>shader</Filter>
-    </Text>
-    <Text Include="..\shader\ECSShadowPixelShader.hlsl">
-      <Filter>shader</Filter>
-    </Text>
-    <Text Include="..\shader\ECSShadowPixelShader_AlphaTest.hlsl">
-      <Filter>shader</Filter>
-    </Text>
-    <Text Include="..\shader\ECSShadowVertexShader.hlsl">
-      <Filter>shader</Filter>
-    </Text>
-    <Text Include="..\shader\ECSShadowVertexShader_AlphaTest.hlsl">
-      <Filter>shader</Filter>
-    </Text>
-    <Text Include="..\shader\ECSShadowVertexShader_Skinned.hlsl">
-      <Filter>shader</Filter>
-    </Text>
-    <Text Include="..\shader\ECSShadowVertexShader_SkinnedAlphaTest.hlsl">
-      <Filter>shader</Filter>
-    </Text>
-    <Text Include="..\shader\ECSVertexShader_Skinned.hlsl">
-      <Filter>shader</Filter>
-    </Text>
-    <Text Include="..\shader\VertexShaderNeon_GIDX.hlsl">
-      <Filter>shader</Filter>
-    </Text>
-    <Text Include="..\shader\PixelShaderNeon_GIDX.hlsl">
-      <Filter>shader</Filter>
-    </Text>
-    <Text Include="..\shader\PostProcessFullscreenVS.hlsl">
-      <Filter>shader</Filter>
-    </Text>
-    <Text Include="..\shader\PostProcessTintPS.hlsl">
-      <Filter>shader</Filter>
-    </Text>
     <Text Include="..\shader\PostProcessBloomBlurPS.hlsl">
-      <Filter>shader</Filter>
+      <Filter>shader\PostProcessShader</Filter>
     </Text>
     <Text Include="..\shader\PostProcessBloomBrightPS.hlsl">
-      <Filter>shader</Filter>
+      <Filter>shader\PostProcessShader</Filter>
     </Text>
     <Text Include="..\shader\PostProcessBloomCompositePS.hlsl">
+      <Filter>shader\PostProcessShader</Filter>
+    </Text>
+    <Text Include="..\shader\PostProcessFullscreenVS.hlsl">
+      <Filter>shader\PostProcessShader</Filter>
+    </Text>
+    <Text Include="..\shader\PostProcessTintPS.hlsl">
+      <Filter>shader\PostProcessShader</Filter>
+    </Text>
+    <Text Include="..\shader\ShadowPixelShader.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\ShadowPixelShader_AlphaTest.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\ShadowVertexShader.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\ShadowVertexShader_AlphaTest.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\ShadowVertexShader_Skinned.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\ShadowVertexShader_SkinnedAlphaTest.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\VertexShader.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\VertexShader_Skinned.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\VertexShader_SkinnedVertexColor.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\VertexShader_VertexColor.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\VertexShaderNeon.hlsl">
+      <Filter>shader\Custom Shader</Filter>
+    </Text>
+    <Text Include="..\shader\PixelShaderNeon.hlsl">
+      <Filter>shader\Custom Shader</Filter>
+    </Text>
+    <Text Include="..\shader\PixelShader_VertexColor.hlsl">
+      <Filter>shader</Filter>
+    </Text>
+    <Text Include="..\shader\PixelShader.hlsl">
       <Filter>shader</Filter>
     </Text>
   </ItemGroup>

@@ -32,14 +32,14 @@ namespace
         // Kameraposition: Zeile 3 der Weltmatrix (row-vector Konvention)
         const GIDX::Float3 position = { wt.matrix._41, wt.matrix._42, wt.matrix._43 };
         frame.cameraPos = position;
-        frame.cullMask  = cam.cullMask;
+        frame.cullMask = cam.cullMask;
 
         // Rotationsteil: Translation auf null setzen
         GIDX::Float4x4 rot = wt.matrix;
         rot._41 = 0.0f;  rot._42 = 0.0f;  rot._43 = 0.0f;  rot._44 = 1.0f;
 
         const GIDX::Float3 forward = GIDX::Normalize3(GIDX::TransformVector({ 0.0f, 0.0f, 1.0f }, rot));
-        const GIDX::Float3 up      = GIDX::Normalize3(GIDX::TransformVector({ 0.0f, 1.0f, 0.0f }, rot));
+        const GIDX::Float3 up = GIDX::Normalize3(GIDX::TransformVector({ 0.0f, 1.0f, 0.0f }, rot));
         frame.cameraForward = forward;
         const GIDX::Float3 target = GIDX::Add(position, forward);
 
@@ -57,7 +57,7 @@ namespace
             proj = GIDX::PerspectiveFovLH(fovRad, cam.aspectRatio, cam.nearPlane, cam.farPlane);
         }
 
-        frame.projMatrix     = proj;
+        frame.projMatrix = proj;
         frame.viewProjMatrix = GIDX::Multiply(view, proj);
         return true;
     }
@@ -239,11 +239,18 @@ namespace
     }
 }
 
-
-
-
 bool GDXECSRenderer::EnsureDebugCullingResources()
 {
+    if (!m_defaultShader.IsValid())
+    {
+        ShaderVariantKey k{};
+        k.pass = ShaderPassType::Main;
+        k.vertexFlags = GDX_VERTEX_DEFAULT;
+        k.features = SVF_NONE;
+        m_defaultShader = CreateShaderVariant(k);
+        if (!m_defaultShader.IsValid()) return false;
+    }
+
     if (!m_debugBoxMesh.IsValid())
     {
         MeshAssetResource mesh;
@@ -556,41 +563,41 @@ ShaderHandle GDXECSRenderer::CreateShaderVariant(const ShaderVariantKey& rawKey)
 
     if (key.pass == ShaderPassType::Main)
     {
-        psFile = L"ECSPixelShader.hlsl";
+        psFile = L"PixelShader.hlsl";
 
         if (skinned && vertexColor)
-            vsFile = L"ECSVertexShader_SkinnedVertexColor.hlsl";
+            vsFile = L"VertexShader_SkinnedVertexColor.hlsl";
         else if (skinned)
-            vsFile = L"ECSVertexShader_Skinned.hlsl";
+            vsFile = L"VertexShader_Skinned.hlsl";
         else if (vertexColor)
-            vsFile = L"ECSVertexShader_VertexColor.hlsl";
+            vsFile = L"VertexShader_VertexColor.hlsl";
         else
-            vsFile = L"ECSVertexShader.hlsl";
+            vsFile = L"VertexShader.hlsl";
     }
     else
     {
         if (skinned && alphaTest)
         {
-            vsFile = L"ECSShadowVertexShader_SkinnedAlphaTest.hlsl";
-            psFile = L"ECSShadowPixelShader_AlphaTest.hlsl";
+            vsFile = L"ShadowVertexShader_SkinnedAlphaTest.hlsl";
+            psFile = L"ShadowPixelShader_AlphaTest.hlsl";
             vertexFlags = GDX_VERTEX_POSITION | GDX_VERTEX_TEX1 | GDX_VERTEX_BONE_INDICES | GDX_VERTEX_BONE_WEIGHTS;
         }
         else if (skinned)
         {
-            vsFile = L"ECSShadowVertexShader_Skinned.hlsl";
-            psFile = L"ECSShadowPixelShader.hlsl";
+            vsFile = L"ShadowVertexShader_Skinned.hlsl";
+            psFile = L"ShadowPixelShader.hlsl";
             vertexFlags = GDX_VERTEX_POSITION | GDX_VERTEX_BONE_INDICES | GDX_VERTEX_BONE_WEIGHTS;
         }
         else if (alphaTest)
         {
-            vsFile = L"ECSShadowVertexShader_AlphaTest.hlsl";
-            psFile = L"ECSShadowPixelShader_AlphaTest.hlsl";
+            vsFile = L"ShadowVertexShader_AlphaTest.hlsl";
+            psFile = L"ShadowPixelShader_AlphaTest.hlsl";
             vertexFlags = GDX_VERTEX_POSITION | GDX_VERTEX_TEX1;
         }
         else
         {
-            vsFile = L"ECSShadowVertexShader.hlsl";
-            psFile = L"ECSShadowPixelShader.hlsl";
+            vsFile = L"ShadowVertexShader.hlsl";
+            psFile = L"ShadowPixelShader.hlsl";
             vertexFlags = GDX_VERTEX_POSITION;
         }
     }
@@ -1452,6 +1459,18 @@ void GDXECSRenderer::BuildPreparedFrameGraphDependencies(PreparedFrameGraph& fra
             }
         }
 
+        // MainGraphics must wait for all RenderTargetGraphics nodes —
+        // RTT textures may be sampled by materials in the main pass.
+        if (node.kind == PreparedFrameGraphNodeKind::MainGraphics)
+        {
+            for (int j = static_cast<int>(i) - 1; j >= 0; --j)
+            {
+                const PreparedFrameGraphNode& prev = frameGraph.nodes[static_cast<size_t>(j)];
+                if (prev.kind == PreparedFrameGraphNodeKind::RenderTargetGraphics && prev.enabled)
+                    FrameGraphAddDependency(node, static_cast<uint32_t>(j));
+            }
+        }
+
         if (node.kind == PreparedFrameGraphNodeKind::MainPresentation)
         {
             for (int j = static_cast<int>(i) - 1; j >= 0; --j)
@@ -1751,32 +1770,8 @@ void GDXECSRenderer::ExecutePreparedFrame(RendererFramePipelineData& pipeline)
         return;
     }
 
-    // Pre-pass: update lights and frame constants once per unique view, in execution
-    // order. Reads only from the frozen executeInput snapshot — never touches node.view.
-    if (m_backend)
-    {
-        const PreparedExecuteData* lastUpdatedExec = nullptr;
-        for (uint32_t nodeIndex : pipeline.frameGraph.executionOrder)
-        {
-            if (nodeIndex >= pipeline.frameGraph.nodes.size())
-                continue;
-            const PreparedFrameGraphNode& node = pipeline.frameGraph.nodes[nodeIndex];
-            if (!node.enabled || !node.executeInput)
-                continue;
-            if (node.kind == PreparedFrameGraphNodeKind::MainPresentation)
-                continue; // presentation node shares its executeInput; constants already uploaded
-            // Use node.view->prepared.frame for light/constant data — prepared.frame is
-            // readonly Prepare-phase data that is safe to read here.
-            if (node.executeInput != lastUpdatedExec && node.view)
-            {
-                m_backend->UpdateLights(m_registry, node.view->prepared.frame);
-                m_backend->UpdateFrameConstants(node.view->prepared.frame);
-                lastUpdatedExec = node.executeInput;
-            }
-        }
-    }
-
     std::vector<bool> executed(pipeline.frameGraph.nodes.size(), false);
+    const PreparedExecuteData* lastUpdatedExec = nullptr;
     for (uint32_t nodeIndex : pipeline.frameGraph.executionOrder)
     {
         if (nodeIndex >= pipeline.frameGraph.nodes.size())
@@ -1800,6 +1795,17 @@ void GDXECSRenderer::ExecutePreparedFrame(RendererFramePipelineData& pipeline)
         {
             DBERROR(GDX_SRC_LOC, "FrameGraph dependency not satisfied before node execution");
             return;
+        }
+
+        // Update lights and frame constants immediately before this node executes,
+        // so each view gets its own camera matrices in the constant buffer.
+        if (m_backend && node.enabled && node.executeInput && node.view &&
+            node.kind != PreparedFrameGraphNodeKind::MainPresentation &&
+            node.executeInput != lastUpdatedExec)
+        {
+            m_backend->UpdateLights(m_registry, node.view->prepared.frame);
+            m_backend->UpdateFrameConstants(node.view->prepared.frame);
+            lastUpdatedExec = node.executeInput;
         }
 
         ExecutePreparedFrameGraphNode(node);
