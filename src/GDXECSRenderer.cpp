@@ -154,21 +154,6 @@ namespace
     }
 
 }
-namespace
-{
-    bool FrameGraphHasDependency(const RFG::Node& node, uint32_t dependency)
-    {
-        for (uint32_t existing : node.dependencies)
-            if (existing == dependency) return true;
-        return false;
-    }
-
-    void FrameGraphAddDependency(RFG::Node& node, uint32_t dependency)
-    {
-        if (!FrameGraphHasDependency(node, dependency))
-            node.dependencies.push_back(dependency);
-    }
-}
 
 bool GDXECSRenderer::EnsureDebugCullingResources()
 {
@@ -370,6 +355,9 @@ bool GDXECSRenderer::SetPostProcessEnabled(PostProcessHandle h, bool enabled)
 
 void GDXECSRenderer::ClearPostProcessPasses()
 {
+    // GPU-Ressourcen aller registrierten Passes freigeben, dann Order leeren.
+    if (m_backend)
+        m_backend->DestroyPostProcessPasses(m_postProcessStore);
     m_postProcessPassOrder.clear();
 }
 
@@ -725,16 +713,29 @@ void GDXECSRenderer::ConfigurePreparedCommonExecuteInputs(RFG::ViewPassData& pre
 
 bool GDXECSRenderer::PrepareMainViewPostProcessPresentation(RFG::ViewPassData& preparedView)
 {
-    const bool hasPostProcess = !m_postProcessPassOrder.empty();
-    if (!hasPostProcess)
+    // Bug 3 fix: prüfe ob mindestens ein Pass tatsächlich ready und enabled ist,
+    // nicht nur ob die Order-Liste nicht leer ist.
+    bool hasActivePass = false;
+    for (const PostProcessHandle h : m_postProcessPassOrder)
+    {
+        const PostProcessResource* pass = m_postProcessStore.Get(h);
+        if (pass && pass->ready && pass->enabled) { hasActivePass = true; break; }
+    }
+    if (!hasActivePass)
         return false;
 
-    const uint32_t targetWidth = static_cast<uint32_t>(preparedView.prepared.frame.viewportWidth > 1.0f ? preparedView.prepared.frame.viewportWidth : 1.0f);
+    const uint32_t targetWidth  = static_cast<uint32_t>(preparedView.prepared.frame.viewportWidth  > 1.0f ? preparedView.prepared.frame.viewportWidth  : 1.0f);
     const uint32_t targetHeight = static_cast<uint32_t>(preparedView.prepared.frame.viewportHeight > 1.0f ? preparedView.prepared.frame.viewportHeight : 1.0f);
     const bool needsNewTarget = !m_mainScenePostProcessTarget.IsValid();
     GDXRenderTargetResource* existing = needsNewTarget ? nullptr : m_rtStore.Get(m_mainScenePostProcessTarget);
+
     if (needsNewTarget || !existing || existing->width != targetWidth || existing->height != targetHeight)
+    {
+        // Bug 1 fix: alte RT korrekt freigeben bevor überschrieben wird.
+        if (m_mainScenePostProcessTarget.IsValid())
+            m_backend->DestroyRenderTarget(m_mainScenePostProcessTarget, m_rtStore, m_texStore);
         m_mainScenePostProcessTarget = CreateRenderTarget(targetWidth, targetHeight, L"MainScenePostProcess", GDXTextureFormat::RGBA16_FLOAT);
+    }
 
     if (!m_mainScenePostProcessTarget.IsValid())
         return false;
@@ -1021,6 +1022,13 @@ void GDXECSRenderer::Shutdown()
 
     if (m_backend)
     {
+        // Bug 2 fix: mainScenePostProcessTarget vor Shutdown freigeben,
+        // sonst lecken colorTexture/rtv/dsv/depthTexture.
+        if (m_mainScenePostProcessTarget.IsValid())
+        {
+            m_backend->DestroyRenderTarget(m_mainScenePostProcessTarget, m_rtStore, m_texStore);
+            m_mainScenePostProcessTarget = RenderTargetHandle::Invalid();
+        }
         m_backend->DestroyPostProcessPasses(m_postProcessStore);
         m_backend->Shutdown(m_matStore, m_shaderStore, m_texStore);
         m_backend.reset();

@@ -1,8 +1,7 @@
 #pragma once
-
 #include <cstdint>
 #include <limits>
-
+#include <cassert>
 // ---------------------------------------------------------------------------
 // EntityID — the one and only identity of an entity.
 //
@@ -16,45 +15,41 @@
 // Generation: every time a slot is recycled the generation byte is
 // incremented.  A stale ID (old generation) is rejected by the Registry.
 // ---------------------------------------------------------------------------
-
-using EntityIndex      = uint32_t;
+using EntityIndex = uint32_t;
 using EntityGeneration = uint8_t;
-
 struct EntityID
 {
     static constexpr uint32_t INDEX_BITS = 24;
-    static constexpr uint32_t GEN_BITS   =  8;
+    static constexpr uint32_t GEN_BITS = 8;
     static constexpr uint32_t INDEX_MASK = (1u << INDEX_BITS) - 1u;  // 0x00FFFFFF
-    static constexpr uint32_t GEN_MASK   = (1u << GEN_BITS)  - 1u;  // 0x000000FF
-
+    static constexpr uint32_t GEN_MASK = (1u << GEN_BITS) - 1u;  // 0x000000FF
     uint32_t value = 0;
-
     // --- Construction -------------------------------------------------------
     EntityID() = default;
     constexpr explicit EntityID(uint32_t raw) : value(raw) {}
-
     static EntityID Make(EntityIndex index, EntityGeneration gen)
     {
+        assert(gen != 0 && "EntityID::Make: generation 0 is reserved for NULL_ENTITY");
         return EntityID{ (index << GEN_BITS) | (gen & GEN_MASK) };
     }
-
     // --- Decomposition ------------------------------------------------------
     EntityIndex      Index()      const noexcept { return (value >> GEN_BITS) & INDEX_MASK; }
     EntityGeneration Generation() const noexcept { return static_cast<EntityGeneration>(value & GEN_MASK); }
-
     // --- Validity -----------------------------------------------------------
-    bool IsValid() const noexcept { return value != 0; }
+    // IsValid() prueft value != 0.
+    // Das funktioniert weil Generation 0 als Null-Sentinel reserviert ist:
+    //   NULL_ENTITY = EntityID{0} = Make(0, 0)  -> gen=0, niemals an echte Entity vergeben.
+    //   Echte Entities starten immer mit gen >= 1.
+    // Damit kann EntityID{0} (value==0) niemals einer lebenden Entity entsprechen.
+    bool IsValid() const noexcept { return value != 0 && Generation() != 0; }
     explicit operator bool() const noexcept { return IsValid(); }
-
     // --- Comparison ---------------------------------------------------------
     bool operator==(const EntityID& o) const noexcept { return value == o.value; }
     bool operator!=(const EntityID& o) const noexcept { return value != o.value; }
-    bool operator< (const EntityID& o) const noexcept { return value <  o.value; }
+    bool operator< (const EntityID& o) const noexcept { return value < o.value; }
 };
-
 // Sentinel: the "null" / invalid entity.
 inline constexpr EntityID NULL_ENTITY{ 0u };
-
 // Hash support so EntityID can be used as unordered_map key.
 #include <functional>
 namespace std
@@ -67,23 +62,21 @@ namespace std
         }
     };
 }
-
 // ---------------------------------------------------------------------------
 // ComponentTypeID<T> — compile-time integer ID pro Komponententyp.
 //
 // Jeder Typ bekommt beim ersten Zugriff eine eindeutige uint32_t-ID,
-// die für die gesamte Prozesslaufzeit stabil bleibt.
+// die fuer die gesamte Prozesslaufzeit stabil bleibt.
 //
 // Verwendung in Registry: Pool-Vektor direkt per ID indexieren statt
-// unordered_map<type_index> → O(1) ohne Hash-Overhead.
+// unordered_map<type_index> -> O(1) ohne Hash-Overhead.
 //
-// Voraussetzung: C++17 (inline-Variable für die Template-Spezialisierung).
+// Voraussetzung: C++17 (inline-Variable fuer die Template-Spezialisierung).
 // ---------------------------------------------------------------------------
 struct ComponentTypeIDCounter
 {
     static inline uint32_t next = 0u;
 };
-
 template<typename T>
 struct ComponentTypeID
 {

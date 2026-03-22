@@ -133,4 +133,14 @@ public:
         (void)width;   (void)height; (void)debugName;
         return RenderTargetHandle::Invalid();
     }
+
+    // Gibt native GPU-Ressourcen des RTs frei und entfernt exposedTexture aus texStore.
+    // Sicher bei Invalid-Handle. Muss vor jedem Überschreiben/Shutdown aufgerufen werden.
+    virtual void DestroyRenderTarget(
+        RenderTargetHandle handle,
+        ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore,
+        ResourceStore<GDXTextureResource,      TextureTag>&      texStore)
+    {
+        (void)handle; (void)rtStore; (void)texStore;
+    }
 };

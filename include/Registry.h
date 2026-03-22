@@ -27,14 +27,17 @@ public:
             const EntityIndex idx = m_freeList.back();
             m_freeList.pop_back();
             ++m_generations[idx];
+            // Generation 0 ist für NULL_ENTITY reserviert — bei Überlauf überspringen.
+            if (m_generations[idx] == 0u) ++m_generations[idx];
             m_alive[idx] = 1u;
             return EntityID::Make(idx, m_generations[idx]);
         }
 
         const EntityIndex idx = static_cast<EntityIndex>(m_generations.size());
-        m_generations.push_back(0);
+        // Generation 0 ist reserviert (= NULL_ENTITY-Sentinel). Erste echte Generation = 1.
+        m_generations.push_back(1u);
         m_alive.push_back(1u);
-        return EntityID::Make(idx, 0);
+        return EntityID::Make(idx, 1u);
     }
 
     void DestroyEntity(EntityID id)

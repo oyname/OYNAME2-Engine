@@ -95,6 +95,11 @@ public:
         const std::wstring& debugName,
         GDXTextureFormat colorFormat = GDXTextureFormat::RGBA8_UNORM) override;
 
+    void DestroyRenderTarget(
+        RenderTargetHandle handle,
+        ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore,
+        ResourceStore<GDXTextureResource,      TextureTag>&      texStore) override;
+
     void SetShadowMapSize(uint32_t size) override { m_shadowMapSize = size; }
     void LoadIBL(const wchar_t* hdrPath) override;
 

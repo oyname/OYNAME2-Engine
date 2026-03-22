@@ -1243,3 +1243,44 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
 
     return rtStore.Add(std::move(rt));
 }
+
+// ---------------------------------------------------------------------------
+// DestroyRenderTarget — gibt alle nativen DX11-Ressourcen frei.
+// Entfernt außerdem die exposedTexture aus texStore (SRV + Eintrag).
+// Sicher bei Invalid-Handle.
+// ---------------------------------------------------------------------------
+void GDXDX11RenderBackend::DestroyRenderTarget(
+    RenderTargetHandle handle,
+    ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore,
+    ResourceStore<GDXTextureResource,      TextureTag>&      texStore)
+{
+    if (!handle.IsValid()) return;
+
+    GDXRenderTargetResource* rt = rtStore.Get(handle);
+    if (!rt) return;
+
+    // exposedTexture aus texStore entfernen — SRV wird dort ebenfalls freigegeben.
+    // Der SRV-Zeiger in rt->srv und in texRes->srv zeigen auf dasselbe Objekt;
+    // nur einer darf Release() aufrufen. texStore-Shutdown gibt SRV frei,
+    // daher hier nur den Store-Eintrag entfernen; den rt->srv-Zeiger danach nullen.
+    if (rt->exposedTexture.IsValid())
+    {
+        GDXTextureResource* texRes = texStore.Get(rt->exposedTexture);
+        if (texRes && texRes->srv)
+        {
+            static_cast<ID3D11ShaderResourceView*>(texRes->srv)->Release();
+            texRes->srv = nullptr;
+        }
+        texStore.Release(rt->exposedTexture);
+        rt->exposedTexture = TextureHandle::Invalid();
+    }
+    rt->srv = nullptr; // wird durch texStore-Eintrag bereits freigegeben (s.o.)
+
+    if (rt->dsv)          { static_cast<ID3D11DepthStencilView*>(rt->dsv)->Release();   rt->dsv          = nullptr; }
+    if (rt->depthTexture) { static_cast<ID3D11Texture2D*>(rt->depthTexture)->Release(); rt->depthTexture = nullptr; }
+    if (rt->rtv)          { static_cast<ID3D11RenderTargetView*>(rt->rtv)->Release();   rt->rtv          = nullptr; }
+    if (rt->colorTexture) { static_cast<ID3D11Texture2D*>(rt->colorTexture)->Release(); rt->colorTexture = nullptr; }
+
+    rt->ready = false;
+    rtStore.Release(handle);
+}

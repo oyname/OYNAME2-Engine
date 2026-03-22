@@ -48,9 +48,12 @@ private:
     uint64_t              m_cachedTopologyKey = UINT64_MAX;
     std::vector<uint32_t> m_cachedExecutionOrder;
 
-    uint64_t ComputeTopologyKey(const RFG::PipelineData& pipeline) const;
+    // Schlüssel aus dem tatsächlich gebauten Graph ableiten — nicht aus einer
+    // Vorhersage. Dadurch sind Änderungen an node-Anzahl, Ressourcen oder
+    // Pass-Bereitschaft automatisch abgedeckt.
+    static uint64_t ComputeGraphStructureKey(const RFG::FrameGraph& fg);
 
-    bool Finalize(RFG::FrameGraph& fg);
+    void Finalize(RFG::FrameGraph& fg);
     void BuildDependencies(RFG::FrameGraph& fg);
     bool BuildExecutionOrder(RFG::FrameGraph& fg) const;
     bool Validate(RFG::FrameGraph& fg) const;

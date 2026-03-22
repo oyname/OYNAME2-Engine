@@ -23,35 +23,75 @@ void GDXRenderFrameGraph::AddDependency(RFG::Node& node, uint32_t dep)
 }
 
 // ---------------------------------------------------------------------------
-// ComputeTopologyKey — uint64_t kodiert die Graphstruktur.
-// Ändert sich nur wenn RTT-Views hinzukommen/wegfallen oder Passes en/disabled werden.
+// ExecuteFn-Factories — eliminieren doppelte Lambda-Körper in Build.
+// Capture: nur exec-Pointer, kein Zustand der Graph-Klasse.
 // ---------------------------------------------------------------------------
 
-uint64_t GDXRenderFrameGraph::ComputeTopologyKey(const RFG::PipelineData& pipeline) const
+static std::function<void(const RFG::ExecContext&, RFG::ViewStats*)>
+MakeShadowExecFn(const RFG::ExecuteData* exec)
 {
-    // bits  0-5 : RTT-Count (max 28)
-    // bits  6-61: 2 Bit pro RTT-View (bit0=shadow, bit1=graphics)
-    // bit     62: main shadow enabled
-    // bit     63: main postProcess enabled
-    uint64_t key = 0;
-    const uint32_t rttCount = static_cast<uint32_t>(
-        (std::min)(pipeline.rttViews.size(), size_t{ 28u }));
-    key |= static_cast<uint64_t>(rttCount);
-
-    for (uint32_t i = 0u; i < rttCount; ++i)
+    return [exec](const RFG::ExecContext& c, RFG::ViewStats* s)
     {
-        const auto& v = pipeline.rttViews[i];
-        const uint64_t bits = (v.execute.shadowPass.enabled  ? 1ull : 0ull)
-                            | (v.execute.graphicsPass.enabled ? 2ull : 0ull);
-        key |= bits << (6u + i * 2u);
+        if (c.backend && exec->shadowPass.enabled)
+        {
+            c.backend->ExecuteRenderPass(exec->shadowPass.desc, *c.registry,
+                exec->shadowQueue, *c.meshStore, *c.matStore, *c.shaderStore, *c.texStore, c.rtStore);
+            s->shadowPassExecuted = true;
+        }
+    };
+}
+
+static std::function<void(const RFG::ExecContext&, RFG::ViewStats*)>
+MakeGraphicsExecFn(const RFG::ExecuteData* exec)
+{
+    return [exec](const RFG::ExecContext& c, RFG::ViewStats* s)
+    {
+        if (c.backend && exec->graphicsPass.enabled)
+        {
+            c.backend->ExecuteRenderPass(exec->graphicsPass.desc, *c.registry,
+                exec->graphicsQueue, *c.meshStore, *c.matStore, *c.shaderStore, *c.texStore, c.rtStore);
+            s->graphicsPassExecuted = true;
+        }
+    };
+}
+
+// ---------------------------------------------------------------------------
+// ComputeGraphStructureKey — FNV-1a über die tatsächlich gebauten Nodes.
+//
+// Schlüssel wird nach dem Node-Build aus fg.nodes abgeleitet, nicht aus
+// einer Vorhersage. Damit sind alle strukturellen Änderungen abgedeckt:
+//   - Node-Anzahl
+//   - Node-Kind
+//   - Ressourcen-IDs (reads/writes)
+//   - Anzahl der reads/writes pro Node
+//   - RT-Bereitschaft (beeinflusst ob ein Node überhaupt gebaut wird)
+//   - postProcess-Validity (sceneTexture.IsValid() bestimmt Node-Existenz)
+//   - mainView.graphicsPass.enabled (fehlte im alten Predictive-Key)
+//
+// UINT64_MAX als Sentinel bleibt unverändert (fg mit 0 Nodes kann diesen
+// Wert nicht erzeugen, da der erste mix(0) eine andere Ausgabe produziert).
+// ---------------------------------------------------------------------------
+
+uint64_t GDXRenderFrameGraph::ComputeGraphStructureKey(const RFG::FrameGraph& fg)
+{
+    // FNV-1a 64-bit
+    uint64_t h = 14695981039346656037ull;
+    auto mix = [&](uint64_t v)
+    {
+        h ^= v;
+        h *= 1099511628211ull;
+    };
+
+    mix(static_cast<uint64_t>(fg.nodes.size()));
+    for (const RFG::Node& node : fg.nodes)
+    {
+        mix(static_cast<uint64_t>(node.kind));
+        mix(static_cast<uint64_t>(node.reads.size()));
+        mix(static_cast<uint64_t>(node.writes.size()));
+        for (FGResourceID r : node.reads)  mix(static_cast<uint64_t>(r));
+        for (FGResourceID w : node.writes) mix(static_cast<uint64_t>(w));
     }
-
-    if (pipeline.mainView.execute.shadowPass.enabled)
-        key |= (1ull << 62u);
-    if (pipeline.mainView.execute.presentation.postProcess.enabled)
-        key |= (1ull << 63u);
-
-    return key;
+    return h;
 }
 
 // ---------------------------------------------------------------------------
@@ -108,16 +148,7 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
             node.enabled    = true;
             node.countedAsRenderTargetView = true;
             node.writes.push_back(shadowMapID);
-            const RFG::ExecuteData* exec = &view.execute;
-            node.executeFn = [exec](const RFG::ExecContext& c, RFG::ViewStats* s)
-            {
-                if (c.backend && exec->shadowPass.enabled)
-                {
-                    c.backend->ExecuteRenderPass(exec->shadowPass.desc, *c.registry,
-                        exec->shadowQueue, *c.meshStore, *c.matStore, *c.shaderStore, *c.texStore, c.rtStore);
-                    s->shadowPassExecuted = true;
-                }
-            };
+            node.executeFn  = MakeShadowExecFn(&view.execute);
             pipeline.frameGraph.nodes.push_back(std::move(node));
         }
 
@@ -134,16 +165,7 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
                 node.reads.push_back(shadowMapID);
             if (rttColorIDs[i] != FG_INVALID_RESOURCE)
                 node.writes.push_back(rttColorIDs[i]);
-            const RFG::ExecuteData* exec = &view.execute;
-            node.executeFn = [exec](const RFG::ExecContext& c, RFG::ViewStats* s)
-            {
-                if (c.backend && exec->graphicsPass.enabled)
-                {
-                    c.backend->ExecuteRenderPass(exec->graphicsPass.desc, *c.registry,
-                        exec->graphicsQueue, *c.meshStore, *c.matStore, *c.shaderStore, *c.texStore, c.rtStore);
-                    s->graphicsPassExecuted = true;
-                }
-            };
+            node.executeFn  = MakeGraphicsExecFn(&view.execute);
             pipeline.frameGraph.nodes.push_back(std::move(node));
         }
     }
@@ -156,16 +178,7 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
         node.statsOutput  = &pipeline.mainView.stats;
         node.enabled    = true;
         node.writes.push_back(shadowMapID);
-        const RFG::ExecuteData* exec = &pipeline.mainView.execute;
-        node.executeFn = [exec](const RFG::ExecContext& c, RFG::ViewStats* s)
-        {
-            if (c.backend && exec->shadowPass.enabled)
-            {
-                c.backend->ExecuteRenderPass(exec->shadowPass.desc, *c.registry,
-                    exec->shadowQueue, *c.meshStore, *c.matStore, *c.shaderStore, *c.texStore, c.rtStore);
-                s->shadowPassExecuted = true;
-            }
-        };
+        node.executeFn  = MakeShadowExecFn(&pipeline.mainView.execute);
         pipeline.frameGraph.nodes.push_back(std::move(node));
     }
 
@@ -182,16 +195,7 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
             if (rttColorIDs[i] != FG_INVALID_RESOURCE)
                 node.reads.push_back(rttColorIDs[i]);
         node.writes.push_back(hasPostProcess ? mainSceneID : backbufferID);
-        const RFG::ExecuteData* exec = &pipeline.mainView.execute;
-        node.executeFn = [exec](const RFG::ExecContext& c, RFG::ViewStats* s)
-        {
-            if (c.backend && exec->graphicsPass.enabled)
-            {
-                c.backend->ExecuteRenderPass(exec->graphicsPass.desc, *c.registry,
-                    exec->graphicsQueue, *c.meshStore, *c.matStore, *c.shaderStore, *c.texStore, c.rtStore);
-                s->graphicsPassExecuted = true;
-            }
-        };
+        node.executeFn  = MakeGraphicsExecFn(&pipeline.mainView.execute);
         pipeline.frameGraph.nodes.push_back(std::move(node));
     }
 
@@ -213,23 +217,39 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
                 exec->presentation.postProcess.sceneTexture.IsValid() &&
                 c.postProcessPassOrder && c.postProcessStore)
             {
-                c.backend->ExecutePostProcessChain(
+                // Bug 4 fix: presentationExecuted nur bei tatsächlichem Erfolg setzen.
+                const bool ok = c.backend->ExecutePostProcessChain(
                     *c.postProcessPassOrder, *c.postProcessStore, *c.texStore,
                     exec->presentation.postProcess.sceneTexture,
                     exec->frame.viewportWidth,
                     exec->frame.viewportHeight);
-                s->presentationExecuted = true;
+                s->presentationExecuted = ok;
             }
         };
         pipeline.frameGraph.nodes.push_back(std::move(node));
     }
 
     // --- Schritt 3: Topology-Cache ---
-    const uint64_t newKey = ComputeTopologyKey(pipeline);
+    // Key wird aus den tatsächlich gebauten Nodes abgeleitet (nach dem Build).
+    // Damit sind alle strukturellen Unterschiede erfasst: Node-Anzahl, NodeKind,
+    // reads/writes, RT-Bereitschaft, sceneTexture-Validity, graphicsPass.enabled.
+    // Ein false-Cache-Hit ist damit ausgeschlossen.
+    const uint64_t newKey = ComputeGraphStructureKey(pipeline.frameGraph);
     if (newKey == m_cachedTopologyKey && !m_cachedExecutionOrder.empty())
     {
+        // Topology-Struktur identisch — Execution-Order wiederverwenden.
+        //
+        // WICHTIG: Dependencies MÜSSEN trotzdem neu gebaut werden.
+        // Nodes werden jeden Frame als leere Objekte neu erstellt;
+        // ohne BuildDependencies() sind node.dependencies leer, und
+        // Execute() sieht einen strukturell unvollständigen Graph.
+        BuildDependencies(pipeline.frameGraph);
         pipeline.frameGraph.executionOrder = m_cachedExecutionOrder;
-        pipeline.frameGraph.validation.valid = true;
+
+        // Validation explizit prüfen statt blind auf true setzen.
+        // Validate() ist günstig wenn kein Zyklus-Check nötig ist
+        // (executionOrder ist bereits bekannt-gut vom letzten Finalize).
+        Validate(pipeline.frameGraph);
     }
     else
     {
@@ -250,11 +270,12 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
 // Finalize — Dependencies + Order + Validation.
 // ---------------------------------------------------------------------------
 
-bool GDXRenderFrameGraph::Finalize(RFG::FrameGraph& fg)
+void GDXRenderFrameGraph::Finalize(RFG::FrameGraph& fg)
 {
     BuildDependencies(fg);
     BuildExecutionOrder(fg);
-    return Validate(fg);
+    Validate(fg);
+    // Ergebnis liegt in fg.validation.valid — Callsite liest dort.
 }
 
 void GDXRenderFrameGraph::BuildDependencies(RFG::FrameGraph& fg)
@@ -339,23 +360,70 @@ bool GDXRenderFrameGraph::BuildExecutionOrder(RFG::FrameGraph& fg) const
 bool GDXRenderFrameGraph::Validate(RFG::FrameGraph& fg) const
 {
     fg.validation.Reset();
-    const uint32_t nodeCount = static_cast<uint32_t>(fg.nodes.size());
+    const uint32_t nodeCount     = static_cast<uint32_t>(fg.nodes.size());
+    const uint32_t resourceCount = static_cast<uint32_t>(fg.resources.size());
+
+    auto addError = [&](std::string msg)
+    {
+        fg.validation.valid = false;
+        fg.validation.errors.push_back(std::move(msg));
+    };
+
+    // Hilfsmakros — inline-Lambda statt Makro um Shadowing zu vermeiden.
+    auto checkResourceID = [&](FGResourceID rid, uint32_t nodeIdx, const char* slot)
+    {
+        if (rid == FG_INVALID_RESOURCE || rid >= resourceCount)
+            addError("FrameGraph " + std::string(slot) + " invalid resource " +
+                     std::to_string(rid) + " at node " + std::to_string(nodeIdx));
+    };
 
     for (uint32_t i = 0u; i < nodeCount; ++i)
     {
         const RFG::Node& node = fg.nodes[i];
 
+        // --- executeFn vorhanden ---
+        if (node.enabled && !node.executeFn)
+            addError("FrameGraph enabled node " + std::to_string(i) + " has no executeFn");
+
+        // --- Dependency-Checks ---
         for (uint32_t dep : node.dependencies)
         {
             if (dep >= nodeCount)
-            { fg.validation.valid = false; fg.validation.errors.push_back("FrameGraph dep OOB at node " + std::to_string(i)); continue; }
+            { addError("FrameGraph dep OOB at node " + std::to_string(i)); continue; }
             if (dep == i)
-            { fg.validation.valid = false; fg.validation.errors.push_back("FrameGraph self-dep at node " + std::to_string(i)); }
+              addError("FrameGraph self-dep at node " + std::to_string(i));
         }
 
-        // RAW
+        // --- Resource-Bounds: reads ---
+        {
+            for (uint32_t r = 0u; r < static_cast<uint32_t>(node.reads.size()); ++r)
+            {
+                checkResourceID(node.reads[r], i, "read");
+                // Duplikat-Check innerhalb reads
+                for (uint32_t r2 = r + 1u; r2 < static_cast<uint32_t>(node.reads.size()); ++r2)
+                    if (node.reads[r] == node.reads[r2])
+                        addError("FrameGraph duplicate read resource " +
+                                 std::to_string(node.reads[r]) + " at node " + std::to_string(i));
+            }
+        }
+
+        // --- Resource-Bounds: writes ---
+        {
+            for (uint32_t w = 0u; w < static_cast<uint32_t>(node.writes.size()); ++w)
+            {
+                checkResourceID(node.writes[w], i, "write");
+                // Duplikat-Check innerhalb writes
+                for (uint32_t w2 = w + 1u; w2 < static_cast<uint32_t>(node.writes.size()); ++w2)
+                    if (node.writes[w] == node.writes[w2])
+                        addError("FrameGraph duplicate write resource " +
+                                 std::to_string(node.writes[w]) + " at node " + std::to_string(i));
+            }
+        }
+
+        // --- RAW: jeder Read braucht einen Writer in den Deps ---
         for (FGResourceID rid : node.reads)
         {
+            if (rid == FG_INVALID_RESOURCE || rid >= resourceCount) continue; // bereits gemeldet
             bool hasWriter = false;
             for (uint32_t dep : node.dependencies)
             {
@@ -365,12 +433,14 @@ bool GDXRenderFrameGraph::Validate(RFG::FrameGraph& fg) const
                 if (hasWriter) break;
             }
             if (!hasWriter)
-            { fg.validation.valid = false; fg.validation.errors.push_back("FrameGraph RAW: resource " + std::to_string(rid) + " at node " + std::to_string(i) + " has no writer dep"); }
+                addError("FrameGraph RAW: resource " + std::to_string(rid) +
+                         " at node " + std::to_string(i) + " has no writer dep");
         }
 
-        // WAW/WAR — nur letzter Accessor
+        // --- WAW/WAR: Writer muss letzten Accessor als Dep haben ---
         for (FGResourceID rid : node.writes)
         {
+            if (rid == FG_INVALID_RESOURCE || rid >= resourceCount) continue;
             int lastAccessor = -1;
             for (int j = static_cast<int>(i) - 1; j >= 0; --j)
             {
@@ -381,24 +451,28 @@ bool GDXRenderFrameGraph::Validate(RFG::FrameGraph& fg) const
                 if (hit) { lastAccessor = j; break; }
             }
             if (lastAccessor >= 0 && !HasDependency(node, static_cast<uint32_t>(lastAccessor)))
-            { fg.validation.valid = false; fg.validation.errors.push_back("FrameGraph WAW/WAR: resource " + std::to_string(rid) + " node " + std::to_string(i) + " missing dep on " + std::to_string(lastAccessor)); }
+                addError("FrameGraph WAW/WAR: resource " + std::to_string(rid) +
+                         " node " + std::to_string(i) + " missing dep on " + std::to_string(lastAccessor));
         }
     }
 
+    // --- Execution-Order vollständig ---
     if (fg.executionOrder.size() != static_cast<size_t>(nodeCount))
-    { fg.validation.valid = false; fg.validation.errors.push_back("FrameGraph dependency cycle"); return fg.validation.valid; }
+    { addError("FrameGraph dependency cycle detected"); return fg.validation.valid; }
 
+    // --- Execution-Order: keine OOB, keine Duplikate, alle enthalten ---
     std::vector<int32_t> pos(nodeCount, -1);
     for (uint32_t p = 0u; p < static_cast<uint32_t>(fg.executionOrder.size()); ++p)
     {
         const uint32_t ni = fg.executionOrder[p];
-        if (ni >= nodeCount) { fg.validation.valid = false; fg.validation.errors.push_back("FrameGraph exec OOB at pos " + std::to_string(p)); continue; }
-        if (pos[ni] != -1)  { fg.validation.valid = false; fg.validation.errors.push_back("FrameGraph duplicate node " + std::to_string(ni)); continue; }
+        if (ni >= nodeCount) { addError("FrameGraph exec OOB at pos " + std::to_string(p)); continue; }
+        if (pos[ni] != -1)  { addError("FrameGraph duplicate in executionOrder: node " + std::to_string(ni)); continue; }
         pos[ni] = static_cast<int32_t>(p);
     }
     for (uint32_t i = 0u; i < nodeCount; ++i)
-        if (pos[i] == -1) { fg.validation.valid = false; fg.validation.errors.push_back("FrameGraph missing node " + std::to_string(i)); }
+        if (pos[i] == -1) addError("FrameGraph missing node " + std::to_string(i) + " in executionOrder");
 
+    // --- Reihenfolge respektiert Deps ---
     for (uint32_t i = 0u; i < nodeCount; ++i)
     {
         if (pos[i] == -1) continue;
@@ -406,7 +480,8 @@ bool GDXRenderFrameGraph::Validate(RFG::FrameGraph& fg) const
         {
             if (dep >= nodeCount || pos[dep] == -1) continue;
             if (pos[dep] >= pos[i])
-            { fg.validation.valid = false; fg.validation.errors.push_back("FrameGraph order violation: dep " + std::to_string(dep) + " → node " + std::to_string(i)); }
+                addError("FrameGraph order violation: dep " + std::to_string(dep) +
+                         " must execute before node " + std::to_string(i));
         }
     }
 
