@@ -183,10 +183,11 @@ void GDXECSRenderer::AppendDebugVisibleSet(RenderQueue& queue, const VisibleSet&
 {
     if (!EnsureDebugCullingResources()) return;
     GDXDebugCullingRenderer::RenderContext ctx{};
-    ctx.matStore     = &m_matStore;
-    ctx.shaderStore  = &m_shaderStore;
-    ctx.defaultShader = m_defaultShader;
-    ctx.frameNumber  = m_frameNumber;
+    ctx.matStore          = &m_matStore;
+    ctx.shaderStore       = &m_shaderStore;
+    ctx.defaultShader     = m_defaultShader;
+    ctx.frameNumber       = m_frameNumber;
+    ctx.uploadFrustumMesh = [this](MeshAssetResource mesh) { return UploadMesh(std::move(mesh)); };
     m_debugCulling.AppendVisibleSet(queue, set, view, ctx, viewStats);
 }
 

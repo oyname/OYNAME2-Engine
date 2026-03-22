@@ -14,6 +14,7 @@
 // ---------------------------------------------------------------------------
 
 #include "Registry.h"
+#include "CollisionBodyComponent.h"
 #include "Collision/CollisionWorld.h"
 #include "Collision/CollisionTypes.h"
 

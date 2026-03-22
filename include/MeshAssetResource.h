@@ -1,7 +1,6 @@
 #pragma once
 #include "SubmeshData.h"
 #include "Handle.h"
-#include "Components.h"
 
 #include <vector>
 #include <cstdint>
@@ -80,14 +79,7 @@ struct MeshAssetResource
         return i < gpuBuffers.size() && gpuBuffers[i].ready;
     }
 
-    // Berechnet RenderBoundsComponent aus allen Submesh-Vertices.
-    // Geometrischer Mittelpunkt + minimaler Umkreisradius — korrekt für animierte
-    // Objekte die nicht bei {0,0,0} liegen.
-    // Gibt ungültiges Bounds zurück wenn keine Vertices vorhanden.
-    RenderBoundsComponent ComputeBounds() const noexcept
-    {
-        return RenderBoundsComponent::MakeFromSubmeshes(submeshes);
-    }
+
 
     ~MeshAssetResource()
     {

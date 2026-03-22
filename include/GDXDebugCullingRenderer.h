@@ -39,6 +39,8 @@ public:
         ResourceStore<GDXShaderResource, ShaderTag>*     shaderStore  = nullptr;
         ShaderHandle                                      defaultShader{};
         uint64_t                                          frameNumber  = 0u;
+        // Für Frustum-Wireframe: temporäres Mesh pro Frame hochladen.
+        std::function<MeshHandle(MeshAssetResource)>      uploadFrustumMesh;
     };
 
     struct Options

@@ -429,28 +429,3 @@ struct LightComponent
     LightComponent() = default;
 };
 
-
-// ===========================================================================
-// CollisionBodyComponent — verbindet eine Entity mit der CollisionWorld.
-//
-// localShape liegt im Lokalraum der Entity.
-// CollisionSystem transformiert sie pro Frame in Weltkoordinaten und ruft
-// UpdateBody() auf.
-//
-// Keine Velocity — das ist eine Kollisions-, keine Physik-Komponente.
-// ===========================================================================
-#include "Collision/CollisionBody.h"
-
-struct CollisionBodyComponent
-{
-    GIDX::CollisionBodyID  bodyID     = {};                         // Handle zur CollisionWorld (nach CreateBody gültig)
-    GIDX::CollisionShape   localShape = {};                         // Shape im Lokalraum
-    GIDX::CollisionLayerMask layer    = GIDX::COLLISION_LAYER_DEFAULT;
-    GIDX::CollisionLayerMask mask     = GIDX::COLLISION_LAYER_ALL;
-    bool isTrigger   = false;
-    bool isStatic    = true;
-    bool isKinematic = false;
-    bool registered  = false;  // true sobald CreateBody() erfolgt ist
-
-    CollisionBodyComponent() = default;
-};

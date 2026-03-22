@@ -136,8 +136,17 @@ bool GDXDebugCullingRenderer::EnsureResources(
     if (!m_mainBoundsMat.IsValid())   m_mainBoundsMat   = makeMat(0.10f, 0.95f, 0.20f, options.boundsAlpha);
     if (!m_shadowBoundsMat.IsValid()) m_shadowBoundsMat = makeMat(0.95f, 0.82f, 0.10f, options.boundsAlpha);
     if (!m_rttBoundsMat.IsValid())    m_rttBoundsMat    = makeMat(0.12f, 0.45f, 1.00f, options.boundsAlpha);
-    if (!m_mainFrustumMat.IsValid())  m_mainFrustumMat  = makeMat(0.15f, 1.00f, 1.00f, options.frustumAlpha);
-    if (!m_shadowFrustumMat.IsValid())m_shadowFrustumMat= makeMat(1.00f, 0.55f, 0.10f, options.frustumAlpha);
+
+    // Frustum-Wireframe: weiß/orange, solid (kein Alpha), unlit.
+    auto makeFrustumMat = [&](float r, float g, float b) -> MaterialHandle
+    {
+        MaterialResource mat = MaterialResource::FlatColor(r, g, b, 1.0f);
+        mat.data.flags = MF_UNLIT | MF_DOUBLE_SIDED;  // kein MF_TRANSPARENT
+        mat.data.receiveShadows = 0.f;
+        return createMat(std::move(mat));
+    };
+    if (!m_mainFrustumMat.IsValid())   m_mainFrustumMat   = makeFrustumMat(1.0f, 1.0f, 1.0f);  // weiß
+    if (!m_shadowFrustumMat.IsValid()) m_shadowFrustumMat = makeFrustumMat(1.0f, 0.55f, 0.1f); // orange
 
     return m_debugBoxMesh.IsValid()
         && m_mainBoundsMat.IsValid() && m_shadowBoundsMat.IsValid()
@@ -219,53 +228,133 @@ void GDXDebugCullingRenderer::AppendBounds(
     if (stats) ++stats->debugBoundsDraws;
 }
 
-void GDXDebugCullingRenderer::AppendFrustum(
-    RenderQueue& queue, const RenderViewData& view,
-    MaterialHandle mat, float alpha,
-    const FrameData& frame, const RenderContext& ctx,
-    RFG::ViewStats* stats)
+// ---------------------------------------------------------------------------
+// Baut ein Wireframe-Mesh aus den 12 Frustum-Kanten als dünne Quader.
+// Jede Kante wird als gestreckter Einheitswürfel mit Radius kLineRadius gerendert.
+// Alle 12 Kanten in einem einzigen SubmeshData — ein Draw-Call.
+// ---------------------------------------------------------------------------
+static constexpr float kFrustumLineRadius = 0.008f;
+
+static SubmeshData BuildFrustumWireframeMesh(const GIDX::Float3 corners[8])
 {
-    if (!m_debugBoxMesh.IsValid() || !mat.IsValid()) return;
-    if (!ctx.matStore || !ctx.shaderStore) return;
-
-    GIDX::Float3 corners[8]{};
-    const GIDX::Float4x4& vp = (view.type == RenderViewType::Shadow)
-        ? view.frame.shadowViewProjMatrix : view.frame.viewProjMatrix;
-    if (!BuildFrustumCorners(vp, corners)) return;
-
     static constexpr int edges[12][2] = {
-        {0,1},{1,2},{2,3},{3,0},{4,5},{5,6},{6,7},{7,4},{0,4},{1,5},{2,6},{3,7}
+        {0,1},{1,2},{2,3},{3,0},   // Nahebene
+        {4,5},{5,6},{6,7},{7,4},   // Fernebene
+        {0,4},{1,5},{2,6},{3,7}    // Verbindungskanten
     };
+
+    SubmeshData mesh;
 
     for (const auto& e : edges)
     {
-        const MaterialResource*  matRes    = ctx.matStore->Get(mat);
-        const GDXShaderResource* shaderRes = ctx.shaderStore->Get(ctx.defaultShader);
-        if (!matRes || !shaderRes) return;
+        const GIDX::Float3& a = corners[e[0]];
+        const GIDX::Float3& b = corners[e[1]];
 
-        RenderCommand cmd{};
-        cmd.mesh = m_debugBoxMesh;  cmd.material = mat;  cmd.shader = ctx.defaultShader;
-        cmd.submeshIndex = 0u;      cmd.ownerEntity = NULL_ENTITY;
-        cmd.pass = RenderPass::Transparent;
-        cmd.worldMatrix = BuildEdgeWorldMatrix(corners[e[0]], corners[e[1]], 0.03f);
-        cmd.materialData = matRes->data;
-        cmd.materialData.baseColor.w = alpha;
-        const ResourceBindingSet bindings = BuildDebugBindings(*matRes, *shaderRes);
-        cmd.SetBindings(bindings,
-            BuildResourceBindingScopeKey(bindings, ResourceBindingScope::Pass,     cmd.shader.value),
-            BuildResourceBindingScopeKey(bindings, ResourceBindingScope::Material, cmd.material.value),
-            BuildResourceBindingScopeKey(bindings, ResourceBindingScope::Draw,     0u));
-        GDXPipelineStateDesc pso{};
-        pso.blendMode = GDXBlendMode::AlphaBlend; pso.cullMode = GDXCullMode::None;
-        pso.depthMode = GDXDepthMode::ReadOnly;   pso.depthTestEnabled = true;
-        cmd.SetPipelineState(pso);
-        const float depth = 1.f - CameraSystem::ComputeNDCDepth(cmd.worldMatrix, frame.viewProjMatrix);
-        cmd.SetSortKey(RenderPass::Transparent,
-            ctx.defaultShader.Index() & 0x0FFFu,
-            GDXPipelineStateKey::FromDesc(pso).value & 0x00FFu, 0u, depth);
-        queue.Submit(std::move(cmd));
-        if (stats) ++stats->debugFrustumDraws;
+        const GIDX::Float3 center  = LerpPoint(a, b, 0.5f);
+        const GIDX::Float3 forward = GIDX::Normalize3(GIDX::Subtract(b, a), {0,0,1});
+        GIDX::Float3 upRef = {0,1,0};
+        if (std::fabs(GIDX::Dot3(forward, upRef)) > 0.98f) upRef = {1,0,0};
+        const GIDX::Float3 right = GIDX::Normalize3(GIDX::Cross(upRef, forward), {1,0,0});
+        const GIDX::Float3 up    = GIDX::Normalize3(GIDX::Cross(forward, right),  {0,1,0});
+        const float len = (std::max)(GIDX::Length3(GIDX::Subtract(b, a)), 0.001f);
+        const float r   = kFrustumLineRadius;
+
+        // 8 Ecken des Quaders
+        const GIDX::Float3 rx = GIDX::Scale3(right,   r);
+        const GIDX::Float3 ux = GIDX::Scale3(up,      r);
+        const GIDX::Float3 fx = GIDX::Scale3(forward, len * 0.5f);
+
+        const uint32_t base = static_cast<uint32_t>(mesh.positions.size());
+
+        auto vert = [&](float sr, float su, float sf)
+        {
+            GIDX::Float3 p = center;
+            p.x += rx.x*sr + ux.x*su + fx.x*sf;
+            p.y += rx.y*sr + ux.y*su + fx.y*sf;
+            p.z += rx.z*sr + ux.z*su + fx.z*sf;
+            mesh.positions.push_back(p);
+            mesh.normals.push_back({0,1,0});
+            mesh.uv0.push_back({0,0});
+        };
+
+        vert(-1,-1,-1); vert(+1,-1,-1); vert(+1,+1,-1); vert(-1,+1,-1);
+        vert(-1,-1,+1); vert(+1,-1,+1); vert(+1,+1,+1); vert(-1,+1,+1);
+
+        // 12 Dreiecke (2 pro Seite × 6 Seiten)
+        auto tri = [&](uint32_t a, uint32_t b, uint32_t c)
+        {
+            mesh.indices.push_back(base+a);
+            mesh.indices.push_back(base+b);
+            mesh.indices.push_back(base+c);
+        };
+        tri(0,1,2); tri(0,2,3); // -Z
+        tri(4,6,5); tri(4,7,6); // +Z
+        tri(0,4,5); tri(0,5,1); // -Y
+        tri(2,6,7); tri(2,7,3); // +Y
+        tri(0,3,7); tri(0,7,4); // -X
+        tri(1,5,6); tri(1,6,2); // +X
     }
+
+    return mesh;
+}
+
+void GDXDebugCullingRenderer::AppendFrustum(
+    RenderQueue& queue, const RenderViewData& view,
+    MaterialHandle mat, float /*alpha*/,
+    const FrameData& frame, const RenderContext& ctx,
+    RFG::ViewStats* stats)
+{
+    if (!mat.IsValid() || !ctx.matStore || !ctx.shaderStore) return;
+
+    const GIDX::Float4x4& vp = (view.type == RenderViewType::Shadow)
+        ? view.frame.shadowViewProjMatrix : view.frame.viewProjMatrix;
+
+    GIDX::Float3 corners[8]{};
+    if (!BuildFrustumCorners(vp, corners)) return;
+
+    const MaterialResource*  matRes    = ctx.matStore->Get(mat);
+    const GDXShaderResource* shaderRes = ctx.shaderStore->Get(ctx.defaultShader);
+    if (!matRes || !shaderRes) return;
+
+    // Wireframe-Mesh pro Frame dynamisch bauen und hochladen.
+    MeshAssetResource asset;
+    asset.debugName = "FrustumWireframe";
+    asset.AddSubmesh(BuildFrustumWireframeMesh(corners));
+    const MeshHandle wireMesh = ctx.uploadFrustumMesh(std::move(asset));
+    if (!wireMesh.IsValid()) return;
+
+    RenderCommand cmd{};
+    cmd.mesh         = wireMesh;
+    cmd.material     = mat;
+    cmd.shader       = ctx.defaultShader;
+    cmd.submeshIndex = 0u;
+    cmd.ownerEntity  = NULL_ENTITY;
+    cmd.pass         = RenderPass::Opaque;
+    cmd.worldMatrix  = GIDX::Identity4x4();
+    cmd.materialData = matRes->data;
+    // Kein Alpha — volle Deckkraft, sieht nach Linie aus.
+    cmd.materialData.baseColor = { 1.f, 1.f, 1.f, 1.f };
+
+    const ResourceBindingSet bindings = BuildDebugBindings(*matRes, *shaderRes);
+    cmd.SetBindings(bindings,
+        BuildResourceBindingScopeKey(bindings, ResourceBindingScope::Pass,     cmd.shader.value),
+        BuildResourceBindingScopeKey(bindings, ResourceBindingScope::Material, cmd.material.value),
+        BuildResourceBindingScopeKey(bindings, ResourceBindingScope::Draw,     0u));
+
+    GDXPipelineStateDesc pso{};
+    pso.blendMode        = GDXBlendMode::Opaque;
+    pso.cullMode         = GDXCullMode::None;
+    pso.depthMode        = GDXDepthMode::ReadOnly;
+    pso.depthTestEnabled = true;
+    cmd.SetPipelineState(pso);
+
+    const float depth = 1.f - CameraSystem::ComputeNDCDepth(cmd.worldMatrix, frame.viewProjMatrix);
+    cmd.SetSortKey(RenderPass::Opaque,
+        ctx.defaultShader.Index() & 0x0FFFu,
+        GDXPipelineStateKey::FromDesc(pso).value & 0x00FFu, 0u, depth);
+
+    queue.Submit(std::move(cmd));
+    if (stats) stats->debugFrustumDraws += 1;
 }
 
 void GDXDebugCullingRenderer::LogStats(
