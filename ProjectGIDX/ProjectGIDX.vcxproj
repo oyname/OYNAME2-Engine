@@ -143,8 +143,8 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\app\main_scene3.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\app\meshbuilder.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
@@ -189,8 +189,8 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\app\test_scene_rtt_hotkeys.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\app\test_shader_alphatest_shadow.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
@@ -228,6 +228,7 @@
     <ClCompile Include="..\src\CollisionIntersect.cpp" />
     <ClCompile Include="..\src\CollisionSystem.cpp" />
     <ClCompile Include="..\src\CollisionWorld.cpp" />
+    <ClCompile Include="..\src\CullGatherSystem.cpp" />
     <ClCompile Include="..\src\DebugCamera.cpp" />
     <ClCompile Include="..\src\GDXDebugCullingRenderer.cpp" />
     <ClCompile Include="..\src\GDXDX11LightSystem.cpp" />
@@ -243,6 +244,8 @@
     <ClCompile Include="..\src\GDXTextureLoader.cpp" />
     <ClCompile Include="..\src\HierarchySystem.cpp" />
     <ClCompile Include="..\src\JobSystem.cpp" />
+    <ClCompile Include="..\src\RenderPassBuilder.cpp" />
+    <ClCompile Include="..\src\RenderViewPrep.cpp" />
     <ClCompile Include="..\src\TransformSystem.cpp" />
     <ClCompile Include="..\src\RenderGatherSystem.cpp" />
     <ClCompile Include="..\src\GDXECSRenderer.cpp" />
@@ -270,6 +273,7 @@
     <ClInclude Include="..\app\SnakeGame.h" />
     <ClInclude Include="..\include\BasicMeshGenerator.h" />
     <ClInclude Include="..\include\CameraSystem.h" />
+    <ClInclude Include="..\include\CollisionSystem.h" />
     <ClInclude Include="..\include\Collision\CollisionBody.h" />
     <ClInclude Include="..\include\Collision\CollisionIntersect.h" />
     <ClInclude Include="..\include\Collision\CollisionShapes.h" />
@@ -277,6 +281,7 @@
     <ClInclude Include="..\include\Collision\CollisionWorld.h" />
     <ClInclude Include="..\include\ComponentPool.h" />
     <ClInclude Include="..\include\Components.h" />
+    <ClInclude Include="..\include\CullGatherSystem.h" />
     <ClInclude Include="..\include\Debug.h" />
     <ClInclude Include="..\include\DebugCamera.h" />
     <ClInclude Include="..\include\ECSTypes.h" />
@@ -340,10 +345,12 @@
     <ClInclude Include="..\include\RenderCommand.h" />
     <ClInclude Include="..\include\RenderFramePipeline.h" />
     <ClInclude Include="..\include\RenderGatherSystem.h" />
+    <ClInclude Include="..\include\RenderPassBuilder.h" />
     <ClInclude Include="..\include\RenderPassClearDesc.h" />
     <ClInclude Include="..\include\RenderPassTargetDesc.h" />
     <ClInclude Include="..\include\RenderQueue.h" />
     <ClInclude Include="..\include\RenderViewData.h" />
+    <ClInclude Include="..\include\RenderViewPrep.h" />
     <ClInclude Include="..\include\ResourceStore.h" />
     <ClInclude Include="..\include\ShaderVariant.h" />
     <ClInclude Include="..\include\SubmeshBuilder.h" />

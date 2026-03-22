@@ -2,7 +2,7 @@
 #include "GDXIBLBaker.h"
 #include "GDXRenderTargetResource.h"
 #include "GDXVertexFlags.h"
-#include "Debug.h"
+#include "Core/Debug.h"
 #include "GDXResourceState.h"
 #include "RenderQueue.h"
 
@@ -420,11 +420,16 @@ bool GDXDX11RenderBackend::CreateMaterialGpu(MaterialResource& mat)
     return true;
 }
 
-void GDXDX11RenderBackend::UpdateLights(Registry& registry, FrameData& frame)
+void GDXDX11RenderBackend::ExtractLightData(Registry& registry, FrameData& frame)
 {
-    (void)registry;
-    m_lightSystem.Update(registry, frame, m_ctx);
-    m_lightSystem.Upload(frame, m_ctx);
+    // CPU-only: scan ECS, fill FrameData light arrays and shadow matrices.
+    // No GPU upload here — that happens in UploadLightConstants at execution time.
+    m_lightSystem.FillFrameData(registry, frame);
+}
+
+void GDXDX11RenderBackend::UploadLightConstants(const FrameData& frame)
+{
+    m_lightSystem.UploadLightBuffer(frame, m_ctx);
 }
 
 void GDXDX11RenderBackend::UpdateFrameConstants(const FrameData& frame)
@@ -506,15 +511,16 @@ void* GDXDX11RenderBackend::ExecuteRenderPass(
         return nullptr;
     }
 
-    RenderQueue opaqueQueue;
-    RenderQueue transparentQueue;
-    for (const RenderCommand& cmd : commandList.GetCommands())
-    {
-        if (cmd.pass == RenderPass::Transparent)
-            transparentQueue.commands.push_back(cmd);
-        else
-            opaqueQueue.commands.push_back(cmd);
-    }
+    // --- Graphics pass ---
+    // The planning layer pre-splits opaque and alpha queues.
+    // Use passDesc queues when available; fall back to commandList for legacy callers.
+    const ICommandList* opaqueList = passDesc.opaqueList ? passDesc.opaqueList : &commandList;
+    const ICommandList* alphaList  = passDesc.alphaList;
+
+    // Upload light cbuffer now — this is the first point where GPU resources
+    // are available and the FrameData is fully frozen for this view.
+    if (passDesc.frame)
+        UploadLightConstants(*passDesc.frame);
 
     auto executeGraphics = [&](ID3D11RenderTargetView* rtv,
         ID3D11DepthStencilView* dsv,
@@ -530,6 +536,12 @@ void* GDXDX11RenderBackend::ExecuteRenderPass(
             vp.MaxDepth = 1.0f;
             m_ctx->RSSetViewports(1, &vp);
 
+            // Pass the pre-split queues directly — no re-split inside ExecuteMainPassCommon.
+            // alphaList may be nullptr if there are no transparent draws this frame.
+            static const RenderQueue kEmptyQueue{};
+            const ICommandList& opaqueRef = *opaqueList;
+            const ICommandList& alphaRef  = alphaList ? *alphaList : static_cast<const ICommandList&>(kEmptyQueue);
+
             ExecuteMainPassCommon(
                 m_ctx,
                 m_rasterizerState,
@@ -543,8 +555,8 @@ void* GDXDX11RenderBackend::ExecuteRenderPass(
                 m_hasShadowPass,
                 m_iblValid, m_iblIrradiance, m_iblPrefiltered, m_iblBrdfLut,
                 registry,
-                opaqueQueue,
-                transparentQueue,
+                opaqueRef,
+                alphaRef,
                 meshStore,
                 matStore,
                 shaderStore,

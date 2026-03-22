@@ -4,7 +4,7 @@
 // Das Backend laed die Ergebnispuffer selbst als Texturen hoch.
 
 #include "GDXIBLBaker.h"
-#include "Debug.h"
+#include "Core/Debug.h"
 
 // stb_image: STB_IMAGE_IMPLEMENTATION wird von GDXTextureLoader.cpp gesetzt.
 // Hier nur includen — stbi_loadf ist dann sichtbar.

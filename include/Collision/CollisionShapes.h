@@ -18,7 +18,7 @@
 // ---------------------------------------------------------------------------
 
 #include <cstdint>
-#include "GDXMath.h"
+#include "Core/GDXMath.h"
 
 namespace GIDX
 {

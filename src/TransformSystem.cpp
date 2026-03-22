@@ -1,8 +1,8 @@
-#include "TransformSystem.h"
+#include "ECS/TransformSystem.h"
 #include "Components.h"
-#include "Debug.h"
-#include "GDXMath.h"
-#include "JobSystem.h"
+#include "Core/Debug.h"
+#include "Core/GDXMath.h"
+#include "Core/JobSystem.h"
 #include <vector>
 #include <atomic>
 #include <algorithm>

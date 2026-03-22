@@ -1,5 +1,6 @@
 #pragma once
 #include "ICommandList.h"
+#include "Core/GDXMath.h"
 #include "RenderCommand.h"
 
 #include <vector>
@@ -17,27 +18,27 @@ struct RenderQueue : public ICommandList
     }
 
     void Submit(MeshHandle mesh, MaterialHandle material, ShaderHandle shader,
-                uint32_t submeshIdx, EntityID ownerEntity,
-                const GIDX::Float4x4& worldMatrix,
-                RenderPass pass, uint32_t shaderSortID, uint32_t pipelineSortID, uint32_t materialSortID,
-                float depth = 0.0f,
-                bool receiveShadows = true,
-                const ResourceBindingSet* resourceBindings = nullptr,
-                const GDXPipelineStateDesc* pipelineState = nullptr)
+        uint32_t submeshIdx, EntityID ownerEntity,
+        const GIDX::Float4x4& worldMatrix,
+        RenderPass pass, uint32_t shaderSortID, uint32_t pipelineSortID, uint32_t materialSortID,
+        float depth = 0.0f,
+        bool receiveShadows = true,
+        const ResourceBindingSet* resourceBindings = nullptr,
+        const GDXPipelineStateDesc* pipelineState = nullptr)
     {
         RenderCommand cmd;
-        cmd.mesh         = mesh;
-        cmd.material     = material;
-        cmd.shader       = shader;
+        cmd.mesh = mesh;
+        cmd.material = material;
+        cmd.shader = shader;
         cmd.submeshIndex = submeshIdx;
-        cmd.ownerEntity  = ownerEntity;
-        cmd.pass         = pass;
-        cmd.worldMatrix  = worldMatrix;
+        cmd.ownerEntity = ownerEntity;
+        cmd.pass = pass;
+        cmd.worldMatrix = worldMatrix;
         if (resourceBindings)
             cmd.SetBindings(*resourceBindings,
-                            BuildResourceBindingScopeKey(*resourceBindings, ResourceBindingScope::Pass, shader.value),
-                            BuildResourceBindingScopeKey(*resourceBindings, ResourceBindingScope::Material, material.value),
-                            BuildResourceBindingScopeKey(*resourceBindings, ResourceBindingScope::Draw, ownerEntity.value));
+                BuildResourceBindingScopeKey(*resourceBindings, ResourceBindingScope::Pass, shader.value),
+                BuildResourceBindingScopeKey(*resourceBindings, ResourceBindingScope::Material, material.value),
+                BuildResourceBindingScopeKey(*resourceBindings, ResourceBindingScope::Draw, ownerEntity.value));
         if (pipelineState)
             cmd.SetPipelineState(*pipelineState);
         else

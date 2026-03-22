@@ -1,5 +1,5 @@
 #include "CameraSystem.h"
-#include "GDXMath.h"
+#include "Core/GDXMath.h"
 
 // ---------------------------------------------------------------------------
 // Statische Kern-Hilfsmethode — wird von Update() und GDXECSRenderer genutzt.

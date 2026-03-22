@@ -21,8 +21,8 @@
 #include "GDXShaderResource.h"
 #include "GDXTextureResource.h"
 #include "PostProcessResource.h"
-#include "Debug.h"
-#include "Registry.h"
+#include "Core/Debug.h"
+#include "ECS/Registry.h"
 
 #include <vector>
 #include <cstdint>

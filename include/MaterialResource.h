@@ -4,7 +4,7 @@
 
 #include <array>
 #include <cstdint>
-#include "GDXMath.h"
+#include "Core/GDXMath.h"
 
 struct MaterialData
 {

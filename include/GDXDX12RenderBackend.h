@@ -25,7 +25,8 @@ public:
                                          const ImageBuffer&, bool, const std::wstring&, TextureHandle fallback) override { return fallback; }
     bool UploadMesh(MeshAssetResource&) override { return false; }
     bool CreateMaterialGpu(MaterialResource&) override { return false; }
-    void UpdateLights(Registry&, FrameData&) override {}
+    void ExtractLightData(Registry&, FrameData&) override {}
+    void UploadLightConstants(const FrameData&) override {}
     void UpdateFrameConstants(const FrameData&) override {}
     void* ExecuteRenderPass(const BackendRenderPassDesc&,
                             Registry&,

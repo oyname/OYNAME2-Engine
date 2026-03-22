@@ -1,12 +1,12 @@
 #include "GDXDebugCullingRenderer.h"
-#include "GDXMath.h"
+#include "Core/GDXMath.h"
 #include "GDXPipelineState.h"
 #include "GDXShaderLayout.h"
 #include "GDXTextureSlots.h"
 #include "GDXResourceBinding.h"
 #include "BasicMeshGenerator.h"
 #include "CameraSystem.h"
-#include "Debug.h"
+#include "Core/Debug.h"
 
 #include <sstream>
 #include <algorithm>

@@ -1,6 +1,6 @@
 #include "GDXRenderFrameGraph.h"
 #include "IGDXRenderBackend.h"
-#include "Debug.h"
+#include "Core/Debug.h"
 
 #include <algorithm>
 #include <cassert>
@@ -49,8 +49,16 @@ MakeGraphicsExecFn(const RFG::ExecuteData* exec)
     {
         if (c.backend && exec->graphicsPass.enabled)
         {
-            c.backend->ExecuteRenderPass(exec->graphicsPass.desc, *c.registry,
-                exec->graphicsQueue, *c.meshStore, *c.matStore, *c.shaderStore, *c.texStore, c.rtStore);
+            // Attach pre-split queues onto the pass descriptor.
+            // The backend must not re-split these — it executes them as-is.
+            BackendRenderPassDesc desc = exec->graphicsPass.desc;
+            desc.opaqueList = &exec->opaqueQueue;
+            desc.alphaList  = &exec->alphaQueue;
+
+            // Use opaqueQueue as the commandList argument for legacy shadow-path
+            // compatibility inside ExecuteRenderPass; the desc queues take precedence.
+            c.backend->ExecuteRenderPass(desc, *c.registry,
+                exec->opaqueQueue, *c.meshStore, *c.matStore, *c.shaderStore, *c.texStore, c.rtStore);
             s->graphicsPassExecuted = true;
         }
     };

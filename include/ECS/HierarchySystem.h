@@ -1,7 +1,7 @@
 #pragma once
 #include "Components.h"
 #include "Registry.h"
-#include "GDXMath.h"
+#include "Core/GDXMath.h"
 
 // ---------------------------------------------------------------------------
 // HierarchySystem — statische Hilfsfunktionen für Parent-Kind-Hierarchien.

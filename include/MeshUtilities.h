@@ -1,6 +1,6 @@
 #pragma once
 
-#include "GDXMath.h"
+#include "Core/GDXMath.h"
 #include "SubmeshData.h"
 #include "MeshAssetResource.h"
 

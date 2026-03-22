@@ -1,12 +1,12 @@
 #pragma once
 #include "Handle.h"
-#include "ECSTypes.h"
+#include "ECS/ECSTypes.h"
 #include "GDXResourceBinding.h"
 #include "GDXPipelineState.h"
 #include "MaterialResource.h"
 
 #include <cstdint>
-#include "GDXMath.h"
+#include "Core/GDXMath.h"
 
 enum class RenderPass : uint8_t
 {

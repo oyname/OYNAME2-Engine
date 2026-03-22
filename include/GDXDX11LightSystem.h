@@ -1,8 +1,9 @@
 #pragma once
 
-#include "Registry.h"
+#include "ECS/Registry.h"
 #include "FrameData.h"
 #include "Components.h"
+#include "RenderComponents.h"
 
 // Vorwärtsdeklarationen — kein <d3d11.h> im Header nötig.
 struct ID3D11Device;
@@ -30,8 +31,16 @@ public:
 
     bool Init(ID3D11Device* device);
     void Shutdown();
-    void Update(Registry& registry, FrameData& frame, ID3D11DeviceContext* ctx);
-    void Upload(const FrameData& frame, ID3D11DeviceContext* ctx);
+
+    // Scene extraction — CPU only, no GPU side effects.
+    // Scans ECS registry, fills FrameData.lights, lightCount, shadow matrices etc.
+    // Call during the frame-snapshot / planning phase.
+    void FillFrameData(Registry& registry, FrameData& frame);
+
+    // GPU upload — uploads the already-filled FrameData to the light cbuffer (b3).
+    // Call once per view just before executing draw calls.
+    void UploadLightBuffer(const FrameData& frame, ID3D11DeviceContext* ctx);
+
     bool IsReady() const { return m_lightBuffer != nullptr; }
 
 private:

@@ -40,7 +40,8 @@ public:
     bool UploadMesh(MeshAssetResource& mesh) override;
     bool CreateMaterialGpu(MaterialResource& mat) override;
 
-    void UpdateLights(Registry& registry, FrameData& frame) override;
+    void ExtractLightData(Registry& registry, FrameData& frame) override;
+    void UploadLightConstants(const FrameData& frame) override;
     void UpdateFrameConstants(const FrameData& frame) override;
 
     void* ExecuteRenderPass(const BackendRenderPassDesc& passDesc,

@@ -1,5 +1,5 @@
-#include "JobSystem.h"
-#include "Debug.h"
+#include "Core/JobSystem.h"
+#include "Core/Debug.h"
 
 #include <algorithm>
 

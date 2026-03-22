@@ -12,7 +12,7 @@
 #include "GDXTextureResource.h"
 #include "GDXRenderTargetResource.h"
 #include "PostProcessResource.h"
-#include "Registry.h"
+#include "ECS/Registry.h"
 
 #include <vector>
 #include <string>
@@ -138,14 +138,22 @@ struct ExecuteData
     PassExec    shadowPass{};
     PassExec    graphicsPass{};
     RenderQueue shadowQueue{};
-    RenderQueue graphicsQueue{};
+
+    // Pre-split by the planning layer (BuildPreparedExecutionQueues).
+    // opaqueQueue  — RenderPass::Opaque commands (depth write on).
+    // alphaQueue   — RenderPass::Transparent commands (depth write off, sorted back-to-front).
+    // The backend consumes these directly; it must not re-split or re-sort.
+    RenderQueue opaqueQueue{};
+    RenderQueue alphaQueue{};
+
     PresentExec presentation{};
 
     void Reset()
     {
         frame = {};
         shadowPass.Reset(); graphicsPass.Reset();
-        shadowQueue.Clear(); graphicsQueue.Clear();
+        shadowQueue.Clear();
+        opaqueQueue.Clear(); alphaQueue.Clear();
         presentation.Reset();
     }
 };
@@ -177,14 +185,9 @@ struct ViewPassData
         realCameraFrame = {};
     }
 
-    RenderQueue BuildGraphicsQueue() const
-    {
-        RenderQueue q;
-        q.commands = opaqueQueue.commands;
-        q.commands.insert(q.commands.end(),
-            transparentQueue.commands.begin(), transparentQueue.commands.end());
-        return q;
-    }
+    // opaqueQueue and transparentQueue are kept separate intentionally.
+    // BuildPreparedExecutionQueues() in GDXECSRenderer copies them directly into
+    // execute.opaqueQueue / execute.alphaQueue — no merge needed.
 };
 
 enum class NodeKind : uint8_t

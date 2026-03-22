@@ -1,14 +1,14 @@
 #include "GDXDX11RenderExecutor.h"
 #include "GDXVertexFlags.h"
 #include "SubmeshData.h"
-#include "Debug.h"
+#include "Core/Debug.h"
 #include "GDXTextureSlots.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <d3d11.h>
-#include "GDXMath.h"
-#include "GDXMathHelpers.h"
+#include "Core/GDXMath.h"
+#include "Core/GDXMathHelpers.h"
 #include <cstring>
 
 // ---------------------------------------------------------------------------

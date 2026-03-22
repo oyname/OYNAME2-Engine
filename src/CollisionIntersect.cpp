@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------------------
 
 #include "Collision/CollisionIntersect.h"
-#include "GDXMath.h"
+#include "Core/GDXMath.h"
 #include <cmath>
 #include <algorithm>
 

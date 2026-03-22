@@ -1,7 +1,7 @@
 #include "CollisionSystem.h"
 #include "CollisionBodyComponent.h"
 #include "Components.h"
-#include "GDXMath.h"
+#include "Core/GDXMath.h"
 
 #include <cmath>
 #include <algorithm>

@@ -3,7 +3,7 @@
 #include <vector>
 #include <cstdint>
 #include <cmath>
-#include "GDXMath.h"
+#include "Core/GDXMath.h"
 #include "GDXVertexFlags.h"
 
 using namespace GIDX;

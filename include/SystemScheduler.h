@@ -1,6 +1,6 @@
 #pragma once
 
-#include "JobSystem.h"
+#include "Core/JobSystem.h"
 
 #include <cstdint>
 #include <functional>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Registry.h"
+#include "ECS/Registry.h"
 #include "FrameData.h"
 #include "ICommandList.h"
 #include "RenderCommand.h"
@@ -10,6 +10,7 @@
 #include "GDXShaderResource.h"
 #include "GDXTextureResource.h"
 #include "Components.h"
+#include "RenderComponents.h"
 #include "GDXResourceState.h"
 #include "GDXPipelineCache.h"
 

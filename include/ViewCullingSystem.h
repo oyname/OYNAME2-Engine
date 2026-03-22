@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Registry.h"
+#include "ECS/Registry.h"
 #include "RenderViewData.h"
-#include "JobSystem.h"
+#include "Core/JobSystem.h"
 
 class ViewCullingSystem
 {

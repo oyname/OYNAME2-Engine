@@ -1,8 +1,9 @@
 #pragma once
 
-#include "ECSTypes.h"
+#include "ECS/ECSTypes.h"
 #include "FrameData.h"
 #include "Components.h"
+#include "RenderComponents.h"
 
 #include <vector>
 #include <cstdint>

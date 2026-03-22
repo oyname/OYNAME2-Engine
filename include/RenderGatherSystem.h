@@ -1,6 +1,7 @@
 #pragma once
-#include "Registry.h"
+#include "ECS/Registry.h"
 #include "Components.h"
+#include "RenderComponents.h"
 #include "FrameData.h"
 #include "RenderQueue.h"
 #include "ResourceStore.h"
@@ -9,7 +10,7 @@
 #include "GDXShaderResource.h"
 #include "CameraSystem.h"
 #include "RenderViewData.h"
-#include "JobSystem.h"
+#include "Core/JobSystem.h"
 #include <functional>
 #include <unordered_map>
 #include <vector>

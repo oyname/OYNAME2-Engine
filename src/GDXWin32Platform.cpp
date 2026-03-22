@@ -1,6 +1,6 @@
 #include "GDXWin32Platform.h"
 #include "GDXWin32Window.h"
-#include "Debug.h"
+#include "Core/Debug.h"
 
 #include <chrono>
 

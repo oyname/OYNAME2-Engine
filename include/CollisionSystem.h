@@ -13,7 +13,8 @@
 // Kein Singleton, kein globaler State.
 // ---------------------------------------------------------------------------
 
-#include "Registry.h"
+#include "ECS/Registry.h"
+#include "Core/GDXMath.h"
 #include "CollisionBodyComponent.h"
 #include "Collision/CollisionWorld.h"
 #include "Collision/CollisionTypes.h"
@@ -28,8 +29,8 @@ public:
     // Haupteinsprungpunkt — einmal pro Frame nach TransformSystem::Update().
     // filter steuert welche Layer bei ComputeContacts berücksichtigt werden.
     void Update(Registry& registry,
-                GIDX::CollisionWorld& world,
-                const GIDX::CollisionQueryFilter& filter = { GIDX::COLLISION_LAYER_ALL, {} });
+        GIDX::CollisionWorld& world,
+        const GIDX::CollisionQueryFilter& filter = { GIDX::COLLISION_LAYER_ALL, {} });
 
     // Zerstört alle registrierten Bodies und räumt die World auf.
     // Aufrufen wenn die Szene gewechselt wird oder die Engine herunterfährt.

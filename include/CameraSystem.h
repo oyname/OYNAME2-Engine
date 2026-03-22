@@ -1,6 +1,7 @@
 #pragma once
-#include "Registry.h"
+#include "ECS/Registry.h"
 #include "Components.h"
+#include "RenderComponents.h"
 #include "FrameData.h"
 
 // ---------------------------------------------------------------------------

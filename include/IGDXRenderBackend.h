@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Registry.h"
+#include "ECS/Registry.h"
 #include "ResourceStore.h"
 #include "MeshAssetResource.h"
 #include "MaterialResource.h"
@@ -60,7 +60,15 @@ public:
     virtual bool UploadMesh(MeshAssetResource& mesh) = 0;
     virtual bool CreateMaterialGpu(MaterialResource& mat) = 0;
 
-    virtual void UpdateLights(Registry& registry, FrameData& frame) = 0;
+    // Scene extraction — CPU only, no GPU side effects.
+    // Fills frame.lights, lightCount, shadowViewProjMatrix, shadowCascade* etc.
+    // Called during frame-snapshot capture, before any backend execution.
+    virtual void ExtractLightData(Registry& registry, FrameData& frame) = 0;
+
+    // GPU upload of the already-filled FrameData light data to cbuffer b3.
+    // Called by the backend at the start of each view's execution, not during planning.
+    virtual void UploadLightConstants(const FrameData& frame) = 0;
+
     virtual void UpdateFrameConstants(const FrameData& frame) = 0;
 
     virtual void* ExecuteRenderPass(const BackendRenderPassDesc& passDesc,

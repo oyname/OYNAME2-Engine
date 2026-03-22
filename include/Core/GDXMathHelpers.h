@@ -7,7 +7,7 @@
 // Header ohne DirectXMath.h bereitgestellt werden.
 // ---------------------------------------------------------------------------
 
-#include "GDXMath.h"
+#include "Core/GDXMath.h"
 #include <DirectXMath.h>
 
 namespace GDXMathHelpers

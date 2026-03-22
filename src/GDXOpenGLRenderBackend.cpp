@@ -1,6 +1,6 @@
 #include "GDXOpenGLRenderBackend.h"
 #include "GDXOpenGLIncludes.h"
-#include "Debug.h"
+#include "Core/Debug.h"
 
 #include <utility>
 
@@ -114,11 +114,16 @@ bool GDXOpenGLRenderBackend::CreateMaterialGpu(MaterialResource&)
     return true;
 }
 
-void GDXOpenGLRenderBackend::UpdateLights(Registry& registry, FrameData& frame)
+void GDXOpenGLRenderBackend::ExtractLightData(Registry& registry, FrameData& frame)
 {
     (void)registry;
     frame.lightCount = 0u;
     frame.hasShadowPass = false;
+}
+
+void GDXOpenGLRenderBackend::UploadLightConstants(const FrameData& /*frame*/)
+{
+    // OpenGL-Backend: light cbuffer upload not yet implemented.
 }
 
 void GDXOpenGLRenderBackend::UpdateFrameConstants(const FrameData&)

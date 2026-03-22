@@ -1,5 +1,5 @@
-#include "HierarchySystem.h"
-#include "GDXMath.h"
+#include "ECS/HierarchySystem.h"
+#include "Core/GDXMath.h"
 #include <vector>
 #include <cstring>
 

@@ -7,8 +7,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <d3d11.h>
-#include "GDXMath.h"
-#include "GDXMathHelpers.h"
+#include "Core/GDXMath.h"
+#include "Core/GDXMathHelpers.h"
 #include <cstring>
 #include <cmath>
 #include <algorithm>
@@ -141,7 +141,7 @@ void GDXDX11LightSystem::Shutdown()
     if (m_lightBuffer) { m_lightBuffer->Release(); m_lightBuffer = nullptr; }
 }
 
-void GDXDX11LightSystem::Update(Registry& registry, FrameData& frame, ID3D11DeviceContext* ctx)
+void GDXDX11LightSystem::FillFrameData(Registry& registry, FrameData& frame)
 {
     frame.lightCount        = 0u;
     frame.hasShadowPass     = false;
@@ -234,10 +234,10 @@ void GDXDX11LightSystem::Update(Registry& registry, FrameData& frame, ID3D11Devi
             }
         });
 
-    if (ctx) UploadBuffer(ctx, frame);
+    // GPU upload intentionally absent here — call UploadLightBuffer() at execution time.
 }
 
-void GDXDX11LightSystem::Upload(const FrameData& frame, ID3D11DeviceContext* ctx)
+void GDXDX11LightSystem::UploadLightBuffer(const FrameData& frame, ID3D11DeviceContext* ctx)
 {
     UploadBuffer(ctx, frame);
 }

@@ -1,5 +1,5 @@
 #include "RenderGatherSystem.h"
-#include "Debug.h"
+#include "Core/Debug.h"
 
 #include <algorithm>
 #include <utility>

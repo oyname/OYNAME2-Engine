@@ -1,7 +1,8 @@
 #include "ViewCullingSystem.h"
 
 #include "Components.h"
-#include "ComponentPool.h"
+#include "RenderComponents.h"
+#include "ECS/ComponentPool.h"
 
 #include <algorithm>
 #include <cmath>

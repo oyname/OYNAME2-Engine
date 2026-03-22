@@ -18,7 +18,7 @@
 //   Left/Right  — Yaw
 // ---------------------------------------------------------------------------
 
-#include "GDXMath.h"
+#include "Core/GDXMath.h"
 #include <cstdint>
 
 struct FrameData;   // forward — vollständige Definition in FrameData.h

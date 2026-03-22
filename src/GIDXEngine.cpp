@@ -1,5 +1,5 @@
 #include "GIDXEngine.h"
-#include "Debug.h"
+#include "Core/Debug.h"
 #include "GDXInput.h"
 #include "GDXECSRenderer.h"
 

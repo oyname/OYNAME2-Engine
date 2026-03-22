@@ -2,7 +2,7 @@
 #include "IGDXWin32NativeAccess.h"
 #include "GDXWin32NativeHandles.h"
 #include "IGDXOpenGLContext.h"
-#include "Debug.h"
+#include "Core/Debug.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>

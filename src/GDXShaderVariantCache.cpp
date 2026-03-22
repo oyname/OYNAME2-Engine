@@ -1,7 +1,7 @@
 #include "GDXShaderVariantCache.h"
 #include "IGDXRenderBackend.h"
 #include "GDXVertexFlags.h"
-#include "Debug.h"
+#include "Core/Debug.h"
 
 namespace
 {
