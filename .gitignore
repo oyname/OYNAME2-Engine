@@ -14,6 +14,7 @@ obj/
 
 # Ignore app folder
 /app/
+/media/
 
 # Optional: VS Code
 .vscode/

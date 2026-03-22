@@ -53,7 +53,17 @@ public:
     ShaderHandle DefaultShader() const { return m_defaultShader; }
     ShaderHandle ShadowShader()  const { return m_shadowShader;  }
 
-    void Clear() { m_cache.clear(); }
+    // Leert den Varianten-Cache und nullt Backend/Store-Zeiger.
+    // Muss vor backend->Shutdown() aufgerufen werden — danach sind
+    // die gecachten ShaderHandles stale und dürfen nicht mehr aufgelöst werden.
+    void Clear()
+    {
+        m_cache.clear();
+        m_backend     = nullptr;
+        m_shaderStore = nullptr;
+        m_defaultShader = ShaderHandle::Invalid();
+        m_shadowShader  = ShaderHandle::Invalid();
+    }
 
 private:
     ShaderHandle LoadInternal(const std::wstring& vsFile,

@@ -14,6 +14,16 @@
 //
 // Generation: every time a slot is recycled the generation byte is
 // incremented.  A stale ID (old generation) is rejected by the Registry.
+//
+// Known limitation — generation wrap-around:
+//   Generation is 8 bits (values 1–255; 0 is reserved for NULL_ENTITY).
+//   After 255 Destroy/Create cycles on the same index slot, the generation
+//   wraps from 255 back to 1 (0 is skipped). From that point on, an ID
+//   issued in a previous full cycle becomes indistinguishable from a current
+//   one — use-after-destroy can go undetected for that slot.
+//   For typical game workloads (entity counts << 10k, short lifetimes) this
+//   is not a problem. If very high slot-reuse rates are expected, widen
+//   EntityGeneration to uint16_t and GEN_BITS to 16.
 // ---------------------------------------------------------------------------
 using EntityIndex = uint32_t;
 using EntityGeneration = uint8_t;

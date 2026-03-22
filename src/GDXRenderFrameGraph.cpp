@@ -3,6 +3,7 @@
 #include "Debug.h"
 
 #include <algorithm>
+#include <cassert>
 #include <vector>
 
 // ---------------------------------------------------------------------------
@@ -214,10 +215,12 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
         {
             if (c.backend &&
                 exec->presentation.postProcess.enabled &&
-                exec->presentation.postProcess.sceneTexture.IsValid() &&
-                c.postProcessPassOrder && c.postProcessStore)
+                exec->presentation.postProcess.sceneTexture.IsValid())
             {
-                // Bug 4 fix: presentationExecuted nur bei tatsächlichem Erfolg setzen.
+                // postProcessStore/PassOrder sind immer gesetzt wenn backend gesetzt ist —
+                // null hier ist ein Programmierfehler im ExecContext-Build, kein Laufzeitfall.
+                assert(c.postProcessPassOrder != nullptr);
+                assert(c.postProcessStore     != nullptr);
                 const bool ok = c.backend->ExecutePostProcessChain(
                     *c.postProcessPassOrder, *c.postProcessStore, *c.texStore,
                     exec->presentation.postProcess.sceneTexture,

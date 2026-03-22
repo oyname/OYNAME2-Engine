@@ -355,9 +355,27 @@ bool GDXECSRenderer::SetPostProcessEnabled(PostProcessHandle h, bool enabled)
 
 void GDXECSRenderer::ClearPostProcessPasses()
 {
-    // GPU-Ressourcen aller registrierten Passes freigeben, dann Order leeren.
+    // Gibt GPU-Ressourcen (Dx11PostProcessRuntime) und Store-Slots aller Passes frei.
+    // m_mainScenePostProcessTarget bleibt absichtlich intakt: der Intermediate-RT ist
+    // unabhängig von der Pass-Kette und wird bei der nächsten PrepareMainViewPostProcess-
+    // Presentation auf Größen-Validität geprüft und ggf. recycled oder neu erzeugt.
     if (m_backend)
+    {
         m_backend->DestroyPostProcessPasses(m_postProcessStore);
+    }
+    else
+    {
+        // Backend nicht verfügbar — GPU-Ressourcen sind bereits weg oder werden es
+        // durch den Backend-Destruktor. Store-Einträge explizit bereinigen, damit
+        // keine Stale-Handles in m_postProcessPassOrder verbleiben.
+        std::vector<PostProcessHandle> stale;
+        m_postProcessStore.ForEach([&stale](PostProcessHandle h, PostProcessResource&)
+        {
+            stale.push_back(h);
+        });
+        for (const PostProcessHandle h : stale)
+            m_postProcessStore.Release(h);
+    }
     m_postProcessPassOrder.clear();
 }
 
@@ -958,6 +976,8 @@ void GDXECSRenderer::EndFrame()
         SR_BACKEND | SR_STATS,
         [this]()
         {
+            // ExecContext-Invariante: alle Store-Zeiger auf m_-Member — stabil für
+            // die gesamte Renderer-Lifetime, nie null solange backend gesetzt ist.
             RFG::ExecContext ectx{};
             ectx.backend             = m_backend.get();
             ectx.registry            = &m_registry;
@@ -1022,19 +1042,46 @@ void GDXECSRenderer::Shutdown()
 
     if (m_backend)
     {
-        // Bug 2 fix: mainScenePostProcessTarget vor Shutdown freigeben,
-        // sonst lecken colorTexture/rtv/dsv/depthTexture.
-        if (m_mainScenePostProcessTarget.IsValid())
+        // Alle Render-Targets explizit destroyen — GDXRenderTargetResource hält
+        // Raw-Pointer (colorTexture/rtv/dsv/depthTexture). ResourceStore::~ResourceStore()
+        // würde sie ohne COM-Release fallen lassen. DestroyRenderTarget() gibt auch die
+        // exposedTexture aus m_texStore frei, bevor Shutdown() texStore.ForEach aufruft.
         {
-            m_backend->DestroyRenderTarget(m_mainScenePostProcessTarget, m_rtStore, m_texStore);
+            std::vector<RenderTargetHandle> rtHandles;
+            m_rtStore.ForEach([&rtHandles](RenderTargetHandle h, GDXRenderTargetResource&)
+            {
+                rtHandles.push_back(h);
+            });
+            for (const RenderTargetHandle h : rtHandles)
+                m_backend->DestroyRenderTarget(h, m_rtStore, m_texStore);
             m_mainScenePostProcessTarget = RenderTargetHandle::Invalid();
         }
+
+        // Mesh-Store vor Shutdown sweepen: ~MeshAssetResource() feuert
+        // gpuReleaseCallback (ID3D11Buffer::Release) — muss passieren solange
+        // das D3D11-Device noch lebt. Danach ist der Store leer; der Destruktor
+        // wird später als No-Op ausgeführt (gpuBuffers bereits genullt).
+        {
+            std::vector<MeshHandle> meshHandles;
+            m_meshStore.ForEach([&meshHandles](MeshHandle h, MeshAssetResource&)
+            {
+                meshHandles.push_back(h);
+            });
+            for (const MeshHandle h : meshHandles)
+                m_meshStore.Release(h);
+        }
+
+        // ShaderVariantCache vor Backend-Shutdown leeren: cached Handles zeigen
+        // in m_shaderStore — der Store wird in Shutdown() freigegeben.
+        m_shaderCache.Clear();
+        m_defaultShader = ShaderHandle::Invalid();
+        m_shadowShader  = ShaderHandle::Invalid();
+
         m_backend->DestroyPostProcessPasses(m_postProcessStore);
         m_backend->Shutdown(m_matStore, m_shaderStore, m_texStore);
         m_backend.reset();
     }
 
-    m_shaderCache.Clear();
     m_postProcessPassOrder.clear();
     m_initialized = false;
 }

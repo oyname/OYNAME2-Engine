@@ -196,6 +196,10 @@ enum class NodeKind : uint8_t
 
 // ExecContext — vollständig hier definiert damit Node::executeFn instantiiert werden kann.
 // GDXRenderFrameGraph.h includet RenderFramePipeline.h, nicht umgekehrt.
+//
+// Invariante: Wenn backend != nullptr, müssen alle Store-Zeiger != nullptr sein.
+// postProcessPassOrder/postProcessStore dürfen nur dann nullptr sein, wenn
+// garantiert kein Presentation-Node mit postProcess.enabled=true im Graph ist.
 struct ExecContext
 {
     IGDXRenderBackend* backend = nullptr;

@@ -189,6 +189,7 @@ private:
 
     size_t EnsureDenseSlot(EntityID id)
     {
+        assert(id.IsValid() && "ComponentPool::EnsureDenseSlot: invalid EntityID");
         EnsureSparseCapacity(id.Index());
 
         const size_t denseIndex = DenseIndex(id);

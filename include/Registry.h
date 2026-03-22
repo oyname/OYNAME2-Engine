@@ -4,7 +4,6 @@
 #include "ComponentPool.h"
 
 #include <memory>
-#include <typeindex>    // EntityID-Hash bleibt in ECSTypes; typeindex hier nicht mehr gebraucht
 #include <vector>
 #include <cassert>
 #include <functional>
@@ -42,6 +41,7 @@ public:
 
     void DestroyEntity(EntityID id)
     {
+        assert(id.IsValid() && "DestroyEntity: NULL_ENTITY or invalid ID");
         if (!IsAlive(id))
             return;
 
