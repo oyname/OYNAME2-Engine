@@ -163,12 +163,18 @@ struct ViewPassData
     RenderQueue transparentQueue{};
     RenderQueue shadowQueue{};
 
+    // Echte Kamera-FrameData — unverändert von CaptureFrameSnapshot.
+    // Wird von AppendDebugVisibleSet für das Frustum genutzt wenn
+    // Debug-Kamera aktiv ist und prepared.frame überschrieben wurde.
+    FrameData   realCameraFrame{};
+
     void Reset()
     {
         prepared.Reset(); execute.Reset(); stats.Reset();
         graphicsVisibleSet = {}; shadowVisibleSet = {};
         graphicsGatherChunks.clear(); shadowGatherChunks.clear();
         opaqueQueue.Clear(); transparentQueue.Clear(); shadowQueue.Clear();
+        realCameraFrame = {};
     }
 
     RenderQueue BuildGraphicsQueue() const

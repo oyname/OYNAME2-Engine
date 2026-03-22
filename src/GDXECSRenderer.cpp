@@ -421,6 +421,12 @@ void GDXECSRenderer::PrepareMainViewData(const FrameData& frameSnapshot, RFG::Vi
     outView.Reset();
 
     outView.prepared.frame = frameSnapshot;
+    outView.realCameraFrame = frameSnapshot;  // echte Kamera — immer unverändert
+
+    // Debug-Kamera überschreibt View/Proj des Main-Views wenn aktiviert.
+    // Shadow, RTT und Gameplay laufen weiter mit der echten frameSnapshot-Kamera.
+    if (m_debugCamera.IsEnabled())
+        m_debugCamera.OverrideFrameData(outView.prepared.frame);
 
     outView.prepared.graphicsView = {};
     outView.prepared.graphicsView.type = RenderViewType::Main;
@@ -797,8 +803,15 @@ void GDXECSRenderer::BuildPreparedExecutionQueues(RFG::ViewPassData& preparedVie
     preparedView.execute.graphicsQueue = preparedView.BuildGraphicsQueue();
 
     const RFG::PassExec& passExecution = preparedView.execute.graphicsPass;
+
+    // Frustum-Zeichnung nutzt die ECHTE Kamera-Matrix (realCameraFrame),
+    // nicht die möglicherweise überschriebene Debug-Kamera-Matrix.
+    // Dafür passen wir graphicsView.frame temporär an.
+    RenderViewData graphicsViewForDebug = preparedView.prepared.graphicsView;
+    graphicsViewForDebug.frame = preparedView.realCameraFrame;
+
     if (passExecution.appendGraphicsVisibleSet)
-        AppendDebugVisibleSet(preparedView.execute.graphicsQueue, preparedView.graphicsVisibleSet, preparedView.prepared.graphicsView, &preparedView.stats);
+        AppendDebugVisibleSet(preparedView.execute.graphicsQueue, preparedView.graphicsVisibleSet, graphicsViewForDebug, &preparedView.stats);
 
     if (passExecution.appendShadowVisibleSet && preparedView.prepared.shadowEnabled)
         AppendDebugVisibleSet(preparedView.execute.graphicsQueue, preparedView.shadowVisibleSet, preparedView.prepared.shadowView, &preparedView.stats);

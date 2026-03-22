@@ -186,7 +186,8 @@ float CalculateShadowCSM(float3 worldPos, float3 N, float3 lightDir, float viewD
     // in den Light-Space projiziert wird.  Robuster als reiner Depth-Bias für flache
     // Flächen (NdotL ≈ 1) und streifende Lichtwinkel (NdotL ≈ 0).
     // Bei NdotL≈1 (Licht senkrecht) ist Offset klein; bei NdotL≈0 (streifend) groß.
-    float normalOffset = 0.08f * (1.0f - NdotL);
+    // Hardware-Bias in GDXShadowMap.cpp ist minimal — kein doppelter Bias.
+    float normalOffset = 0.01f * (1.0f - NdotL);
     float3 biasedPos = worldPos + normalize(N) * normalOffset;
 
     float4 lightSpacePos = mul(float4(biasedPos, 1.0f), gCascadeViewProj[cascade]);
@@ -205,10 +206,9 @@ float CalculateShadowCSM(float3 worldPos, float3 N, float3 lightDir, float viewD
     gShadowMap.GetDimensions(tw2, th2, elems2);
     float texelSize = 1.0f / float(tw2);
 
-    // Cascade-skalierter Depth-Bias als zweite Sicherungslinie.
-    // Weite Kaskaden haben größere Texel-Footprints → brauchen mehr Bias.
-    float cascadeScale = 1.0f + float(cascade) * 0.5f;
-    float bias = max(0.003f * (1.0f - NdotL), 0.0003f) * cascadeScale;
+    // Minimaler Depth-Bias — normalOffset übernimmt die Hauptarbeit.
+    // Kein cascadeScale-Multiplikator mehr — verhindert Peter Panning in weiten Kaskaden.
+    float bias  = 0.0005f;
     float depth = proj.z - bias;
 
     float shadow = 0.0f;

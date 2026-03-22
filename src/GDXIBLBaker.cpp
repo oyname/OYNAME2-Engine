@@ -13,6 +13,9 @@
 #include <cmath>
 #include <cstring>
 #include <algorithm>
+#include <thread>
+#include <future>
+#include <atomic>
 
 // Windows definiert min/max als Makros — mit (std::max) umgehen.
 #ifdef min
@@ -135,41 +138,71 @@ static void SampleGGX(float xi1, float xi2, float roughness,
 // ---------------------------------------------------------------------------
 // Irradiance-Cubemap (Lambertian Convolution)
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Minimaler Thread-Pool — Tasks per Work-Item ohne Overhead.
+// Jede Row (face,y) ist ein unabhängiger Task.
+// ---------------------------------------------------------------------------
+static void RunParallel(uint32_t totalTasks, std::function<void(uint32_t)> fn)
+{
+    const uint32_t nCores = (std::max)(1u, (uint32_t)std::thread::hardware_concurrency());
+    std::atomic<uint32_t> next{0u};
+    std::vector<std::thread> threads;
+    threads.reserve(nCores);
+    for (uint32_t t = 0; t < nCores; ++t)
+    {
+        threads.emplace_back([&]()
+        {
+            for (;;)
+            {
+                uint32_t i = next.fetch_add(1u, std::memory_order_relaxed);
+                if (i >= totalTasks) break;
+                fn(i);
+            }
+        });
+    }
+    for (auto& t : threads) t.join();
+}
+
 static void BakeIrradiance(const float* hdr, int hw, int hh,
                            uint32_t size, std::vector<float>& out)
 {
     const uint32_t SAMPLES = 2048u;
     out.assign(6u * size * size * 4u, 0.0f);
 
-    for (uint32_t face = 0; face < 6; ++face)
-    for (uint32_t y    = 0; y    < size; ++y)
-    for (uint32_t x    = 0; x    < size; ++x)
+    // Task = eine Row (face*size + y) — feingranular, alle Kerne ausgelastet.
+    const uint32_t totalRows = 6u * size;
+    RunParallel(totalRows, [&](uint32_t taskIdx)
     {
-        float u = (x+0.5f)/float(size), v = (y+0.5f)/float(size);
-        float nx,ny,nz; FaceUVToDir((int)face, u, v, nx,ny,nz);
-        float len = sqrtf(nx*nx+ny*ny+nz*nz);
-        nx/=len; ny/=len; nz/=len;
-
-        float tx,ty,tz,bx,by,bz;
-        MakeONB(nx,ny,nz, tx,ty,tz, bx,by,bz);
-
-        float aR=0,aG=0,aB=0;
-        for (uint32_t i = 0; i < SAMPLES; ++i)
+        const uint32_t face = taskIdx / size;
+        const uint32_t y    = taskIdx % size;
+        for (uint32_t x = 0; x < size; ++x)
         {
-            float xi1,xi2; Hammersley(i,SAMPLES,xi1,xi2);
-            float cosT = sqrtf(xi2), sinT = sqrtf(1.0f-xi2);
-            float phi  = TWO_PI*xi1;
-            float lx = sinT*cosf(phi)*tx + cosT*nx + sinT*sinf(phi)*bx;
-            float ly = sinT*cosf(phi)*ty + cosT*ny + sinT*sinf(phi)*by;
-            float lz = sinT*cosf(phi)*tz + cosT*nz + sinT*sinf(phi)*bz;
-            float r,g,b; SampleEquirect(hdr,hw,hh,lx,ly,lz,r,g,b);
-            aR+=r; aG+=g; aB+=b;
+            float u = (x+0.5f)/float(size), v = (y+0.5f)/float(size);
+            float nx,ny,nz; FaceUVToDir((int)face, u, v, nx,ny,nz);
+            float len = sqrtf(nx*nx+ny*ny+nz*nz);
+            nx/=len; ny/=len; nz/=len;
+
+            float tx,ty,tz,bx,by,bz;
+            MakeONB(nx,ny,nz, tx,ty,tz, bx,by,bz);
+
+            float aR=0,aG=0,aB=0;
+            for (uint32_t i = 0; i < SAMPLES; ++i)
+            {
+                float xi1,xi2; Hammersley(i,SAMPLES,xi1,xi2);
+                float cosT = sqrtf(xi2), sinT = sqrtf(1.0f-xi2);
+                float phi  = TWO_PI*xi1;
+                float lx = sinT*cosf(phi)*tx + cosT*nx + sinT*sinf(phi)*bx;
+                float ly = sinT*cosf(phi)*ty + cosT*ny + sinT*sinf(phi)*by;
+                float lz = sinT*cosf(phi)*tz + cosT*nz + sinT*sinf(phi)*bz;
+                float r,g,b; SampleEquirect(hdr,hw,hh,lx,ly,lz,r,g,b);
+                aR+=r; aG+=g; aB+=b;
+            }
+            float inv = 1.0f/float(SAMPLES);
+            uint32_t idx = (face*size*size + y*size + x)*4;
+            out[idx+0]=aR*inv; out[idx+1]=aG*inv;
+            out[idx+2]=aB*inv; out[idx+3]=1.0f;
         }
-        float inv = 1.0f/float(SAMPLES);
-        uint32_t idx = (face*size*size + y*size + x)*4;
-        out[idx+0]=aR*inv; out[idx+1]=aG*inv;
-        out[idx+2]=aB*inv; out[idx+3]=1.0f;
-    }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -185,55 +218,65 @@ static void BakePrefiltered(const float* hdr, int hw, int hh,
     { uint32_t ms=(std::max)(size>>m,1u); total += 6u*ms*ms*4u; }
     out.assign(total, 0.0f);
 
-    uint32_t offset = 0;
+    // Offset-Array vorab berechnen.
+    std::vector<uint32_t> mipOffsets(mipLevels);
+    { uint32_t off=0; for (uint32_t m=0;m<mipLevels;++m)
+      { mipOffsets[m]=off; uint32_t ms=(std::max)(size>>m,1u); off+=6u*ms*ms*4u; } }
+
     for (uint32_t mip = 0; mip < mipLevels; ++mip)
     {
         uint32_t ms = (std::max)(size>>mip, 1u);
         float roughness = (mipLevels<=1) ? 0.0f : float(mip)/float(mipLevels-1);
+        uint32_t offset = mipOffsets[mip];
 
-        for (uint32_t face = 0; face < 6; ++face)
-        for (uint32_t y    = 0; y    < ms; ++y)
-        for (uint32_t x    = 0; x    < ms; ++x)
+        // Task = eine Row (face*ms + y) — alle Kerne pro Mip ausgelastet.
+        const uint32_t totalRows = 6u * ms;
+        RunParallel(totalRows, [&](uint32_t taskIdx)
         {
-            float u=(x+0.5f)/float(ms), v=(y+0.5f)/float(ms);
-            float nx,ny,nz; FaceUVToDir((int)face,u,v,nx,ny,nz);
-            float len=sqrtf(nx*nx+ny*ny+nz*nz);
-            nx/=len; ny/=len; nz/=len;
-            float vx=nx,vy=ny,vz=nz;
-            float tx,ty,tz,bx,by,bz;
-            MakeONB(nx,ny,nz,tx,ty,tz,bx,by,bz);
-
-            float aR=0,aG=0,aB=0,aW=0;
-            for (uint32_t i = 0; i < SAMPLES; ++i)
+            const uint32_t face = taskIdx / ms;
+            const uint32_t y    = taskIdx % ms;
+            for (uint32_t x = 0; x < ms; ++x)
             {
-                float xi1,xi2; Hammersley(i,SAMPLES,xi1,xi2);
-                float hx,hy,hz;
-                SampleGGX(xi1,xi2,(std::max)(roughness,0.001f),hx,hy,hz);
-                float hwx=hx*tx+hy*nx+hz*bx;
-                float hwy=hx*ty+hy*ny+hz*by;
-                float hwz=hx*tz+hy*nz+hz*bz;
-                float VdotH=vx*hwx+vy*hwy+vz*hwz;
-                float lx=2.0f*VdotH*hwx-vx;
-                float ly=2.0f*VdotH*hwy-vy;
-                float lz=2.0f*VdotH*hwz-vz;
-                float NdotL=nx*lx+ny*ly+nz*lz;
-                if (NdotL > 0.0f)
+                float u=(x+0.5f)/float(ms), v=(y+0.5f)/float(ms);
+                float nx,ny,nz; FaceUVToDir((int)face,u,v,nx,ny,nz);
+                float len=sqrtf(nx*nx+ny*ny+nz*nz);
+                nx/=len; ny/=len; nz/=len;
+                float vx=nx,vy=ny,vz=nz;
+                float tx,ty,tz,bx,by,bz;
+                MakeONB(nx,ny,nz,tx,ty,tz,bx,by,bz);
+
+                float aR=0,aG=0,aB=0,aW=0;
+                for (uint32_t i = 0; i < SAMPLES; ++i)
                 {
-                    float r,g,b; SampleEquirect(hdr,hw,hh,lx,ly,lz,r,g,b);
-                    aR+=r*NdotL; aG+=g*NdotL; aB+=b*NdotL; aW+=NdotL;
+                    float xi1,xi2; Hammersley(i,SAMPLES,xi1,xi2);
+                    float hx,hy,hz;
+                    SampleGGX(xi1,xi2,(std::max)(roughness,0.001f),hx,hy,hz);
+                    float hwx=hx*tx+hy*nx+hz*bx;
+                    float hwy=hx*ty+hy*ny+hz*by;
+                    float hwz=hx*tz+hy*nz+hz*bz;
+                    float VdotH=vx*hwx+vy*hwy+vz*hwz;
+                    float lx=2.0f*VdotH*hwx-vx;
+                    float ly=2.0f*VdotH*hwy-vy;
+                    float lz=2.0f*VdotH*hwz-vz;
+                    float NdotL=nx*lx+ny*ly+nz*lz;
+                    if (NdotL > 0.0f)
+                    {
+                        float r,g,b; SampleEquirect(hdr,hw,hh,lx,ly,lz,r,g,b);
+                        aR+=r*NdotL; aG+=g*NdotL; aB+=b*NdotL; aW+=NdotL;
+                    }
+                }
+                if (aW > 0.0f)
+                {
+                    float inv=1.0f/aW;
+                    uint32_t idx = offset + (face*ms*ms + y*ms + x)*4;
+                    out[idx+0]=aR*inv; out[idx+1]=aG*inv;
+                    out[idx+2]=aB*inv; out[idx+3]=1.0f;
                 }
             }
-            if (aW > 0.0f)
-            {
-                float inv=1.0f/aW;
-                uint32_t idx = offset + (face*ms*ms + y*ms + x)*4;
-                out[idx+0]=aR*inv; out[idx+1]=aG*inv;
-                out[idx+2]=aB*inv; out[idx+3]=1.0f;
-            }
-        }
-        offset += 6u*ms*ms*4u;
+        });
     }
 }
+
 
 // ---------------------------------------------------------------------------
 // BRDF Split-Sum LUT (Karis, RG32F)

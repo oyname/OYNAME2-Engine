@@ -29,6 +29,7 @@
 #include "GDXRenderFrameGraph.h"
 #include "GDXShaderVariantCache.h"
 #include "GDXDebugCullingRenderer.h"
+#include "DebugCamera.h"
 
 #include <unordered_map>
 
@@ -136,6 +137,10 @@ public:
     void SetDebugCullingOptions(const DebugCullingOptions& options) { m_debugCulling.options = options; }
     const DebugCullingOptions& GetDebugCullingOptions() const { return m_debugCulling.options; }
 
+    // Debug-Kamera — wenn aktiviert überschreibt sie den Main-View.
+    // Gameplay, RTT, Shadow laufen weiter mit der echten Kamera.
+    DebugCamera& GetDebugCamera() { return m_debugCamera; }
+
 private:
     enum class RenderFramePhase : uint8_t
     {
@@ -226,6 +231,7 @@ private:
     float      m_clearColor[4] = { 0.05f, 0.05f, 0.12f, 1.0f };
     FrameStats m_stats;
     GDXDebugCullingRenderer m_debugCulling;
+    DebugCamera             m_debugCamera;
     bool       m_initialized = false;
 
     FrameContextRing m_frameContexts{};
