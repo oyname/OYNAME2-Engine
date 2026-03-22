@@ -104,9 +104,18 @@ public:
         return false;
     }
 
+    // IBL: HDR-Datei laden, Cubemaps backen und intern binden.
+    // Muss nach Initialize() aufgerufen werden.
+    // Wenn hdrPath leer oder Datei fehlt → neutraler Fallback.
+    virtual void LoadIBL(const wchar_t* hdrPath) = 0;
+
     virtual uint32_t GetDrawCallCount() const = 0;
     virtual bool HasShadowResources() const = 0;
     virtual const DefaultTextureSet& GetDefaultTextures() const = 0;
+
+    // Prüft ob die GPU das angegebene Format als Render Target und Shader Resource unterstützt.
+    // Sollte vor CreateRenderTarget() aufgerufen werden wenn das Format optional ist (z.B. RGBA16_FLOAT für HDR).
+    virtual bool SupportsTextureFormat(GDXTextureFormat format) const { return true; }
 
     virtual void SetShadowMapSize(uint32_t size)
     {

@@ -40,6 +40,17 @@ struct alignas(16) Dx11FrameConstants
 };
 static_assert(sizeof(Dx11FrameConstants) == 272);
 
+// CSM-Kaskaden-Daten (b5, PS-only).
+// Muss mit CascadeConstants in PixelShader.hlsl übereinstimmen.
+struct alignas(16) Dx11CascadeConstants
+{
+    float    cascadeViewProj[4][16];  // 4 Kaskaden-Matrizen
+    float    cascadeSplits[4];        // View-Space far-depths pro Kaskade
+    uint32_t cascadeCount;
+    float    _pad[3];
+};
+static_assert(sizeof(Dx11CascadeConstants) == 4 * 64 + 32);
+
 struct alignas(16) Dx11SkinConstants
 {
     float boneMatrices[SkinComponent::MaxBones][16];
@@ -75,6 +86,7 @@ public:
     void Shutdown();
 
     void UpdateFrameConstants(const FrameData& frame);
+    void UpdateCascadeConstants(const FrameData& frame);
     void ExecuteQueue(
         Registry&                                            registry,
         const ICommandList&                                  queue,
@@ -135,9 +147,10 @@ private:
     ID3D11Device*        m_device  = nullptr;
     ID3D11DeviceContext* m_context = nullptr;
 
-    ID3D11Buffer* m_entityCB = nullptr;
-    ID3D11Buffer* m_frameCB  = nullptr;
-    ID3D11Buffer* m_skinCB   = nullptr;
+    ID3D11Buffer* m_entityCB  = nullptr;
+    ID3D11Buffer* m_frameCB   = nullptr;
+    ID3D11Buffer* m_skinCB    = nullptr;
+    ID3D11Buffer* m_cascadeCB = nullptr;
 
     ShaderHandle   m_lastShader   = ShaderHandle::Invalid();
     uint32_t       m_lastAppliedPipelineKey = 0u;

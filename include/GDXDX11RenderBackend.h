@@ -1,6 +1,7 @@
 #pragma once
 
 #include "IGDXRenderBackend.h"
+#include "GDXIBLBaker.h"
 #include "IGDXDXGIContext.h"
 #include "GDXDX11RenderExecutor.h"
 #include "GDXDX11LightSystem.h"
@@ -83,6 +84,7 @@ public:
 
     uint32_t GetDrawCallCount() const override;
     bool HasShadowResources() const override;
+    bool SupportsTextureFormat(GDXTextureFormat format) const override;
     const DefaultTextureSet& GetDefaultTextures() const override;
 
     // Render-Target-Erstellung (Offscreen RTT)
@@ -94,6 +96,7 @@ public:
         GDXTextureFormat colorFormat = GDXTextureFormat::RGBA8_UNORM) override;
 
     void SetShadowMapSize(uint32_t size) override { m_shadowMapSize = size; }
+    void LoadIBL(const wchar_t* hdrPath) override;
 
 private:
 
@@ -139,6 +142,11 @@ private:
     ID3D11BlendState*        m_blendState        = nullptr;
     ID3D11BlendState*        m_blendStateAlpha   = nullptr;
 
+    // IBL-SRVs — werden von LoadIBL() aus GDXIBLData hochgeladen
+    ID3D11ShaderResourceView* m_iblIrradiance  = nullptr;  // t17
+    ID3D11ShaderResourceView* m_iblPrefiltered = nullptr;  // t18
+    ID3D11ShaderResourceView* m_iblBrdfLut     = nullptr;  // t19
+    bool                      m_iblValid       = false;
     bool m_hasShadowPass = false;
     int m_backbufferWidth  = 1;
     int m_backbufferHeight = 1;

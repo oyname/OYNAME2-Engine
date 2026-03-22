@@ -1,15 +1,8 @@
 // ECSPixelShader.hlsl — GIDX ECS Engine
 // Lighting: Directional, Point, Spot.
 // Shading:  Phong (Standard) oder Cook-Torrance PBR (MF_SHADING_PBR).
-// Shadow:   PCF 3x3 (t16, s7).
+// Shadow:   CSM PCF 3x3 (Texture2DArray t16, Kaskaden-Selektion via b5).
 // Texturen: t0=Albedo, t1=Normal, t2=ORM, t3=Emissive, t4=DetailMap.
-//
-// UV-Sets:
-//   texCoord  (TEXCOORD0) — UV0: primäre Texturkoordinaten (Albedo, Normal, ORM, Emissive)
-//   texCoord1 (TEXCOORD4) — UV1: Detail-Map / Lightmap
-//   MF_USE_DETAIL_MAP steuert ob UV1 ausgewertet wird.
-//   Kein echtes UV1 im Mesh: Executor aliasiert UV0 → TEXCOORD1-Slot.
-//   Ohne MF_USE_DETAIL_MAP wird texCoord1 nie ausgewertet — kein Overhead.
 
 // ---------------------------------------------------------------------------
 // Texturen + Sampler
@@ -18,11 +11,15 @@ Texture2D              gAlbedo    : register(t0);
 Texture2D              gNormalMap : register(t1);
 Texture2D              gORM       : register(t2);
 Texture2D              gEmissive  : register(t3);
-Texture2D              gDetailMap : register(t4);   // UV1-Detail-Map (2x Multiply Blend)
-Texture2D              gShadowMap : register(t16);
+Texture2D              gDetailMap : register(t4);
+Texture2DArray         gShadowMap : register(t16);  // CSM: Array[cascadeCount]
+TextureCube            gIrradianceMap   : register(t17);  // IBL diffuse
+TextureCube            gPrefilteredEnv  : register(t18);  // IBL specular
+Texture2D              gBrdfLut         : register(t19);  // Split-sum LUT
 
-SamplerState           gSampler    : register(s0);
-SamplerComparisonState gShadowSamp : register(s7);
+SamplerState           gSampler      : register(s0);  // Linear Wrap — Materialien
+SamplerState           gSamplerClamp : register(s1);  // Linear Clamp — IBL, RTT
+SamplerComparisonState gShadowSamp   : register(s7);
 
 // ---------------------------------------------------------------------------
 // Constant Buffers
@@ -33,31 +30,32 @@ cbuffer FrameConstants : register(b1)
     row_major float4x4 gProj;
     row_major float4x4 gViewProj;
     float4             gCameraPos;
-    row_major float4x4 gShadowViewProj;
+    row_major float4x4 gShadowViewProj;  // Legacy — Padding, nicht mehr genutzt
 };
 
 cbuffer MaterialConstants : register(b2)
 {
-    float4   gBaseColor;              // Zeile 1
-    float4   gSpecularColor;          // Zeile 2
-    float4   gEmissiveColor;          // Zeile 3
-    float4   gUVTilingOffset;         // Zeile 4 — UV0: xy=tiling, zw=offset
-    float4   gUVDetailTilingOffset;   // Zeile 5 — UV1: xy=tiling, zw=offset
-    float    gMetallic;               // Zeile 6
+    float4   gBaseColor;
+    float4   gSpecularColor;
+    float4   gEmissiveColor;
+    float4   gUVTilingOffset;
+    float4   gUVDetailTilingOffset;
+    float4   gUVNormalTilingOffset;
+    float    gMetallic;
     float    gRoughness;
     float    gNormalScale;
     float    gOcclusionStrength;
-    float    gShininess;              // Zeile 7
+    float    gShininess;
     float    gTransparency;
     float    gAlphaCutoff;
     float    gReceiveShadows;
-    float    gBlendMode;              // Zeile 8
+    float    gBlendMode;
     float    gBlendFactor;
     uint     gFlags;
     float    _pad0;
 };
 
-// MaterialFlags (muss mit MaterialResource.h übereinstimmen)
+// MaterialFlags
 #define MF_ALPHA_TEST      (1u << 0)
 #define MF_DOUBLE_SIDED    (1u << 1)
 #define MF_UNLIT           (1u << 2)
@@ -65,7 +63,7 @@ cbuffer MaterialConstants : register(b2)
 #define MF_USE_ORM_MAP     (1u << 4)
 #define MF_USE_EMISSIVE    (1u << 5)
 #define MF_SHADING_PBR     (1u << 10)
-#define MF_USE_DETAIL_MAP  (1u << 11)  // UV1-Detail-Map aktiv
+#define MF_USE_DETAIL_MAP  (1u << 11)
 #define ROUGHNESS_MIN      0.04f
 
 // ---------------------------------------------------------------------------
@@ -73,9 +71,9 @@ cbuffer MaterialConstants : register(b2)
 // ---------------------------------------------------------------------------
 struct LightData
 {
-    float4 position;       // xyz=pos, w=typ (0=dir, 1=point, 2=spot)
-    float4 direction;      // xyz=dir (world, normalized), w=unused
-    float4 diffuse;        // rgb=color*intensity, a=radius
+    float4 position;
+    float4 direction;
+    float4 diffuse;
     float  innerCosAngle;
     float  outerCosAngle;
     float  _pad0;
@@ -90,18 +88,28 @@ cbuffer LightBuffer : register(b3)
 };
 
 // ---------------------------------------------------------------------------
-// PS Input
+// CascadeConstants (b5) — CSM
+// ---------------------------------------------------------------------------
+cbuffer CascadeConstants : register(b5)
+{
+    row_major float4x4 gCascadeViewProj[4];
+    float4             gCascadeSplits;   // x=c0, y=c1, z=c2, w=c3 (View-Space far)
+    uint               gCascadeCount;
+    float3             _cascadePad;
+};
+
+// ---------------------------------------------------------------------------
+// PS Input — kein positionLightSpace mehr (wird im PS pro Kaskade berechnet)
 // ---------------------------------------------------------------------------
 struct PS_INPUT
 {
-    float4 position           : SV_POSITION;
-    float3 normal             : NORMAL;
-    float3 worldPosition      : TEXCOORD1;
-    float2 texCoord           : TEXCOORD0;    // UV0
-    float4 positionLightSpace : TEXCOORD2;
-    float3 viewDirection      : TEXCOORD3;
-    float2 texCoord1          : TEXCOORD4;    // UV1 (oder Alias UV0 wenn kein 2. UV-Set)
-    float4 vertexColor        : COLOR0;
+    float4 position      : SV_POSITION;
+    float3 normal        : NORMAL;
+    float3 worldPosition : TEXCOORD1;
+    float2 texCoord      : TEXCOORD0;
+    float3 viewDirection : TEXCOORD3;
+    float2 texCoord1     : TEXCOORD4;
+    float4 vertexColor   : COLOR0;
 };
 
 // ---------------------------------------------------------------------------
@@ -134,11 +142,55 @@ float3 FresnelSchlick(float cosTheta, float3 F0)
     return F0 + (1.0f - F0) * pow(max(1.0f - cosTheta, 0.0f), 5.0f);
 }
 
-// ---------------------------------------------------------------------------
-// Shadow PCF 3x3
-// ---------------------------------------------------------------------------
-float CalculateShadow(float4 lightSpacePos, float3 N, float3 lightDir)
+// IBL: Fresnel mit Roughness-Dämpfung (Karis)
+float3 FresnelSchlickRoughness(float cosTheta, float3 F0, float roughness)
 {
+    float3 r = max(float3(1.0f - roughness, 1.0f - roughness, 1.0f - roughness), F0);
+    return F0 + (r - F0) * pow(max(1.0f - cosTheta, 0.0f), 5.0f);
+}
+
+// ---------------------------------------------------------------------------
+// CSM: Kaskaden-Index aus View-Space-Tiefe wählen
+// ---------------------------------------------------------------------------
+uint SelectCascade(float viewDepth)
+{
+    float splits[4] = {
+        gCascadeSplits.x,
+        gCascadeSplits.y,
+        gCascadeSplits.z,
+        gCascadeSplits.w
+    };
+    uint cascade = gCascadeCount - 1u;
+    [unroll] for (uint c = 0; c < gCascadeCount; ++c)
+    {
+        if (viewDepth < splits[c])
+        {
+            cascade = c;
+            break;
+        }
+    }
+    return cascade;
+}
+
+// ---------------------------------------------------------------------------
+// CSM PCF 3x3
+// ---------------------------------------------------------------------------
+float CalculateShadowCSM(float3 worldPos, float3 N, float3 lightDir, float viewDepth)
+{
+    uint cascade = SelectCascade(viewDepth);
+
+    // NdotL muss VOR der Projektion stehen, damit der Normal-Offset-Bias greifen kann.
+    float NdotL = saturate(dot(normalize(N), normalize(-lightDir)));
+
+    // Normal Offset Bias: worldPos entlang der Oberflächennormale verschieben, bevor
+    // in den Light-Space projiziert wird.  Robuster als reiner Depth-Bias für flache
+    // Flächen (NdotL ≈ 1) und streifende Lichtwinkel (NdotL ≈ 0).
+    // Bei NdotL≈1 (Licht senkrecht) ist Offset klein; bei NdotL≈0 (streifend) groß.
+    float normalOffset = 0.08f * (1.0f - NdotL);
+    float3 biasedPos = worldPos + normalize(N) * normalOffset;
+
+    float4 lightSpacePos = mul(float4(biasedPos, 1.0f), gCascadeViewProj[cascade]);
+
     if (lightSpacePos.w <= 0.00001f) return 1.0f;
 
     float3 proj = lightSpacePos.xyz / lightSpacePos.w;
@@ -149,19 +201,21 @@ float CalculateShadow(float4 lightSpacePos, float3 N, float3 lightDir)
         proj.y < 0.0f || proj.y > 1.0f ||
         proj.z < 0.0f || proj.z > 1.0f) return 1.0f;
 
-    float NdotL  = saturate(dot(normalize(N), normalize(-lightDir)));
-    float bias = max(0.0002f, 0.0010f * (1.0f - NdotL));
-    float depth  = proj.z - bias;
+    uint tw2, th2, elems2;
+    gShadowMap.GetDimensions(tw2, th2, elems2);
+    float texelSize = 1.0f / float(tw2);
 
-    uint tw, th;
-    gShadowMap.GetDimensions(tw, th);
-    float texel = 1.0f / float(tw);
+    // Cascade-skalierter Depth-Bias als zweite Sicherungslinie.
+    // Weite Kaskaden haben größere Texel-Footprints → brauchen mehr Bias.
+    float cascadeScale = 1.0f + float(cascade) * 0.5f;
+    float bias = max(0.003f * (1.0f - NdotL), 0.0003f) * cascadeScale;
+    float depth = proj.z - bias;
 
     float shadow = 0.0f;
     [unroll] for (int dy = -1; dy <= 1; ++dy)
     [unroll] for (int dx = -1; dx <= 1; ++dx)
         shadow += gShadowMap.SampleCmpLevelZero(
-            gShadowSamp, proj.xy + float2(dx, dy) * texel, depth);
+            gShadowSamp, float3(proj.xy + float2(dx, dy) * texelSize, float(cascade)), depth);
 
     return shadow / 9.0f;
 }
@@ -171,15 +225,14 @@ float CalculateShadow(float4 lightSpacePos, float3 N, float3 lightDir)
 // ---------------------------------------------------------------------------
 float CalcAttenuation(float dist, float radius)
 {
-    float r = max(radius, 0.001f);
-    float s = dist / r;
+    float r  = max(radius, 0.001f);
+    float s  = dist / r;
     if (s >= 1.0f) return 0.0f;
     float s2 = s * s;
     return (1.0f - s2) * (1.0f - s2) / max(1.0f + s2, 1e-5f);
 }
 
-float CalcSpotCone(float3 lightDir, float3 spotDir,
-                   float innerCos, float outerCos)
+float CalcSpotCone(float3 lightDir, float3 spotDir, float innerCos, float outerCos)
 {
     float cosAngle = dot(normalize(lightDir), normalize(spotDir));
     return smoothstep(outerCos, innerCos, cosAngle);
@@ -190,26 +243,50 @@ float CalcSpotCone(float3 lightDir, float3 spotDir,
 // ---------------------------------------------------------------------------
 float4 main(PS_INPUT input) : SV_TARGET
 {
-    // UV0 — primäre Koordinaten (Tiling + Offset aus Material)
-    float2 uv  = input.texCoord  * gUVTilingOffset.xy       + gUVTilingOffset.zw;
-
-    // UV1 — Detail-Map-Koordinaten (eigenes Tiling + Offset)
-    // Ohne MF_USE_DETAIL_MAP wird diese Variable nie ausgewertet.
-    float2 uv1 = input.texCoord1 * gUVDetailTilingOffset.xy + gUVDetailTilingOffset.zw;
+    float2 uv    = input.texCoord  * gUVTilingOffset.xy       + gUVTilingOffset.zw;
+    float2 uvN   = input.texCoord  * gUVNormalTilingOffset.xy + gUVNormalTilingOffset.zw;
+    float2 uv1   = input.texCoord1 * gUVDetailTilingOffset.xy + gUVDetailTilingOffset.zw;
 
     // --- Normal ---
     float3 N = normalize(input.normal);
     if ((gFlags & MF_USE_NORMAL_MAP) != 0u)
     {
-        float3 Q1  = ddx(input.worldPosition);
-        float3 Q2  = ddy(input.worldPosition);
-        float2 st1 = ddx(uv);
-        float2 st2 = ddy(uv);
-        float3 T   = normalize(Q1 * st2.y - Q2 * st1.y);
-        float3 B   = normalize(cross(N, T));
-        float3 nTS = gNormalMap.Sample(gSampler, uv).xyz * 2.0f - 1.0f;
-        nTS.xy    *= gNormalScale;
-        N          = normalize(nTS.x * T + nTS.y * B + nTS.z * N);
+        // Cotangent frame (Mikkelsen / ShaderX5 / thetenthplanet.de/archives/1180)
+        // This is the standard used by Unreal Engine and Unity for ddx/ddy-based
+        // TBN reconstruction without precomputed tangents.
+        //
+        // Key properties vs naive T=normalize(Q1*st2.y - Q2*st1.y):
+        //   - Solves the full UV->position linear system (not just one component).
+        //   - UV handedness (mirrored faces, det<0) is handled automatically.
+        //   - Scale-invariant: invmax uses max(|T|,|B|) instead of normalizing
+        //     both independently, so degenerate near-zero cases are safe.
+        //   - No branch, no quad-divergence seams.
+
+        float3 dp1   = ddx(input.worldPosition);
+        float3 dp2   = ddy(input.worldPosition);
+        float2 duv1  = ddx(uvN);
+        float2 duv2  = ddy(uvN);
+
+        // Solve: [dp1, dp2]^T = [duv1, duv2]^T * [T, B]
+        float3 dp2perp = cross(dp2, N);
+        float3 dp1perp = cross(N, dp1);
+        float3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+        float3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+
+        // Scale-invariant normalization: safe against degenerate UV layouts.
+        float invmax = rsqrt(max(dot(T, T), dot(B, B)));
+        T *= invmax;
+        B *= invmax;
+
+        // Sample and decode normal map.
+        // Re-normalize after decode: GenerateMips() box-filters XYZ bytes
+        // which shrinks vector length at mip boundaries.
+        float3 nTS = gNormalMap.Sample(gSampler, uvN).xyz * 2.0f - 1.0f;
+        float  nLen = dot(nTS, nTS);
+        nTS = (nLen > 1e-10f) ? nTS * rsqrt(nLen) : float3(0.0f, 0.0f, 1.0f);
+        nTS.xy *= gNormalScale;
+
+        N = normalize(nTS.x * T + nTS.y * B + nTS.z * N);
     }
 
     // --- Albedo ---
@@ -218,13 +295,11 @@ float4 main(PS_INPUT input) : SV_TARGET
         if (baseColor.a < gAlphaCutoff) discard;
 
     // --- Detail-Map (UV1) ---
-    // Nur wenn MF_USE_DETAIL_MAP gesetzt — kein Overhead ohne das Flag.
-    // Blend: 2x Multiply (neutral bei 0.5 Grau, heller/dunkler bei Abweichung).
     if ((gFlags & MF_USE_DETAIL_MAP) != 0u)
     {
-        float3 detail    = gDetailMap.Sample(gSampler, uv1).rgb;
-        baseColor.rgb   *= detail * 2.0f;
-        baseColor.rgb    = saturate(baseColor.rgb);
+        float3 detail  = gDetailMap.Sample(gSampler, uv1).rgb;
+        baseColor.rgb *= detail * 2.0f;
+        baseColor.rgb  = saturate(baseColor.rgb);
     }
 
     float3 albedo = baseColor.rgb;
@@ -249,6 +324,10 @@ float4 main(PS_INPUT input) : SV_TARGET
             em = gEmissive.Sample(gSampler, uv).rgb * gEmissiveColor.rgb;
         return float4(albedo + em, baseColor.a * (1.0f - gTransparency));
     }
+
+    // --- View-Space-Tiefe für Kaskaden-Selektion ---
+    float4 viewPos = mul(float4(input.worldPosition, 1.0f), gView);
+    float  viewDepth = viewPos.z;
 
     // --- Lighting ---
     float3 V     = normalize(input.viewDirection);
@@ -311,7 +390,7 @@ float4 main(PS_INPUT input) : SV_TARGET
 
         float shadow = 1.0f;
         if (shadowIdx >= 0 && gReceiveShadows > 0.5f && (int)i == shadowIdx)
-            shadow = CalculateShadow(input.positionLightSpace, N, shadowDir);
+            shadow = CalculateShadowCSM(input.worldPosition, N, shadowDir, viewDepth);
 
         float NdotL = max(dot(N, -lightDir), 0.0f);
 
@@ -346,7 +425,6 @@ float4 main(PS_INPUT input) : SV_TARGET
     if ((gFlags & MF_USE_EMISSIVE) != 0u)
     {
         emissive = gEmissiveColor.rgb;
-
         float3 emissiveTex = gEmissive.Sample(gSampler, uv).rgb;
         if (dot(emissiveTex, emissiveTex) > 0.000001f)
             emissive *= emissiveTex;
@@ -355,9 +433,30 @@ float4 main(PS_INPUT input) : SV_TARGET
     // --- Zusammensetzen ---
     float3 color;
     if (isPBR)
-        color = ambient * albedo * ao + diffuseAcc + emissive;
+    {
+        // IBL ambient: diffuse Irradiance + specular Prefiltered-Env + BRDF-LUT
+        float3 F0     = lerp(float3(0.04f, 0.04f, 0.04f), albedo, metallic);
+        float3 kS_amb = FresnelSchlickRoughness(max(dot(N, V), 0.0f), F0, roughness);
+        float3 kD_amb = (1.0f - kS_amb) * (1.0f - metallic);
+
+        // Diffuse IBL: Irradiance-Cubemap samplen
+        float3 irradiance  = gIrradianceMap.Sample(gSamplerClamp, N).rgb;
+        float3 diffuseIBL  = kD_amb * irradiance * albedo;
+
+        // Specular IBL: Prefiltered Env + BRDF-LUT (Karis Split-Sum)
+        float3 R = reflect(-V, N);
+        const float MAX_REFLECTION_LOD = 4.0f;
+        float3 prefilteredColor = gPrefilteredEnv.SampleLevel(gSamplerClamp, R, roughness * MAX_REFLECTION_LOD).rgb;
+        float2 brdf = gBrdfLut.Sample(gSamplerClamp, float2(max(dot(N, V), 0.0f), roughness)).rg;
+        float3 specularIBL = prefilteredColor * (kS_amb * brdf.x + brdf.y);
+
+        float3 ambient = (diffuseIBL + specularIBL) * ao;
+        color = ambient + diffuseAcc + emissive;
+    }
     else
-        color = (ambient + diffuseAcc) * albedo * ao + specularAcc + emissive;
+    {
+        color = (sceneAmbient + diffuseAcc) * albedo * ao + specularAcc + emissive;
+    }
 
     return float4(color, baseColor.a * (1.0f - gTransparency));
 }

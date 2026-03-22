@@ -111,9 +111,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\app\AdapterEnum.cpp">
-      <Filter>samples</Filter>
-    </ClCompile>
     <ClCompile Include="..\app\ECSGame.cpp">
       <Filter>samples\_alt\ESC Main</Filter>
     </ClCompile>
@@ -249,11 +246,38 @@
     <ClCompile Include="..\app\test_scene.cpp">
       <Filter>samples</Filter>
     </ClCompile>
+    <ClCompile Include="..\app\AdapterEnum.cpp">
+      <Filter>samples\_alt</Filter>
+    </ClCompile>
     <ClCompile Include="C:\Users\HO\Downloads\triangle_vertex_color.cpp">
-      <Filter>samples</Filter>
+      <Filter>samples\_alt</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\HO\Downloads\triangle_vertex_color_gidx.cpp">
-      <Filter>samples</Filter>
+      <Filter>samples\_alt</Filter>
+    </ClCompile>
+    <ClCompile Include="..\app\test_scene_rtt_hotkeys.cpp">
+      <Filter>samples\_alt</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXIBLBaker.cpp">
+      <Filter>util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXRenderFrameGraph.cpp">
+      <Filter>engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXDebugCullingRenderer.cpp">
+      <Filter>engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXShaderVariantCache.cpp">
+      <Filter>engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\CollisionIntersect.cpp">
+      <Filter>util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\CollisionSystem.cpp">
+      <Filter>util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\CollisionWorld.cpp">
+      <Filter>util</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -493,6 +517,33 @@
     </ClInclude>
     <ClInclude Include="..\include\GDXDX11LightSystem.h">
       <Filter>engine\renderer\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXIBLBaker.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXRenderFrameGraph.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXDebugCullingRenderer.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXShaderVariantCache.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Collision\CollisionBody.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Collision\CollisionIntersect.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Collision\CollisionShapes.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Collision\CollisionTypes.h">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Collision\CollisionWorld.h">
+      <Filter>util</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

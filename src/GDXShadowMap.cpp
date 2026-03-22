@@ -1,4 +1,4 @@
-// GDXShadowMap.cpp — adaptiert aus OYNAME Dx11ShadowMap.cpp.
+// GDXShadowMap.cpp — CSM Shadow Map (Texture2DArray).
 // Bewährte Werte beibehalten: DepthBias, SlopeScale, PCF-Sampler.
 
 #define WIN32_LEAN_AND_MEAN
@@ -7,19 +7,21 @@
 
 #include "GDXShadowMap.h"
 
-bool GDXShadowMap::Create(ID3D11Device* device, uint32_t size)
+bool GDXShadowMap::Create(ID3D11Device* device, uint32_t size, uint32_t cascadeCount)
 {
-    if (!device || size == 0) return false;
+    if (!device || size == 0 || cascadeCount == 0 || cascadeCount > kMaxCascades)
+        return false;
 
     Release();
-    m_size = size;
+    m_size         = size;
+    m_cascadeCount = cascadeCount;
 
-    // --- Shadow Texture (R32_TYPELESS — wie OYNAME) -----------------------
+    // --- Texture2DArray (R32_TYPELESS, ArraySize = cascadeCount) ----------
     D3D11_TEXTURE2D_DESC texDesc = {};
     texDesc.Width             = size;
     texDesc.Height            = size;
     texDesc.MipLevels         = 1;
-    texDesc.ArraySize         = 1;
+    texDesc.ArraySize         = cascadeCount;
     texDesc.Format            = DXGI_FORMAT_R32_TYPELESS;
     texDesc.SampleDesc.Count  = 1;
     texDesc.Usage             = D3D11_USAGE_DEFAULT;
@@ -30,37 +32,44 @@ bool GDXShadowMap::Create(ID3D11Device* device, uint32_t size)
         Release(); return false;
     }
 
-    // --- DSV (D32_FLOAT) --------------------------------------------------
-    D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
-    dsvDesc.Format             = DXGI_FORMAT_D32_FLOAT;
-    dsvDesc.ViewDimension      = D3D11_DSV_DIMENSION_TEXTURE2D;
-    dsvDesc.Texture2D.MipSlice = 0;
-
-    if (FAILED(device->CreateDepthStencilView(m_shadowTex, &dsvDesc, &m_shadowDSV)))
+    // --- DSV pro Kaskade (D32_FLOAT, ein Slice je DSV) -------------------
+    for (uint32_t i = 0; i < cascadeCount; ++i)
     {
-        Release(); return false;
+        D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+        dsvDesc.Format                         = DXGI_FORMAT_D32_FLOAT;
+        dsvDesc.ViewDimension                  = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
+        dsvDesc.Texture2DArray.MipSlice        = 0;
+        dsvDesc.Texture2DArray.FirstArraySlice = i;
+        dsvDesc.Texture2DArray.ArraySize       = 1;
+
+        if (FAILED(device->CreateDepthStencilView(m_shadowTex, &dsvDesc, &m_shadowDSV[i])))
+        {
+            Release(); return false;
+        }
     }
 
-    // --- SRV (R32_FLOAT) für PS t16 ---------------------------------------
+    // --- SRV: ganzes Texture2DArray für PS t16 (R32_FLOAT) ---------------
     D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-    srvDesc.Format                    = DXGI_FORMAT_R32_FLOAT;
-    srvDesc.ViewDimension             = D3D11_SRV_DIMENSION_TEXTURE2D;
-    srvDesc.Texture2D.MostDetailedMip = 0;
-    srvDesc.Texture2D.MipLevels       = 1;
+    srvDesc.Format                              = DXGI_FORMAT_R32_FLOAT;
+    srvDesc.ViewDimension                       = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+    srvDesc.Texture2DArray.MostDetailedMip      = 0;
+    srvDesc.Texture2DArray.MipLevels            = 1;
+    srvDesc.Texture2DArray.FirstArraySlice      = 0;
+    srvDesc.Texture2DArray.ArraySize            = cascadeCount;
 
     if (FAILED(device->CreateShaderResourceView(m_shadowTex, &srvDesc, &m_shadowSRV)))
     {
         Release(); return false;
     }
 
-    // --- Rasterizer State: DepthBias + SlopeScale (wie OYNAME, bewährt) --
+    // --- Rasterizer: DepthBias (wie OYNAME, bewährt) ----------------------
     D3D11_RASTERIZER_DESC rsDesc = {};
     rsDesc.FillMode              = D3D11_FILL_SOLID;
     rsDesc.CullMode              = D3D11_CULL_BACK;
     rsDesc.FrontCounterClockwise = FALSE;
-    rsDesc.DepthBias             = 1000;   // verhindert Shadow-Acne
-    rsDesc.DepthBiasClamp        = 0.01f;
-    rsDesc.SlopeScaledDepthBias  = 0.5f;   // reduziert vs OYNAME 1.5 → weniger Offset
+    rsDesc.DepthBias             = 50000;  // ~0.006 für D32_FLOAT (2^-23 * 50000)
+    rsDesc.DepthBiasClamp        = 0.02f;
+    rsDesc.SlopeScaledDepthBias  = 3.0f;
     rsDesc.DepthClipEnable       = TRUE;
 
     if (FAILED(device->CreateRasterizerState(&rsDesc, &m_shadowRS)))
@@ -71,34 +80,31 @@ bool GDXShadowMap::Create(ID3D11Device* device, uint32_t size)
     return true;
 }
 
-void GDXShadowMap::BeginPass(ID3D11DeviceContext* ctx)
+void GDXShadowMap::BeginPass(ID3D11DeviceContext* ctx, uint32_t cascade)
 {
-    if (!ctx || !m_shadowDSV) return;
+    if (!ctx || cascade >= m_cascadeCount || !m_shadowDSV[cascade])
+        return;
 
-    // Wichtig: Shadow-SRV vor Rebind als DSV lösen, sonst bleibt der Depth-Pass in DX11 ungültig.
+    // SRV lösen bevor die Textur als DSV gebunden wird.
     ID3D11ShaderResourceView* nullSRV = nullptr;
     ctx->PSSetShaderResources(16, 1, &nullSRV);
 
-    // Kein RTV beim Shadow Pass — nur Depth
     ID3D11RenderTargetView* nullRTV = nullptr;
-    ctx->OMSetRenderTargets(1, &nullRTV, m_shadowDSV);
-    ctx->ClearDepthStencilView(m_shadowDSV, D3D11_CLEAR_DEPTH, 1.0f, 0);
+    ctx->OMSetRenderTargets(1, &nullRTV, m_shadowDSV[cascade]);
+    ctx->ClearDepthStencilView(m_shadowDSV[cascade], D3D11_CLEAR_DEPTH, 1.0f, 0);
 
-    // Viewport = Shadow-Map-Größe
     D3D11_VIEWPORT vp = {};
     vp.Width    = static_cast<float>(m_size);
     vp.Height   = static_cast<float>(m_size);
     vp.MaxDepth = 1.0f;
     ctx->RSSetViewports(1, &vp);
 
-    // Shadow Rasterizer: DepthBias aktiv
     ctx->RSSetState(m_shadowRS);
 }
 
 void GDXShadowMap::EndPass(ID3D11DeviceContext* ctx)
 {
     if (!ctx) return;
-    // SRV unbinden bevor Main-Pass sie als RTV nutzt
     ID3D11ShaderResourceView* nullSRV = nullptr;
     ctx->PSSetShaderResources(16, 1, &nullSRV);
 }
@@ -112,7 +118,9 @@ void GDXShadowMap::Release()
 
     safeRelease(m_shadowRS);
     safeRelease(m_shadowSRV);
-    safeRelease(m_shadowDSV);
+    for (auto& dsv : m_shadowDSV)
+        safeRelease(dsv);
     safeRelease(m_shadowTex);
     m_size = 0u;
+    m_cascadeCount = 0u;
 }

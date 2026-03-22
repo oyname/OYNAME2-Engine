@@ -9,45 +9,43 @@ struct ID3D11ShaderResourceView;
 struct ID3D11RasterizerState;
 
 // ---------------------------------------------------------------------------
-// GDXShadowMap — DX11 Shadow-Map-Ressourcen (adaptiert aus OYNAME Dx11ShadowMap).
+// GDXShadowMap — DX11 CSM Shadow-Map (Texture2DArray, bis zu 4 Kaskaden).
 //
-// Was beibehalten wurde (bewährt in OYNAME):
-//   - R32_TYPELESS Textur (DSV als D32_FLOAT, SRV als R32_FLOAT)
-//   - PCF Comparison Sampler (LESS, ClampEdge)
-//   - DepthBias + SlopeScaledDepthBias (Shadow-Acne-Vermeidung)
-//   - Konfigurierbare Größe (Standard: 2048)
+// Jede Kaskade hat einen eigenen DSV (für BeginPass).
+// Der SRV zeigt auf das gesamte Array (für den Main-Pass Pixel-Shader).
 //
-// Verbesserung:
-//   - Größe konfigurierbar über GDXECSRenderer::SetShadowMapSize() vor Init
-//   - Kein Coupling mit GDXDevice — nimmt ID3D11Device direkt
-//   - Shadow-Sampler ist Teil von GDXSamplerCache (nicht hier)
+// Slot t16 / Sampler s7 — unverändert gegenüber dem Single-Kaskaden-System.
 // ---------------------------------------------------------------------------
 class GDXShadowMap
 {
 public:
+    static constexpr uint32_t kMaxCascades = 4u;
+
     GDXShadowMap()  = default;
     ~GDXShadowMap() = default;
 
-    bool Create(ID3D11Device* device, uint32_t size = 2048u);
+    bool Create(ID3D11Device* device, uint32_t size = 2048u, uint32_t cascadeCount = 4u);
     void Release();
 
-    // Shadow Pass: DSV binden, Depth clearen, Viewport setzen, Rasterizer setzen.
-    void BeginPass(ID3D11DeviceContext* ctx);
-    // Shadow Pass beenden: RTV/DSV werden im Haupt-BeginFrame() wiederhergestellt.
+    // Shadow Pass pro Kaskade: DSV binden, Depth clearen, Viewport setzen, RS setzen.
+    void BeginPass(ID3D11DeviceContext* ctx, uint32_t cascade);
+    // Shadow Pass beenden: SRV lösen (wird im nächsten BeginFrame wiederhergestellt).
     void EndPass(ID3D11DeviceContext* ctx);
 
-    // SRV für PS-Binding (t16, wie OYNAME)
+    // SRV des Texture2DArray für PS t16 — alle Kaskaden.
     void* GetSRV()        const { return m_shadowSRV; }
-    void* GetDSV()        const { return m_shadowDSV; }
+    void* GetDSV()        const { return m_shadowDSV[0]; }  // Kaskade 0 als "hat Resources" Check
 
-    uint32_t GetSize()    const { return m_size; }
-    bool     IsReady()    const { return m_shadowDSV != nullptr; }
+    uint32_t GetSize()         const { return m_size; }
+    uint32_t GetCascadeCount() const { return m_cascadeCount; }
+    bool     IsReady()         const { return m_shadowDSV[0] != nullptr; }
 
 private:
-    ID3D11Texture2D*          m_shadowTex  = nullptr;
-    ID3D11DepthStencilView*   m_shadowDSV  = nullptr;
-    ID3D11ShaderResourceView* m_shadowSRV  = nullptr;
-    ID3D11RasterizerState*    m_shadowRS   = nullptr;
+    ID3D11Texture2D*          m_shadowTex             = nullptr;
+    ID3D11DepthStencilView*   m_shadowDSV[kMaxCascades] = {};
+    ID3D11ShaderResourceView* m_shadowSRV             = nullptr;
+    ID3D11RasterizerState*    m_shadowRS               = nullptr;
 
-    uint32_t m_size = 0u;
+    uint32_t m_size         = 0u;
+    uint32_t m_cascadeCount = 0u;
 };

@@ -21,6 +21,10 @@ float4 main(PSIn input) : SV_TARGET
 {
     float3 scene = gSceneColor.Sample(gSampler, input.uv).rgb * gSceneStrength;
     float3 bloom = gBloomTexture.Sample(gSampler, input.uv).rgb * gBloomTint.rgb * gBloomStrength;
-    float3 color = saturate(scene + bloom);
+
+    // No saturate here: keep HDR values intact so the downstream ToneMap pass
+    // can operate on the full linear HDR range.  The backbuffer is UNORM and the
+    // ToneMap pass is the sole LDR conversion step.
+    float3 color = scene + bloom;
     return float4(color, 1.0);
 }

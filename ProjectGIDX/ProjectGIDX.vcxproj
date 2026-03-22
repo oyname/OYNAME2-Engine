@@ -174,9 +174,10 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\app\test_scene.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
+    <ClCompile Include="..\app\test_scene_rtt_hotkeys.cpp" />
     <ClCompile Include="..\app\test_shader_alphatest_shadow.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
@@ -210,12 +211,19 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\src\CameraSystem.cpp" />
+    <ClCompile Include="..\src\CollisionIntersect.cpp" />
+    <ClCompile Include="..\src\CollisionSystem.cpp" />
+    <ClCompile Include="..\src\CollisionWorld.cpp" />
+    <ClCompile Include="..\src\GDXDebugCullingRenderer.cpp" />
     <ClCompile Include="..\src\GDXDX11LightSystem.cpp" />
     <ClCompile Include="..\src\GDXDX11RenderBackend.cpp" />
     <ClCompile Include="..\src\GDXDX12RenderBackend.cpp" />
+    <ClCompile Include="..\src\GDXIBLBaker.cpp" />
     <ClCompile Include="..\src\GDXInput.cpp" />
     <ClCompile Include="..\src\GDXOpenGLRenderBackend.cpp" />
+    <ClCompile Include="..\src\GDXRenderFrameGraph.cpp" />
     <ClCompile Include="..\src\GDXSamplerCache.cpp" />
+    <ClCompile Include="..\src\GDXShaderVariantCache.cpp" />
     <ClCompile Include="..\src\GDXShadowMap.cpp" />
     <ClCompile Include="..\src\GDXTextureLoader.cpp" />
     <ClCompile Include="..\src\HierarchySystem.cpp" />
@@ -246,6 +254,11 @@
     <ClInclude Include="..\app\SnakeGame.h" />
     <ClInclude Include="..\include\BasicMeshGenerator.h" />
     <ClInclude Include="..\include\CameraSystem.h" />
+    <ClInclude Include="..\include\Collision\CollisionBody.h" />
+    <ClInclude Include="..\include\Collision\CollisionIntersect.h" />
+    <ClInclude Include="..\include\Collision\CollisionShapes.h" />
+    <ClInclude Include="..\include\Collision\CollisionTypes.h" />
+    <ClInclude Include="..\include\Collision\CollisionWorld.h" />
     <ClInclude Include="..\include\ComponentPool.h" />
     <ClInclude Include="..\include\Components.h" />
     <ClInclude Include="..\include\Debug.h" />
@@ -254,11 +267,15 @@
     <ClInclude Include="..\include\FrameContext.h" />
     <ClInclude Include="..\include\FrameData.h" />
     <ClInclude Include="..\include\FrameTransientResources.h" />
+    <ClInclude Include="..\include\GDXDebugCullingRenderer.h" />
     <ClInclude Include="..\include\GDXDX11LightSystem.h" />
     <ClInclude Include="..\include\GDXDX11RenderBackend.h" />
     <ClInclude Include="..\include\GDXDX11RenderExecutor.h" />
     <ClInclude Include="..\include\GDXDX12RenderBackend.h" />
     <ClInclude Include="..\include\GDXECSRenderer.h" />
+    <ClInclude Include="..\include\GDXIBLBaker.h" />
+    <ClInclude Include="..\include\GDXRenderFrameGraph.h" />
+    <ClInclude Include="..\include\GDXShaderVariantCache.h" />
     <ClInclude Include="..\include\GIDXEngine.h" />
     <ClInclude Include="..\include\GDXEventQueue.h" />
     <ClInclude Include="..\include\GDXFrameTimer.h" />

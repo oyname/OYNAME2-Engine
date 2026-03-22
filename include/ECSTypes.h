@@ -67,3 +67,25 @@ namespace std
         }
     };
 }
+
+// ---------------------------------------------------------------------------
+// ComponentTypeID<T> — compile-time integer ID pro Komponententyp.
+//
+// Jeder Typ bekommt beim ersten Zugriff eine eindeutige uint32_t-ID,
+// die für die gesamte Prozesslaufzeit stabil bleibt.
+//
+// Verwendung in Registry: Pool-Vektor direkt per ID indexieren statt
+// unordered_map<type_index> → O(1) ohne Hash-Overhead.
+//
+// Voraussetzung: C++17 (inline-Variable für die Template-Spezialisierung).
+// ---------------------------------------------------------------------------
+struct ComponentTypeIDCounter
+{
+    static inline uint32_t next = 0u;
+};
+
+template<typename T>
+struct ComponentTypeID
+{
+    static inline const uint32_t value = ComponentTypeIDCounter::next++;
+};

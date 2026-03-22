@@ -12,7 +12,8 @@ struct MaterialData
     GIDX::Float4 specularColor = { 0.5f, 0.5f, 0.5f, 1.0f };
     GIDX::Float4 emissiveColor = { 0.0f, 0.0f, 0.0f, 1.0f };
     GIDX::Float4 uvTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f };
-    GIDX::Float4 uvDetailTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f };
+    GIDX::Float4 uvDetailTilingOffset  = { 1.0f, 1.0f, 0.0f, 0.0f };
+    GIDX::Float4 uvNormalTilingOffset  = { 1.0f, 1.0f, 0.0f, 0.0f };
     float metallic          = 0.0f;
     float roughness         = 0.5f;
     float normalScale       = 1.0f;
@@ -26,7 +27,7 @@ struct MaterialData
     uint32_t flags          = 0u;
     float    _pad0          = 0.0f;
 };
-static_assert(sizeof(MaterialData) == 128, "MaterialData muss 128 Byte sein (cbuffer-Anforderung)");
+static_assert(sizeof(MaterialData) == 144, "MaterialData muss 144 Byte sein (cbuffer-Anforderung)");
 
 enum class MaterialTextureBlendMode : uint32_t
 {
@@ -183,6 +184,21 @@ public:
                 layer.uvSet = DefaultUVSetForSlot(slot);
             layer.expectsSRGB = DefaultExpectsSRGBForSlot(slot);
         }
+    }
+
+    // Always use SetTiling/SetNormalTiling/SetDetailTiling instead of writing
+    // data.uvXxxTilingOffset directly — direct field writes bypass cpuDirty
+    // so the GPU cbuffer never gets the updated values.
+    void SetTiling(float tilingX, float tilingY, float offsetX = 0.0f, float offsetY = 0.0f) noexcept
+    {
+        data.uvTilingOffset = { tilingX, tilingY, offsetX, offsetY };
+        cpuDirty = true;
+    }
+
+    void SetNormalTiling(float tilingX, float tilingY, float offsetX = 0.0f, float offsetY = 0.0f) noexcept
+    {
+        data.uvNormalTilingOffset = { tilingX, tilingY, offsetX, offsetY };
+        cpuDirty = true;
     }
 
     void SetDetailTiling(float tilingX, float tilingY, float offsetX = 0.0f, float offsetY = 0.0f) noexcept

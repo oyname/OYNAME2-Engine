@@ -147,6 +147,11 @@ void GDXOpenGLRenderBackend::SetShadowMapSize(uint32_t)
 {
 }
 
+void GDXOpenGLRenderBackend::LoadIBL(const wchar_t* /*hdrPath*/)
+{
+    // OpenGL-Backend: IBL noch nicht implementiert.
+}
+
 uint32_t GDXOpenGLRenderBackend::GetDrawCallCount() const
 {
     return 0u;

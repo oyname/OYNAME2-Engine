@@ -16,14 +16,41 @@ namespace
         {
         case VK_ESCAPE: return Key::Escape;
         case VK_SPACE:  return Key::Space;
+
         case VK_LEFT:   return Key::Left;
         case VK_RIGHT:  return Key::Right;
         case VK_UP:     return Key::Up;
         case VK_DOWN:   return Key::Down;
+
+            // Zahlenreihe oben
+        case '0': return Key::Num0;
+        case '1': return Key::Num1;
+        case '2': return Key::Num2;
+        case '3': return Key::Num3;
+        case '4': return Key::Num4;
+        case '5': return Key::Num5;
+        case '6': return Key::Num6;
+        case '7': return Key::Num7;
+        case '8': return Key::Num8;
+        case '9': return Key::Num9;
+
+            // Numpad
+        case VK_NUMPAD0: return Key::Num0;
+        case VK_NUMPAD1: return Key::Num1;
+        case VK_NUMPAD2: return Key::Num2;
+        case VK_NUMPAD3: return Key::Num3;
+        case VK_NUMPAD4: return Key::Num4;
+        case VK_NUMPAD5: return Key::Num5;
+        case VK_NUMPAD6: return Key::Num6;
+        case VK_NUMPAD7: return Key::Num7;
+        case VK_NUMPAD8: return Key::Num8;
+        case VK_NUMPAD9: return Key::Num9;
+
         default:
             // A-Z: Win32 VK-Codes für Buchstaben sind identisch mit ASCII 'A'-'Z'
             if (wp >= 'A' && wp <= 'Z')
                 return static_cast<Key>(static_cast<int>(Key::A) + (wp - 'A'));
+
             return Key::Unknown;
         }
     }

@@ -5,6 +5,7 @@ cbuffer MaterialConstants : register(b2)
     float4   gEmissiveColor;
     float4   gUVTilingOffset;
     float4   gUVDetailTilingOffset;
+    float4   gUVNormalTilingOffset;
     float    gMetallic;
     float    gRoughness;
     float    gNormalScale;

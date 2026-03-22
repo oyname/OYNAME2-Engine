@@ -5,12 +5,59 @@
 #include "RenderGatherSystem.h"
 #include "RenderPassTargetDesc.h"
 #include "BackendRenderPassDesc.h"
+#include "ResourceStore.h"
+#include "MeshAssetResource.h"
+#include "MaterialResource.h"
+#include "GDXShaderResource.h"
+#include "GDXTextureResource.h"
+#include "GDXRenderTargetResource.h"
+#include "PostProcessResource.h"
+#include "Registry.h"
 
 #include <vector>
 #include <string>
+#include <functional>
+#include <cstdint>
 #include <cstdint>
 
-struct ViewExecutionStats
+// ---------------------------------------------------------------------------
+// Frame Graph Resource Model
+// ---------------------------------------------------------------------------
+
+using FGResourceID = uint32_t;
+static constexpr FGResourceID FG_INVALID_RESOURCE = UINT32_MAX;
+
+struct FGResourceDesc
+{
+    FGResourceID       id           = FG_INVALID_RESOURCE;
+    TextureHandle      texture      = TextureHandle::Invalid();
+    RenderTargetHandle renderTarget = RenderTargetHandle::Invalid();
+    const char*        debugName    = "";
+};
+
+// ---------------------------------------------------------------------------
+// namespace RFG  (Render Frame Graph)
+//
+// Fruhere Namen              Neue Namen
+//   ViewExecutionStats       → RFG::ViewStats
+//   PreparedViewData         → RFG::ViewData
+//   PreparedPassExecution    → RFG::PassExec
+//   PreparedPostProcessExec  → RFG::PostProcExec
+//   PreparedPresentationExec → RFG::PresentExec
+//   PreparedExecuteData      → RFG::ExecuteData
+//   ViewPassExecutionData    → RFG::ViewPassData
+//   PreparedFrameGraphNodeKind→ RFG::NodeKind
+//   PreparedFrameGraphNode   → RFG::Node
+//   PreparedFrameGraphValid. → RFG::Validation
+//   PreparedFrameGraph       → RFG::FrameGraph
+//   RendererFramePipelineData→ RFG::PipelineData
+// ---------------------------------------------------------------------------
+class IGDXRenderBackend;  // forward — vollständige Definition in IGDXRenderBackend.h
+
+namespace RFG
+{
+
+struct ViewStats
 {
     ViewCullingStats graphicsCulling{};
     ViewCullingStats shadowCulling{};
@@ -28,110 +75,88 @@ struct ViewExecutionStats
     {
         graphicsCulling = {};
         shadowCulling = {};
-        drawCalls = 0u;
-        renderCommands = 0u;
-        lightCount = 0u;
-        debugBoundsDraws = 0u;
-        debugFrustumDraws = 0u;
-        graphicsPassExecuted = false;
-        shadowPassExecuted = false;
-        presentationExecuted = false;
-        countedAsRenderTargetView = false;
+        drawCalls = renderCommands = lightCount = 0u;
+        debugBoundsDraws = debugFrustumDraws = 0u;
+        graphicsPassExecuted = shadowPassExecuted = false;
+        presentationExecuted = countedAsRenderTargetView = false;
     }
 };
 
-struct PreparedViewData
+struct ViewData
 {
-    RenderViewData graphicsView{};
-    RenderViewData shadowView{};
+    RenderViewData      graphicsView{};
+    RenderViewData      shadowView{};
     RenderGatherOptions gatherOptions{};
-    FrameData frame{};
-    bool shadowEnabled = false;
+    FrameData           frame{};
+    bool                shadowEnabled = false;
     RenderPassClearDesc clearDesc{};
     RenderPassTargetDesc graphicsTargetDesc{};
 
     void Reset()
     {
-        graphicsView = {};
-        shadowView = {};
-        gatherOptions = {};
-        frame = {};
-        shadowEnabled = false;
-        clearDesc = {};
-        graphicsTargetDesc = {};
+        graphicsView = {}; shadowView = {}; gatherOptions = {}; frame = {};
+        shadowEnabled = false; clearDesc = {}; graphicsTargetDesc = {};
     }
 };
 
-struct PreparedPassExecution
+struct PassExec
 {
     bool enabled = false;
     BackendRenderPassDesc desc{};
     bool appendGraphicsVisibleSet = false;
-    bool appendShadowVisibleSet = false;
-    bool sortQueueBeforeExecute = false;
+    bool appendShadowVisibleSet   = false;
+    bool sortQueueBeforeExecute   = false;
 
     void Reset()
     {
-        enabled = false;
-        desc = {};
-        appendGraphicsVisibleSet = false;
-        appendShadowVisibleSet = false;
-        sortQueueBeforeExecute = false;
+        enabled = false; desc = {};
+        appendGraphicsVisibleSet = appendShadowVisibleSet = sortQueueBeforeExecute = false;
     }
 };
 
-struct PreparedPostProcessExecution
+struct PostProcExec
 {
-    bool enabled = false;
+    bool          enabled     = false;
     TextureHandle sceneTexture = TextureHandle::Invalid();
 
-    void Reset()
-    {
-        enabled = false;
-        sceneTexture = TextureHandle::Invalid();
-    }
+    void Reset() { enabled = false; sceneTexture = TextureHandle::Invalid(); }
 };
 
-struct PreparedPresentationExecution
+struct PresentExec
 {
-    bool presentAfterExecute = false;
-    PreparedPostProcessExecution postProcess{};
+    bool        presentAfterExecute = false;
+    PostProcExec postProcess{};
 
-    void Reset()
-    {
-        presentAfterExecute = false;
-        postProcess.Reset();
-    }
+    void Reset() { presentAfterExecute = false; postProcess.Reset(); }
 };
 
-struct PreparedExecuteData
+struct ExecuteData
 {
-    // NOTE: lights and frame constants are updated once per view in a dedicated
-    // pre-pass inside ExecutePreparedFrame, not inside individual node execution.
-    // This removes the mutable flag that previously coupled Prepare and Execute.
-    PreparedPassExecution shadowPass{};
-    PreparedPassExecution graphicsPass{};
+    // Eingefrorener Snapshot aus Prepare — Execute liest nur hier.
+    FrameData frame{};
+
+    PassExec    shadowPass{};
+    PassExec    graphicsPass{};
     RenderQueue shadowQueue{};
     RenderQueue graphicsQueue{};
-    PreparedPresentationExecution presentation{};
+    PresentExec presentation{};
 
     void Reset()
     {
-        shadowPass.Reset();
-        graphicsPass.Reset();
-        shadowQueue.Clear();
-        graphicsQueue.Clear();
+        frame = {};
+        shadowPass.Reset(); graphicsPass.Reset();
+        shadowQueue.Clear(); graphicsQueue.Clear();
         presentation.Reset();
     }
 };
 
-struct ViewPassExecutionData
+struct ViewPassData
 {
-    PreparedViewData prepared{};
-    PreparedExecuteData execute{};
-    ViewExecutionStats stats{};
-    VisibleSet graphicsVisibleSet{};
-    VisibleSet shadowVisibleSet{};
+    ViewData    prepared{};
+    ExecuteData execute{};
+    ViewStats   stats{};
+    VisibleSet  graphicsVisibleSet{};
+    VisibleSet  shadowVisibleSet{};
     std::vector<RenderGatherSystem::GatherChunkResult> graphicsGatherChunks{};
     std::vector<RenderGatherSystem::GatherChunkResult> shadowGatherChunks{};
     RenderQueue opaqueQueue{};
@@ -140,140 +165,108 @@ struct ViewPassExecutionData
 
     void Reset()
     {
-        prepared.Reset();
-        execute.Reset();
-        stats.Reset();
-        graphicsVisibleSet = {};
-        shadowVisibleSet = {};
-        graphicsGatherChunks.clear();
-        shadowGatherChunks.clear();
-        opaqueQueue.Clear();
-        transparentQueue.Clear();
-        shadowQueue.Clear();
+        prepared.Reset(); execute.Reset(); stats.Reset();
+        graphicsVisibleSet = {}; shadowVisibleSet = {};
+        graphicsGatherChunks.clear(); shadowGatherChunks.clear();
+        opaqueQueue.Clear(); transparentQueue.Clear(); shadowQueue.Clear();
     }
 
     RenderQueue BuildGraphicsQueue() const
     {
-        RenderQueue queue;
-        queue.commands = opaqueQueue.commands;
-        queue.commands.insert(queue.commands.end(), transparentQueue.commands.begin(), transparentQueue.commands.end());
-        return queue;
+        RenderQueue q;
+        q.commands = opaqueQueue.commands;
+        q.commands.insert(q.commands.end(),
+            transparentQueue.commands.begin(), transparentQueue.commands.end());
+        return q;
     }
 };
 
-enum class PreparedFrameGraphResourceKind : uint8_t
+enum class NodeKind : uint8_t
 {
-    None = 0,
-    BackbufferColor = 1,
-    MainSceneColor = 2,
-    ShadowMap = 3,
-    RenderTargetColor = 4
+    Shadow       = 0,   // ShadowPass
+    Graphics     = 1,   // GraphicsPass
+    Presentation = 2    // PostProcess → Backbuffer
 };
 
-enum class PreparedFrameGraphResourceAccess : uint8_t
+// ExecContext — vollständig hier definiert damit Node::executeFn instantiiert werden kann.
+// GDXRenderFrameGraph.h includet RenderFramePipeline.h, nicht umgekehrt.
+struct ExecContext
 {
-    None = 0,
-    Read = 1,
-    Write = 2
+    IGDXRenderBackend* backend = nullptr;
+
+    ResourceStore<MeshAssetResource,      MeshTag>*         meshStore         = nullptr;
+    ResourceStore<MaterialResource,        MaterialTag>*     matStore          = nullptr;
+    ResourceStore<GDXShaderResource,       ShaderTag>*       shaderStore       = nullptr;
+    ResourceStore<GDXTextureResource,      TextureTag>*      texStore          = nullptr;
+    ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore           = nullptr;
+    ResourceStore<PostProcessResource,     PostProcessTag>*  postProcessStore  = nullptr;
+    Registry* registry = nullptr;
+
+    const std::vector<PostProcessHandle>* postProcessPassOrder = nullptr;
 };
 
-struct PreparedFrameGraphResourceRef
+struct Node
 {
-    PreparedFrameGraphResourceKind kind = PreparedFrameGraphResourceKind::None;
-    PreparedFrameGraphResourceAccess access = PreparedFrameGraphResourceAccess::None;
-    TextureHandle texture = TextureHandle::Invalid();
-    RenderTargetHandle renderTarget = RenderTargetHandle::Invalid();
-    uint32_t scopeId = 0u;
+    NodeKind kind = NodeKind::Graphics;
 
-    void Reset()
-    {
-        kind = PreparedFrameGraphResourceKind::None;
-        access = PreparedFrameGraphResourceAccess::None;
-        texture = TextureHandle::Invalid();
-        renderTarget = RenderTargetHandle::Invalid();
-        scopeId = 0u;
-    }
-};
-
-enum class PreparedFrameGraphNodeKind : uint8_t
-{
-    RenderTargetShadow = 0,
-    RenderTargetGraphics = 1,
-    MainShadow = 2,
-    MainGraphics = 3,
-    MainPresentation = 4
-};
-
-struct PreparedFrameGraphNode
-{
-    PreparedFrameGraphNodeKind kind = PreparedFrameGraphNodeKind::MainGraphics;
-
-    // Used during Prepare phase (dependency build) — not touched during Execute.
-    ViewPassExecutionData* view = nullptr;
-
-    // Typed Execute-phase interface:
-    //   executeInput  — readonly snapshot of what this node must execute.
-    //   statsOutput   — writeonly target for execution results.
-    // Both are set in BuildPreparedFrameGraph immediately after view is assigned.
-    // Execute code reads from executeInput and writes to statsOutput only,
-    // never through the mutable view pointer.
-    const PreparedExecuteData* executeInput = nullptr;
-    ViewExecutionStats*        statsOutput  = nullptr;
+    const ExecuteData* executeInput = nullptr;
+    ViewStats*         statsOutput  = nullptr;
 
     uint32_t viewIndex = 0u;
-    bool enabled = false;
-    bool countedAsRenderTargetView = false;
-    PreparedFrameGraphResourceRef readResource{};
-    PreparedFrameGraphResourceRef writeResource{};
-    std::vector<uint32_t> dependencies{};
+    bool     enabled   = false;
+    bool     countedAsRenderTargetView = false;
+    bool     updateFrameConstants = true; // false für Presentation-Nodes
+
+    // Execute-Logik direkt im Node — kein switch/NodeKind mehr in ExecuteNode.
+    std::function<void(const ExecContext&, ViewStats*)> executeFn;
+
+    std::vector<FGResourceID> reads{};
+    std::vector<FGResourceID> writes{};
+    std::vector<uint32_t>     dependencies{};
 
     void Reset()
     {
-        kind = PreparedFrameGraphNodeKind::MainGraphics;
-        view = nullptr;
-        executeInput = nullptr;
-        statsOutput  = nullptr;
-        viewIndex = 0u;
-        enabled = false;
-        countedAsRenderTargetView = false;
-        readResource.Reset();
-        writeResource.Reset();
-        dependencies.clear();
+        kind = NodeKind::Graphics;
+        executeInput = nullptr; statsOutput = nullptr;
+        viewIndex = 0u; enabled = false;
+        countedAsRenderTargetView = false; updateFrameConstants = true;
+        executeFn = nullptr;
+        reads.clear(); writes.clear(); dependencies.clear();
     }
 };
 
-struct PreparedFrameGraphValidation
+struct Validation
 {
     bool valid = true;
     std::vector<std::string> errors{};
-
-    void Reset()
-    {
-        valid = true;
-        errors.clear();
-    }
+    void Reset() { valid = true; errors.clear(); }
 };
 
-struct PreparedFrameGraph
+struct FrameGraph
 {
-    std::vector<PreparedFrameGraphNode> nodes{};
-    PreparedFrameGraphValidation validation{};
-    std::vector<uint32_t> executionOrder{};
+    std::vector<FGResourceDesc> resources{};
+    std::vector<Node>           nodes{};
+    Validation                  validation{};
+    std::vector<uint32_t>       executionOrder{};
 
-    void Reset()
+    FGResourceID RegisterResource(TextureHandle tex, RenderTargetHandle rt, const char* name)
     {
-        nodes.clear();
-        validation.Reset();
-        executionOrder.clear();
+        const FGResourceID id = static_cast<FGResourceID>(resources.size());
+        FGResourceDesc d{};
+        d.id = id; d.texture = tex; d.renderTarget = rt; d.debugName = name;
+        resources.push_back(d);
+        return id;
     }
+
+    void Reset() { resources.clear(); nodes.clear(); validation.Reset(); executionOrder.clear(); }
 };
 
-struct RendererFramePipelineData
+struct PipelineData
 {
-    FrameData frameSnapshot{};
-    ViewPassExecutionData mainView{};
-    std::vector<ViewPassExecutionData> rttViews{};
-    PreparedFrameGraph frameGraph{};
+    FrameData              frameSnapshot{};
+    ViewPassData           mainView{};
+    std::vector<ViewPassData> rttViews{};
+    FrameGraph             frameGraph{};
 
     void Reset()
     {
@@ -284,4 +277,4 @@ struct RendererFramePipelineData
     }
 };
 
-using RenderFramePipelineData = RendererFramePipelineData;
+} // namespace RFG

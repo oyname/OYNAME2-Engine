@@ -65,6 +65,7 @@ public:
                                  float viewportWidth,
                                  float viewportHeight) override;
 
+    void     LoadIBL(const wchar_t* hdrPath) override;
     uint32_t GetDrawCallCount() const override;
     bool HasShadowResources() const override;
     const DefaultTextureSet& GetDefaultTextures() const override;

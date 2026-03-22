@@ -26,6 +26,9 @@
 #include "JobSystem.h"
 #include "SystemScheduler.h"
 #include "RenderFramePipeline.h"
+#include "GDXRenderFrameGraph.h"
+#include "GDXShaderVariantCache.h"
+#include "GDXDebugCullingRenderer.h"
 
 #include <unordered_map>
 
@@ -61,13 +64,22 @@ public:
         const GDXShaderLayout& layout);
 
     TextureHandle  LoadTexture(const std::wstring& filePath, bool isSRGB = true);
+
+    // IBL: HDR-Panorama laden und Irradiance/Prefiltered/BRDF-LUT backen.
+    // Einmaliger Aufruf nach Initialize(). Pfad leer oder fehlend → Fallback.
+    void           LoadIBL(const std::wstring& hdrPath);
     TextureHandle  CreateTexture(const ImageBuffer& image, const std::wstring& debugName, bool isSRGB = true);
 
     MeshHandle     UploadMesh(MeshAssetResource mesh);
+
+    // Lädt Mesh hoch und berechnet gleichzeitig korrekte RenderBoundsComponent.
+    // Lösung für localCenter={0,0,0}-Problem bei Meshes die nicht am Ursprung liegen.
+    MeshHandle     UploadMesh(MeshAssetResource mesh, RenderBoundsComponent& outBounds);
     MaterialHandle CreateMaterial(MaterialResource mat);
 
     ShaderHandle   GetDefaultShader() const { return m_defaultShader; }
     void SetShadowMapSize(uint32_t size);
+    bool SupportsTextureFormat(GDXTextureFormat format) const;
 
     void SetSceneAmbient(float r, float g, float b)
     {
@@ -116,24 +128,13 @@ public:
         }
     };
 
-    struct DebugCullingOptions
-    {
-        bool enabled = false;
-        bool drawMainVisibleBounds = true;
-        bool drawShadowVisibleBounds = true;
-        bool drawRttVisibleBounds = true;
-        bool drawMainFrustum = true;
-        bool drawShadowFrustum = false;
-        bool logStats = true;
-        uint32_t logEveryNFrames = 60u;
-        float boundsAlpha = 0.18f;
-        float frustumAlpha = 0.30f;
-    };
-
     const FrameStats& GetFrameStats() const { return m_stats; }
     void SetClearColor(float r, float g, float b, float a = 1.0f);
-    void SetDebugCullingOptions(const DebugCullingOptions& options) { m_debugCulling = options; }
-    const DebugCullingOptions& GetDebugCullingOptions() const { return m_debugCulling; }
+    // Rückwärtskompatibilität — App-Code nutzt GDXECSRenderer::DebugCullingOptions.
+    using DebugCullingOptions = GDXDebugCullingRenderer::Options;
+
+    void SetDebugCullingOptions(const DebugCullingOptions& options) { m_debugCulling.options = options; }
+    const DebugCullingOptions& GetDebugCullingOptions() const { return m_debugCulling.options; }
 
 private:
     enum class RenderFramePhase : uint8_t
@@ -153,59 +154,45 @@ private:
 
     bool LoadDefaultShaders();
 
-    ShaderVariantKey BuildVariantKey(RenderPass pass, const SubmeshData& submesh, const MaterialResource& mat) const;
-    ShaderVariantKey NormalizeVariantKey(const ShaderVariantKey& key) const;
-    ShaderHandle ResolveShaderVariant(RenderPass pass, const SubmeshData& submesh, const MaterialResource& mat);
-    ShaderHandle CreateShaderVariant(const ShaderVariantKey& key);
-
-    bool EnsureDebugCullingResources();
-    void AppendDebugVisibleSet(RenderQueue& queue, const VisibleSet& set, const RenderViewData& view, ViewExecutionStats* viewStats = nullptr);
-    void AppendDebugBounds(RenderQueue& queue, const VisibleRenderCandidate& candidate, MaterialHandle material, float alpha, const FrameData& debugFrame, ViewExecutionStats* viewStats = nullptr);
-    void AppendDebugFrustum(RenderQueue& queue, const RenderViewData& view, MaterialHandle material, float alpha, const FrameData& debugFrame, ViewExecutionStats* viewStats = nullptr);
     void LogDebugCullingStats() const;
-    void AggregatePreparedFrameStats(const ViewPassExecutionData& mainView, const std::vector<ViewPassExecutionData>& rttViews);
+    bool EnsureDebugCullingResources();
+    void AppendDebugVisibleSet(RenderQueue& queue, const VisibleSet& set,
+                               const RenderViewData& view, RFG::ViewStats* viewStats = nullptr);
+    ShaderHandle ResolveShaderVariant(RenderPass pass, const SubmeshData& submesh, const MaterialResource& mat);
+    void AggregatePreparedFrameStats(const RFG::ViewPassData& mainView, const std::vector<RFG::ViewPassData>& rttViews);
 
     void CaptureFrameSnapshot(FrameData& outFrame);
-    void PrepareMainViewData(const FrameData& frameSnapshot, ViewPassExecutionData& outView);
-    void PrepareRenderTargetViewData(const FrameData& frameSnapshot, std::vector<ViewPassExecutionData>& outViews);
+    void PrepareMainViewData(const FrameData& frameSnapshot, RFG::ViewPassData& outView);
+    void PrepareRenderTargetViewData(const FrameData& frameSnapshot, std::vector<RFG::ViewPassData>& outViews);
 
-    void CullPreparedRenderTargetGraphicsViews(std::vector<ViewPassExecutionData>& preparedViews);
-    void CullPreparedRenderTargetShadowViews(std::vector<ViewPassExecutionData>& preparedViews);
-    void CullPreparedMainViewGraphics(ViewPassExecutionData& preparedView);
-    void CullPreparedMainViewShadow(ViewPassExecutionData& preparedView);
+    // Single-view core — used by both Main and RTT paths.
+    // js = nullptr → serial (RTT inner loop), js = &m_jobSystem → parallel (Main view).
+    void CullViewGraphics(RFG::ViewPassData& view, JobSystem* js);
+    void CullViewShadow(RFG::ViewPassData& view, JobSystem* js);
+    void GatherViewGraphics(const RenderGatherSystem::ShaderResolver& rs, RFG::ViewPassData& view, JobSystem* js);
+    void GatherViewShadow(const RenderGatherSystem::ShaderResolver& rs, RFG::ViewPassData& view, JobSystem* js);
 
-    void GatherPreparedRenderTargetGraphicsViews(const RenderGatherSystem::ShaderResolver& resolveShader, std::vector<ViewPassExecutionData>& preparedViews);
-    void GatherPreparedRenderTargetShadowViews(const RenderGatherSystem::ShaderResolver& resolveShader, std::vector<ViewPassExecutionData>& preparedViews);
-    void FinalizePreparedRenderTargetQueues(std::vector<ViewPassExecutionData>& preparedViews);
-    void BuildPreparedRenderTargetExecuteInputs(std::vector<ViewPassExecutionData>& preparedViews);
+    // RTT loops — iterate over views, dispatch single-view core in parallel.
+    void CullPreparedRenderTargetViews(std::vector<RFG::ViewPassData>& views);
+    void GatherPreparedRenderTargetViews(const RenderGatherSystem::ShaderResolver& rs, std::vector<RFG::ViewPassData>& views);
+    void FinalizePreparedRenderTargetQueues(std::vector<RFG::ViewPassData>& views);
+    void BuildPreparedRenderTargetExecuteInputs(std::vector<RFG::ViewPassData>& views);
 
-    void GatherPreparedMainViewGraphics(const RenderGatherSystem::ShaderResolver& resolveShader, ViewPassExecutionData& preparedView);
-    void GatherPreparedMainViewShadow(const RenderGatherSystem::ShaderResolver& resolveShader, ViewPassExecutionData& preparedView);
-    void FinalizePreparedMainViewQueues(ViewPassExecutionData& preparedView);
-    void BuildPreparedMainViewExecuteInputs(ViewPassExecutionData& preparedView);
+    // Main view — single call, uses &m_jobSystem for inner parallelism.
+    void CullPreparedMainView(RFG::ViewPassData& view);
+    void GatherPreparedMainView(const RenderGatherSystem::ShaderResolver& rs, RFG::ViewPassData& view);
+    void BuildPreparedMainViewExecuteInputs(RFG::ViewPassData& view);
 
-    void FinalizePreparedFrameQueues(RendererFramePipelineData& pipeline);
-    void BuildPreparedFrameExecuteInputs(RendererFramePipelineData& pipeline);
-    void BuildPreparedFrameGraph(RendererFramePipelineData& pipeline);
-    bool FinalizePreparedFrameGraph(PreparedFrameGraph& frameGraph);
-    void BuildPreparedFrameGraphDependencies(PreparedFrameGraph& frameGraph);
-    bool ValidatePreparedFrameGraph(PreparedFrameGraph& frameGraph) const;
-    bool BuildPreparedFrameGraphExecutionOrder(PreparedFrameGraph& frameGraph) const;
-    void ExecutePreparedFrameGraphNode(PreparedFrameGraphNode& node);
-    void UpdatePreparedMainViewFrameTransient(ViewPassExecutionData& preparedView);
-    void ExecutePreparedFrame(RendererFramePipelineData& pipeline);
+    void FinalizePreparedFrameQueues(RFG::PipelineData& pipeline);
+    void BuildPreparedFrameExecuteInputs(RFG::PipelineData& pipeline);
+    void UpdatePreparedMainViewFrameTransient(RFG::ViewPassData& preparedView);
 
-    void FinalizePreparedViewQueues(ViewPassExecutionData& preparedView);
-    void ConfigurePreparedCommonExecuteInputs(ViewPassExecutionData& preparedView, bool presentAfterExecute);
-    bool PrepareMainViewPostProcessPresentation(ViewPassExecutionData& preparedView);
-    void BuildPreparedShadowPassExecuteInput(ViewPassExecutionData& preparedView);
-    void BuildPreparedGraphicsPassExecuteInput(ViewPassExecutionData& preparedView, const RenderPassTargetDesc& targetDesc, bool appendGraphicsVisibleSet, bool appendShadowVisibleSet);
-    void BuildPreparedExecutionQueues(ViewPassExecutionData& preparedView);
-    void ExecutePreparedViewPasses(ViewPassExecutionData& preparedView);
-    void ExecutePreparedMainViewPresentation(ViewPassExecutionData& preparedView);
-
-    void ExecutePreparedRenderTargetViews(std::vector<ViewPassExecutionData>& preparedViews);
-    void ExecutePreparedMainView(ViewPassExecutionData& preparedView);
+    void FinalizePreparedViewQueues(RFG::ViewPassData& preparedView);
+    void ConfigurePreparedCommonExecuteInputs(RFG::ViewPassData& preparedView, bool presentAfterExecute);
+    bool PrepareMainViewPostProcessPresentation(RFG::ViewPassData& preparedView);
+    void BuildPreparedShadowPassExecuteInput(RFG::ViewPassData& preparedView);
+    void BuildPreparedGraphicsPassExecuteInput(RFG::ViewPassData& preparedView, const RenderPassTargetDesc& targetDesc, bool appendGraphicsVisibleSet, bool appendShadowVisibleSet);
+    void BuildPreparedExecutionQueues(RFG::ViewPassData& preparedView);
 
     std::unique_ptr<IGDXRenderBackend> m_backend;
 
@@ -223,29 +210,22 @@ private:
     ViewCullingSystem  m_viewCullingSystem;
     RenderGatherSystem m_gatherSystem;
 
-    RendererFramePipelineData m_renderPipeline;
+    RFG::PipelineData m_renderPipeline;
     RendererPersistentFrameState m_persistentFrameState{};
     FrameData   m_frameData;
 
-    ShaderHandle m_defaultShader;
+    ShaderHandle m_defaultShader;  // cached from m_shaderCache for quick access
     ShaderHandle m_shadowShader;
-    std::unordered_map<ShaderVariantKey, ShaderHandle, ShaderVariantKeyHash> m_shaderVariantCache;
+    GDXShaderVariantCache m_shaderCache;
 
     TextureHandle m_defaultWhiteTex;
     TextureHandle m_defaultNormalTex;
     TextureHandle m_defaultORMTex;
     TextureHandle m_defaultBlackTex;
 
-    MeshHandle m_debugBoxMesh;
-    MaterialHandle m_debugMainBoundsMat;
-    MaterialHandle m_debugShadowBoundsMat;
-    MaterialHandle m_debugRttBoundsMat;
-    MaterialHandle m_debugMainFrustumMat;
-    MaterialHandle m_debugShadowFrustumMat;
-
     float      m_clearColor[4] = { 0.05f, 0.05f, 0.12f, 1.0f };
     FrameStats m_stats;
-    DebugCullingOptions m_debugCulling;
+    GDXDebugCullingRenderer m_debugCulling;
     bool       m_initialized = false;
 
     FrameContextRing m_frameContexts{};
@@ -261,4 +241,6 @@ private:
     JobSystem m_jobSystem;
     SystemScheduler m_systemScheduler;
     RenderFramePhase m_framePhase = RenderFramePhase::Idle;
+
+    GDXRenderFrameGraph m_frameGraph;
 };

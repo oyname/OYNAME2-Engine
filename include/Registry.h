@@ -3,9 +3,8 @@
 #include "ECSTypes.h"
 #include "ComponentPool.h"
 
-#include <unordered_map>
-#include <typeindex>
 #include <memory>
+#include <typeindex>    // EntityID-Hash bleibt in ECSTypes; typeindex hier nicht mehr gebraucht
 #include <vector>
 #include <cassert>
 #include <functional>
@@ -21,18 +20,20 @@ public:
     {
         ++m_structureVersion;
 
+        ++m_aliveCount;
+
         if (!m_freeList.empty())
         {
             const EntityIndex idx = m_freeList.back();
             m_freeList.pop_back();
             ++m_generations[idx];
-            m_alive[idx] = true;
+            m_alive[idx] = 1u;
             return EntityID::Make(idx, m_generations[idx]);
         }
 
         const EntityIndex idx = static_cast<EntityIndex>(m_generations.size());
         m_generations.push_back(0);
-        m_alive.push_back(true);
+        m_alive.push_back(1u);
         return EntityID::Make(idx, 0);
     }
 
@@ -42,12 +43,13 @@ public:
             return;
 
         const EntityIndex idx = id.Index();
-        m_alive[idx] = false;
+        m_alive[idx] = 0u;
+        --m_aliveCount;
         m_freeList.push_back(idx);
         ++m_structureVersion;
 
-        for (auto& kv : m_pools)
-            kv.second->Remove(id);
+        for (auto& pool : m_pools)
+            if (pool) pool->Remove(id);
     }
 
     bool IsAlive(EntityID id) const
@@ -55,16 +57,10 @@ public:
         const EntityIndex idx = id.Index();
         if (idx >= m_generations.size())
             return false;
-        return m_alive[idx] && (m_generations[idx] == id.Generation());
+        return m_alive[idx] != 0u && (m_generations[idx] == id.Generation());
     }
 
-    size_t EntityCount() const
-    {
-        size_t count = 0;
-        for (bool b : m_alive)
-            count += b ? 1u : 0u;
-        return count;
-    }
+    size_t EntityCount() const { return m_aliveCount; }
 
     uint64_t GetStructureVersion() const noexcept { return m_structureVersion; }
 
@@ -150,7 +146,7 @@ public:
         const_cast<Registry*>(this)->View<First, Rest...>(std::forward<Func>(func));
     }
 
-    size_t PoolCount() const { return m_pools.size(); }
+    size_t PoolCount() const { return m_poolCount; }
 
     template<typename T>
     size_t ComponentCount() const
@@ -240,89 +236,67 @@ private:
     void IteratePivot(const std::tuple<ComponentPool<Ts>*...>& pools, Func&& func)
     {
         auto* pivot = std::get<PivotIndex>(pools);
-        auto& entities = pivot->Entities();
+        const auto& entities = pivot->Entities();
+
         for (size_t i = 0; i < entities.size(); ++i)
         {
             const EntityID id = entities[i];
             if (!IsAlive(id))
                 continue;
 
-            if (!AllComponentsPresentExcept<PivotIndex, Ts...>(id, pools))
+            // Ein Get() pro Pool = ein DenseIndex()-Aufruf pro Pool.
+            // Vorher: AllComponentsPresentExcept (Has → DenseIndex) +
+            //         InvokeViewCallback (Get → DenseIndex) = 2× pro Pool.
+            // Jetzt:  Get() gibt nullptr zurück wenn fehlend → 1× pro Pool.
+            auto ptrs = std::make_tuple(std::get<ComponentPool<Ts>*>(pools)->Get(id)...);
+
+            // Alle Pointer müssen gültig sein (keiner null)
+            if ((... || !std::get<Ts*>(ptrs)))
                 continue;
 
-            InvokeViewCallback<Ts...>(id, pools, std::forward<Func>(func));
+            func(id, (*std::get<Ts*>(ptrs))...);
         }
-    }
-
-    template<size_t SkipIndex, typename... Ts>
-    static bool AllComponentsPresentExcept(EntityID id, const std::tuple<ComponentPool<Ts>*...>& pools)
-    {
-        return AllComponentsPresentExceptImpl<SkipIndex, 0u, Ts...>(id, pools);
-    }
-
-    template<size_t SkipIndex, size_t I, typename... Ts>
-    static bool AllComponentsPresentExceptImpl(EntityID id, const std::tuple<ComponentPool<Ts>*...>& pools)
-    {
-        if constexpr (I >= sizeof...(Ts))
-        {
-            return true;
-        }
-        else
-        {
-            if constexpr (I == SkipIndex)
-            {
-                return AllComponentsPresentExceptImpl<SkipIndex, I + 1u, Ts...>(id, pools);
-            }
-            else
-            {
-                return std::get<I>(pools)->Has(id)
-                    && AllComponentsPresentExceptImpl<SkipIndex, I + 1u, Ts...>(id, pools);
-            }
-        }
-    }
-
-    template<typename... Ts, typename Func>
-    static void InvokeViewCallback(EntityID id, const std::tuple<ComponentPool<Ts>*...>& pools, Func&& func)
-    {
-        func(id, (*std::get<ComponentPool<Ts>*>(pools)->Get(id))...);
     }
 
     template<typename T>
     ComponentPool<T>& Pool()
     {
-        const auto key = std::type_index(typeid(T));
-        auto it = m_pools.find(key);
-        if (it == m_pools.end())
+        const uint32_t id = ComponentTypeID<T>::value;
+        if (id >= m_pools.size())
+            m_pools.resize(static_cast<size_t>(id) + 1u);
+
+        if (!m_pools[id])
         {
-            auto pool = std::make_unique<ComponentPool<T>>();
-            auto* raw = pool.get();
-            m_pools.emplace(key, std::move(pool));
-            return *raw;
+            m_pools[id] = std::make_unique<ComponentPool<T>>();
+            ++m_poolCount;
         }
-        return *static_cast<ComponentPool<T>*>(it->second.get());
+
+        return *static_cast<ComponentPool<T>*>(m_pools[id].get());
     }
 
     template<typename T>
     ComponentPool<T>* FindPool()
     {
-        const auto it = m_pools.find(std::type_index(typeid(T)));
-        return it != m_pools.end()
-            ? static_cast<ComponentPool<T>*>(it->second.get())
-            : nullptr;
+        const uint32_t id = ComponentTypeID<T>::value;
+        if (id >= m_pools.size() || !m_pools[id])
+            return nullptr;
+        return static_cast<ComponentPool<T>*>(m_pools[id].get());
     }
 
     template<typename T>
     const ComponentPool<T>* FindPool() const
     {
-        const auto it = m_pools.find(std::type_index(typeid(T)));
-        return it != m_pools.end()
-            ? static_cast<const ComponentPool<T>*>(it->second.get())
-            : nullptr;
+        const uint32_t id = ComponentTypeID<T>::value;
+        if (id >= m_pools.size() || !m_pools[id])
+            return nullptr;
+        return static_cast<const ComponentPool<T>*>(m_pools[id].get());
     }
 
     std::vector<EntityGeneration> m_generations;
-    std::vector<bool> m_alive;
+    std::vector<uint8_t> m_alive;       // uint8_t statt vector<bool>: kein Bit-Packing, direkter Byte-Zugriff
+    size_t m_aliveCount = 0u;           // O(1) EntityCount() — wird in Create/Destroy gepflegt
     std::vector<EntityIndex> m_freeList;
-    std::unordered_map<std::type_index, std::unique_ptr<IComponentPool>> m_pools;
+    std::vector<std::unique_ptr<IComponentPool>> m_pools;  // direkt per ComponentTypeID<T>::value indexiert — O(1), kein Hash
+    size_t m_poolCount = 0u;            // Anzahl tatsächlich angelegter Pools (Slots ohne nullptr)
     uint64_t m_structureVersion = 0ull;
 };

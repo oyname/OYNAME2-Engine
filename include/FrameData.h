@@ -18,6 +18,9 @@
 // Maximale Anzahl Lichter — muss mit dem HLSL LightBuffer übereinstimmen.
 static constexpr uint32_t MAX_LIGHTS = 32u;
 
+// Maximale Anzahl Shadow-Kaskaden (CSM).
+static constexpr uint32_t MAX_SHADOW_CASCADES = 4u;
+
 // ---------------------------------------------------------------------------
 // LightEntry — ein Licht für den cbuffer.
 // Muss mit LightBuffer in PixelShader übereinstimmen (16-Byte-Alignment).
@@ -58,11 +61,16 @@ struct FrameData
     GIDX::Float3 sceneAmbient = { 0.08f, 0.08f, 0.12f }; // kühles Standard-Ambient
     float             _padAmbient  = 0.0f;
 
-    // --- Shadow (Directional Light) ---
+    // --- Shadow (Cascaded Shadow Maps) ---
+    // shadowViewProjMatrix = äußerste Kaskade — wird für Frustum-Culling des Shadow-Pass genutzt.
     GIDX::Float4x4 shadowViewProjMatrix = {};
-    bool                 hasShadowPass        = false;
-    uint32_t             shadowCasterMask     = 0xFFFFFFFFu;
-    uint32_t             lightAffectMask      = 0xFFFFFFFFu;
+    // Pro-Kaskaden-Daten (befüllt von GDXDX11LightSystem::Update).
+    GIDX::Float4x4 shadowCascadeViewProj[MAX_SHADOW_CASCADES] = {};
+    float          shadowCascadeSplits[MAX_SHADOW_CASCADES]   = {};  // View-Space-Tiefe
+    uint32_t       shadowCascadeCount   = 0u;
+    bool           hasShadowPass        = false;
+    uint32_t       shadowCasterMask     = 0xFFFFFFFFu;
+    uint32_t       lightAffectMask      = 0xFFFFFFFFu;
 
     // Viewport
     float viewportWidth  = 1280.0f;

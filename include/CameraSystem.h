@@ -22,6 +22,10 @@ public:
     void Update(Registry& registry, FrameData& frame) const;
     bool BuildFrameDataForCamera(Registry& registry, EntityID cameraEntity, FrameData& frame, float aspectOverride = 0.0f) const;
 
+    // Kern-Berechnung — direkt aus WorldTransform + CameraComponent.
+    // Wird intern von Update() und GDXECSRenderer genutzt um Duplikate zu vermeiden.
+    static void BuildFrameData(const WorldTransformComponent& wt, const CameraComponent& cam, FrameData& frame);
+
     // Hilfsmethode: Berechnet Tiefe eines Weltpunkts in NDC (0..1).
     // Wird von RenderGatherSystem für den Sort-Key-Depth-Wert verwendet.
     static float ComputeNDCDepth(const GIDX::Float4x4& worldMatrix,

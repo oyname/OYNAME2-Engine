@@ -157,6 +157,8 @@ void GDXDX11RenderExecutor::CreateConstantBuffers()
         sizeof(Dx11FrameConstants), D3D11_BIND_CONSTANT_BUFFER, true);
     m_skinCB = CreateBuffer(m_device, nullptr,
         sizeof(Dx11SkinConstants), D3D11_BIND_CONSTANT_BUFFER, true);
+    m_cascadeCB = CreateBuffer(m_device, nullptr,
+        sizeof(Dx11CascadeConstants), D3D11_BIND_CONSTANT_BUFFER, true);
 }
 
 void GDXDX11RenderExecutor::Shutdown()
@@ -164,6 +166,7 @@ void GDXDX11RenderExecutor::Shutdown()
     if (m_entityCB) { m_entityCB->Release(); m_entityCB = nullptr; }
     if (m_frameCB) { m_frameCB->Release();  m_frameCB = nullptr; }
     if (m_skinCB) { m_skinCB->Release();   m_skinCB = nullptr; }
+    if (m_cascadeCB) { m_cascadeCB->Release(); m_cascadeCB = nullptr; }
     m_textureStates.clear();
     ResetScopeCaches();
     m_pipelineCache.Clear();
@@ -193,6 +196,30 @@ void GDXDX11RenderExecutor::UpdateFrameConstants(const FrameData& frame)
     }
 }
 
+void GDXDX11RenderExecutor::UpdateCascadeConstants(const FrameData& frame)
+{
+    if (!m_cascadeCB) return;
+
+    Dx11CascadeConstants cc = {};
+    cc.cascadeCount = frame.shadowCascadeCount;
+
+    for (uint32_t c = 0; c < frame.shadowCascadeCount && c < 4u; ++c)
+    {
+        std::memcpy(cc.cascadeViewProj[c], &frame.shadowCascadeViewProj[c], 64);
+        cc.cascadeSplits[c] = frame.shadowCascadeSplits[c];
+    }
+
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (SUCCEEDED(m_context->Map(m_cascadeCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+    {
+        std::memcpy(mapped.pData, &cc, sizeof(cc));
+        m_context->Unmap(m_cascadeCB, 0);
+    }
+
+    // b5 PS-only — kein Konflikt mit b0..b4
+    m_context->PSSetConstantBuffers(5, 1, &m_cascadeCB);
+}
+
 void GDXDX11RenderExecutor::BindFrameConstantsForShader(const GDXShaderResource& shader)
 {
     if (!m_frameCB)
@@ -209,8 +236,12 @@ void GDXDX11RenderExecutor::BindFrameConstantsForShader(const GDXShaderResource&
             m_context->VSSetConstantBuffers(cb.vsRegister, 1, &buffer);
         if (cb.psRegister != 255u)
             m_context->PSSetConstantBuffers(cb.psRegister, 1, &buffer);
-        return;
+        break;
     }
+
+    // Cascade-CB (b5 PS) immer mitbinden wenn vorhanden — kein eigener Layout-Eintrag nötig.
+    if (m_cascadeCB)
+        m_context->PSSetConstantBuffers(5, 1, &m_cascadeCB);
 }
 
 void GDXDX11RenderExecutor::BindEntityConstantsForShader(const GDXShaderResource& shader)
@@ -346,6 +377,13 @@ void GDXDX11RenderExecutor::BindConstantBuffersForScope(
 
         if (binding.semantic == GDXShaderConstantBufferSlot::Material)
         {
+            // Always re-upload material data — the buffer is DYNAMIC/WRITE_DISCARD
+            // so Map/Unmap is cheap.  The scope binding-cache only tracks whether
+            // the buffer POINTER and register need re-binding; it does not track
+            // whether materialData CONTENTS have changed (e.g. uvTilingOffset,
+            // normalScale, roughness).  Skipping the upload here would silently
+            // show stale values whenever the user changes material parameters
+            // without triggering a texture or shader change.
             MaterialData drawData = cmd.materialData;
             if (applyReceiveShadowOverride)
             {
@@ -386,12 +424,23 @@ void GDXDX11RenderExecutor::ApplyScopedBindings(
         }
 
         const uint64_t scopeKey = cmd.GetEffectiveBindingsKeyForScope(scope);
-        if (!m_bindingCache.ShouldApply(scope, scopeKey))
-            return;
+        const bool cacheHit = m_bindingCache.ShouldApply(scope, scopeKey) == false;
 
-        BindTexturesForScope(bindings, texStore, defaultWhiteTex, defaultNormalTex, defaultORMTex, defaultBlackTex, scope);
+        // Textures and cbuffer register bindings: skip when cache says nothing changed.
+        if (!cacheHit)
+        {
+            BindTexturesForScope(bindings, texStore, defaultWhiteTex, defaultNormalTex, defaultORMTex, defaultBlackTex, scope);
+            // For non-Material cbuffers: only bind when cache misses.
+        }
+
+        // Material cbuffer data (uvTilingOffset, roughness, normalScale, etc.) must
+        // always be uploaded — the scope key does NOT hash materialData contents,
+        // only texture handles and buffer pointers.  A cache hit means the GPU-side
+        // register binding is still valid, but the constant data may have changed.
         BindConstantBuffersForScope(bindings, cmd, scope, receiveShadowOverride);
-        m_bindingCache.MarkApplied(scope, scopeKey);
+
+        if (!cacheHit)
+            m_bindingCache.MarkApplied(scope, scopeKey);
     };
 
     applyScope(ResourceBindingScope::Pass, false);
@@ -410,8 +459,9 @@ const GDXShaderLayout& GDXDX11RenderExecutor::GetCachedShaderLayout(ShaderHandle
 }
 
 // ---------------------------------------------------------------------------
-// BindSkinningPalette — VS b4, identity fallback wenn keine Skin-Daten vorhanden.
-// ---------------------------------------------------------------------------
+// BindSkinningPalette — immer direkt auf VS b4 binden (Engine-Invariante).
+// Kein Binding-Lookup — der ist fehleranfällig wenn der Skinned-Shader über
+// CreateShader ohne Layout-Skin-Eintrag geladen wird.
 void GDXDX11RenderExecutor::BindSkinningPalette(
     Registry& registry,
     const RenderCommand& cmd,
@@ -433,9 +483,8 @@ void GDXDX11RenderExecutor::BindSkinningPalette(
         if (skin && skin->enabled)
         {
             const uint32_t count = static_cast<uint32_t>(
-                skin->finalBoneMatrices.size() < SkinComponent::MaxBones
-                ? skin->finalBoneMatrices.size()
-                : SkinComponent::MaxBones);
+                (std::min)(skin->finalBoneMatrices.size(),
+                static_cast<size_t>(SkinComponent::MaxBones)));
 
             for (uint32_t i = 0; i < count; ++i)
                 std::memcpy(sc.boneMatrices[i], &skin->finalBoneMatrices[i], 64);
@@ -449,12 +498,8 @@ void GDXDX11RenderExecutor::BindSkinningPalette(
         m_context->Unmap(m_skinCB, 0);
     }
 
-    const ResourceBindingSet& bindings = cmd.GetEffectiveBindings();
-    if (const ConstantBufferBindingDesc* binding = bindings.FindConstantBufferBinding(GDXShaderConstantBufferSlot::Skin))
-    {
-        if (binding->enabled && binding->vsRegister != 255u)
-            m_context->VSSetConstantBuffers(binding->vsRegister, 1, &m_skinCB);
-    }
+    // Direkt auf b4 — kein Lookup, kein Ausfallrisiko.
+    m_context->VSSetConstantBuffers(4u, 1, &m_skinCB);
 }
 
 void GDXDX11RenderExecutor::ApplyPipelineState(const RenderCommand& cmd)

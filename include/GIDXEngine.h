@@ -8,6 +8,7 @@
 #include "GDXFrameTimer.h"
 #include "IGDXWindow.h"
 #include "IGDXRenderer.h"
+#include "Collision/CollisionWorld.h"
 
 class GIDXEngine
 {
@@ -29,10 +30,11 @@ public:
     using EventFn = std::function<void(const Event&)>;
     void SetEventCallback(EventFn fn) { m_eventCallback = std::move(fn); }
 
-    // Idempotent — safe to call multiple times.  The second and subsequent
-    // calls are no-ops so callers do not need to track whether shutdown has
-    // already occurred.
+    // Idempotent — safe to call multiple times.
     void Shutdown();
+
+    // Collision World — Ownership hier, Zugriff über CollisionSystem.
+    GIDX::CollisionWorld& GetCollisionWorld() { return m_collisionWorld; }
 
 private:
     void ProcessEvents(const std::vector<Event>& events);
@@ -47,4 +49,5 @@ private:
     float                         m_deltaTime = 0.0f;
     EventFn                       m_eventCallback;
     std::string                   m_baseWindowTitle;
+    GIDX::CollisionWorld          m_collisionWorld;
 };

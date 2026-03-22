@@ -10,7 +10,7 @@ cbuffer FrameConstants : register(b1)
     row_major float4x4 gProj;
     row_major float4x4 gViewProj;
     float4             gCameraPos;
-    row_major float4x4 gShadowViewProj;
+    row_major float4x4 gShadowViewProj;  // Legacy — Padding
 };
 
 cbuffer SkinConstants : register(b4)
@@ -30,14 +30,13 @@ struct VS_INPUT
 
 struct VS_OUTPUT
 {
-    float4 position           : SV_POSITION;
-    float3 normal             : NORMAL;
-    float3 worldPosition      : TEXCOORD1;
-    float2 texCoord           : TEXCOORD0;
-    float4 positionLightSpace : TEXCOORD2;
-    float3 viewDirection      : TEXCOORD3;
-    float2 texCoord1          : TEXCOORD4;
-    float4 vertexColor        : COLOR0;
+    float4 position      : SV_POSITION;
+    float3 normal        : NORMAL;
+    float3 worldPosition : TEXCOORD1;
+    float2 texCoord      : TEXCOORD0;
+    float3 viewDirection : TEXCOORD3;
+    float2 texCoord1     : TEXCOORD4;
+    float4 vertexColor   : COLOR0;
 };
 
 row_major float4x4 BuildSkinMatrix(uint4 idx, float4 w)
@@ -55,14 +54,13 @@ VS_OUTPUT main(VS_INPUT input)
     row_major float4x4 skin = BuildSkinMatrix(input.boneIndices, input.boneWeights);
     float4 skinnedPos = mul(float4(input.position, 1.0f), skin);
     float3 skinnedN   = normalize(mul(input.normal, (float3x3)skin));
-    float4 worldPos = mul(skinnedPos, gWorld);
-    o.worldPosition = worldPos.xyz;
-    o.position = mul(worldPos, gViewProj);
-    o.normal = normalize(mul(skinnedN, (float3x3)gWorldInverseTranspose));
-    o.texCoord = input.texCoord;
-    o.texCoord1 = input.texCoord;
-    o.positionLightSpace = mul(worldPos, gShadowViewProj);
-    o.viewDirection = normalize(gCameraPos.xyz - worldPos.xyz);
-    o.vertexColor = input.color;
+    float4 worldPos   = mul(skinnedPos, gWorld);
+    o.worldPosition   = worldPos.xyz;
+    o.position        = mul(worldPos, gViewProj);
+    o.normal          = normalize(mul(skinnedN, (float3x3)gWorldInverseTranspose));
+    o.texCoord        = input.texCoord;
+    o.texCoord1       = input.texCoord;
+    o.viewDirection   = normalize(gCameraPos.xyz - worldPos.xyz);
+    o.vertexColor     = input.color;
     return o;
 }

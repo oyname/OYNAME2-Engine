@@ -17,9 +17,11 @@
 #include "Handle.h"
 #include "ECSTypes.h"   // EntityID, NULL_ENTITY
 #include "RenderPassClearDesc.h"
+#include "SubmeshData.h"
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <cmath>
 #include "GDXMath.h"
 
 // ===========================================================================
@@ -267,6 +269,62 @@ struct RenderBoundsComponent
         b.valid = radius > 0.0f;
         return b;
     }
+
+    // Berechnet Bounds aus den tatsächlichen Vertex-Positionen aller Submeshes.
+    // Löst das Problem von localCenter = {0,0,0} bei Meshes die nicht am Ursprung liegen.
+    // Gibt ein ungültiges Bounds zurück wenn keine Positionen vorhanden sind.
+    static RenderBoundsComponent MakeFromSubmeshes(const std::vector<SubmeshData>& submeshes)
+    {
+        // AABB über alle Vertices aller Submeshes aufspannen
+        bool hasAny = false;
+        GIDX::Float3 bMin{}, bMax{};
+
+        for (const auto& submesh : submeshes)
+        {
+            for (const auto& p : submesh.positions)
+            {
+                if (!hasAny)
+                {
+                    bMin = bMax = p;
+                    hasAny = true;
+                }
+                else
+                {
+                    if (p.x < bMin.x) bMin.x = p.x; if (p.x > bMax.x) bMax.x = p.x;
+                    if (p.y < bMin.y) bMin.y = p.y; if (p.y > bMax.y) bMax.y = p.y;
+                    if (p.z < bMin.z) bMin.z = p.z; if (p.z > bMax.z) bMax.z = p.z;
+                }
+            }
+        }
+
+        if (!hasAny) return {};
+
+        // Geometrischer Mittelpunkt der AABB
+        const GIDX::Float3 center = {
+            (bMin.x + bMax.x) * 0.5f,
+            (bMin.y + bMax.y) * 0.5f,
+            (bMin.z + bMax.z) * 0.5f,
+        };
+
+        // Radius = maximale Distanz aller Vertices vom Mittelpunkt
+        float radius = 0.f;
+        for (const auto& submesh : submeshes)
+        {
+            for (const auto& p : submesh.positions)
+            {
+                const float dx = p.x - center.x;
+                const float dy = p.y - center.y;
+                const float dz = p.z - center.z;
+                const float d2 = dx*dx + dy*dy + dz*dz;
+                if (d2 > radius) radius = d2;
+            }
+        }
+
+        // Jetzt sqrt — nur einmal statt pro Vertex
+        radius = std::sqrt(radius);
+
+        return MakeSphere(center, radius);
+    }
 };
 
 // ===========================================================================
@@ -353,9 +411,14 @@ struct LightComponent
 
     // Shadow (nur Directional)
     bool  castShadows = false;
-    float shadowOrthoSize = 50.0f;
+    float shadowOrthoSize = 50.0f;  // Fallback wenn shadowCascadeCount == 0
     float shadowNear = 0.1f;
     float shadowFar = 1000.0f;
+
+    // Cascaded Shadow Maps — 0 = Legacy (1 Kaskade via shadowOrthoSize)
+    uint32_t shadowCascadeCount  = 4u;     // 1..MAX_SHADOW_CASCADES
+    float    shadowCascadeLambda = 0.75f;  // 0=linear, 1=logarithmisch
+    uint32_t shadowMapSize       = 2048u;  // Muss mit GDXECSRenderer::SetShadowMapSize übereinstimmen
 
     // Layer-/Affect-Masken.
     // affectLayerMask: Welche sichtbaren Layer dieses Licht grundsätzlich beleuchtet.
@@ -366,3 +429,28 @@ struct LightComponent
     LightComponent() = default;
 };
 
+
+// ===========================================================================
+// CollisionBodyComponent — verbindet eine Entity mit der CollisionWorld.
+//
+// localShape liegt im Lokalraum der Entity.
+// CollisionSystem transformiert sie pro Frame in Weltkoordinaten und ruft
+// UpdateBody() auf.
+//
+// Keine Velocity — das ist eine Kollisions-, keine Physik-Komponente.
+// ===========================================================================
+#include "Collision/CollisionBody.h"
+
+struct CollisionBodyComponent
+{
+    GIDX::CollisionBodyID  bodyID     = {};                         // Handle zur CollisionWorld (nach CreateBody gültig)
+    GIDX::CollisionShape   localShape = {};                         // Shape im Lokalraum
+    GIDX::CollisionLayerMask layer    = GIDX::COLLISION_LAYER_DEFAULT;
+    GIDX::CollisionLayerMask mask     = GIDX::COLLISION_LAYER_ALL;
+    bool isTrigger   = false;
+    bool isStatic    = true;
+    bool isKinematic = false;
+    bool registered  = false;  // true sobald CreateBody() erfolgt ist
+
+    CollisionBodyComponent() = default;
+};

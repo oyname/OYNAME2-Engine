@@ -1,4 +1,5 @@
 #include "GDXDX11RenderBackend.h"
+#include "GDXIBLBaker.h"
 #include "GDXRenderTargetResource.h"
 #include "GDXVertexFlags.h"
 #include "Debug.h"
@@ -62,6 +63,7 @@ namespace
         GDXDX11RenderExecutor& executor,
         GDXShadowMap& shadowMap,
         bool hasShadowPass,
+        bool iblValid, ID3D11ShaderResourceView* iblIrr, ID3D11ShaderResourceView* iblEnv, ID3D11ShaderResourceView* iblLut,
         Registry& registry,
         const ICommandList& opaqueQueue,
         const ICommandList& transparentQueue,
@@ -79,6 +81,14 @@ namespace
         ctx->OMSetDepthStencilState(depthStencilState, 0u);
         ctx->OMSetBlendState(blendState, bf, 0xFFFFFFFF);
         samplerCache.BindAll(ctx);
+
+        // IBL auf t17/t18/t19 binden (Irradiance, Prefiltered, BRDF-LUT)
+        if (iblValid && iblIrr && iblEnv && iblLut)
+        {
+            ID3D11ShaderResourceView* iblSRVs[3] = { iblIrr, iblEnv, iblLut };
+            ctx->PSSetShaderResources(17u, 3u, iblSRVs);
+        }
+
         if (!opaqueQueue.Empty())
             executor.ExecuteQueue(registry, opaqueQueue, meshStore, matStore, shaderStore, texStore, shadowSrv);
 
@@ -207,7 +217,7 @@ bool GDXDX11RenderBackend::Initialize(ResourceStore<GDXTextureResource, TextureT
     if (!CreateRenderStates()) return false;
     if (!m_samplerCache.Init(m_device)) return false;
     if (!InitDefaultTextures(texStore)) return false;
-    if (!m_shadowMap.Create(m_device, m_shadowMapSize)) return false;
+    if (!m_shadowMap.Create(m_device, m_shadowMapSize, GDXShadowMap::kMaxCascades)) return false;
     if (!m_lightSystem.Init(m_device)) return false;
 
     m_meshUploader = std::make_unique<GDXDX11MeshUploader>(m_device, m_ctx);
@@ -421,6 +431,7 @@ void GDXDX11RenderBackend::UpdateFrameConstants(const FrameData& frame)
 {
     m_hasShadowPass = frame.hasShadowPass;
     m_executor.UpdateFrameConstants(frame);
+    m_executor.UpdateCascadeConstants(frame);
 }
 
 void* GDXDX11RenderBackend::ExecuteRenderPass(
@@ -454,10 +465,29 @@ void* GDXDX11RenderBackend::ExecuteRenderPass(
         if (!frame)
             return nullptr;
 
-        m_hasShadowPass = true;
-        m_shadowMap.BeginPass(m_ctx);
-        m_executor.ExecuteShadowQueue(registry, commandList, meshStore, matStore, shaderStore, texStore);
-        m_shadowMap.EndPass(m_ctx);
+        // CSM: pro Kaskade FrameConstants mit der Kaskaden-Matrix überschreiben,
+        // dann Shadow-Queue rendern. FrameConstants werden danach wiederhergestellt.
+        const uint32_t numCascades = (frame->shadowCascadeCount > 0u)
+            ? frame->shadowCascadeCount : 1u;
+
+        for (uint32_t cascade = 0u; cascade < numCascades; ++cascade)
+        {
+            FrameData cascadeFrame = *frame;
+            if (frame->shadowCascadeCount > 0u)
+                cascadeFrame.shadowViewProjMatrix = frame->shadowCascadeViewProj[cascade];
+
+            m_executor.UpdateFrameConstants(cascadeFrame);
+            m_executor.UpdateCascadeConstants(*frame);
+
+            m_hasShadowPass = true;
+            m_shadowMap.BeginPass(m_ctx, cascade);
+            m_executor.ExecuteShadowQueue(registry, commandList, meshStore, matStore, shaderStore, texStore);
+            m_shadowMap.EndPass(m_ctx);
+        }
+
+        // FrameConstants auf Original-Werte zurücksetzen
+        m_executor.UpdateFrameConstants(*frame);
+        m_executor.UpdateCascadeConstants(*frame);
 
         if (m_context)
         {
@@ -511,6 +541,7 @@ void* GDXDX11RenderBackend::ExecuteRenderPass(
             m_executor,
             m_shadowMap,
             m_hasShadowPass,
+            m_iblValid, m_iblIrradiance, m_iblPrefiltered, m_iblBrdfLut,
             registry,
             opaqueQueue,
             transparentQueue,
@@ -582,6 +613,123 @@ void* GDXDX11RenderBackend::ExecuteRenderPass(
     return nullptr;
 }
 
+// ---------------------------------------------------------------------------
+// CreateCubemapSRV — DX11-Upload fuer Cubemap-Daten aus GDXIBLData
+// ---------------------------------------------------------------------------
+static ID3D11ShaderResourceView* IBL_CreateCubemapSRV(
+    ID3D11Device* device, const float* data,
+    uint32_t faceSize, uint32_t mipLevels)
+{
+    if (!device || !data || faceSize == 0) return nullptr;
+
+    D3D11_TEXTURE2D_DESC td = {};
+    td.Width = td.Height    = faceSize;
+    td.MipLevels            = mipLevels;
+    td.ArraySize            = 6;
+    td.Format               = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    td.SampleDesc.Count     = 1;
+    td.Usage                = D3D11_USAGE_DEFAULT;
+    td.BindFlags            = D3D11_BIND_SHADER_RESOURCE;
+    td.MiscFlags            = D3D11_RESOURCE_MISC_TEXTURECUBE;
+
+    // Subresource-Daten: face * mipLevels Eintraege
+    std::vector<D3D11_SUBRESOURCE_DATA> srd(6u * mipLevels);
+    uint32_t mipOffset = 0;
+    for (uint32_t mip = 0; mip < mipLevels; ++mip)
+    {
+        uint32_t ms = faceSize >> mip;
+        if (ms < 1) ms = 1;
+        for (uint32_t face = 0; face < 6; ++face)
+        {
+            uint32_t faceOffset = mipOffset + face * ms * ms * 4u;
+            auto& s = srd[face * mipLevels + mip];
+            s.pSysMem          = data + faceOffset;
+            s.SysMemPitch      = ms * 4u * sizeof(float);
+            s.SysMemSlicePitch = ms * ms * 4u * sizeof(float);
+        }
+        mipOffset += 6u * ms * ms * 4u;
+    }
+
+    ID3D11Texture2D* tex = nullptr;
+    if (FAILED(device->CreateTexture2D(&td, srd.data(), &tex)) || !tex)
+        return nullptr;
+
+    D3D11_SHADER_RESOURCE_VIEW_DESC sd = {};
+    sd.Format                      = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    sd.ViewDimension               = D3D11_SRV_DIMENSION_TEXTURECUBE;
+    sd.TextureCube.MostDetailedMip = 0;
+    sd.TextureCube.MipLevels       = mipLevels;
+
+    ID3D11ShaderResourceView* srv = nullptr;
+    device->CreateShaderResourceView(tex, &sd, &srv);
+    tex->Release();
+    return srv;
+}
+
+static ID3D11ShaderResourceView* IBL_CreateLutSRV(
+    ID3D11Device* device, const float* data, uint32_t size)
+{
+    if (!device || !data || size == 0) return nullptr;
+
+    D3D11_TEXTURE2D_DESC td = {};
+    td.Width = td.Height  = size;
+    td.MipLevels          = 1;
+    td.ArraySize          = 1;
+    td.Format             = DXGI_FORMAT_R32G32_FLOAT;
+    td.SampleDesc.Count   = 1;
+    td.Usage              = D3D11_USAGE_IMMUTABLE;
+    td.BindFlags          = D3D11_BIND_SHADER_RESOURCE;
+
+    D3D11_SUBRESOURCE_DATA init = {};
+    init.pSysMem     = data;
+    init.SysMemPitch = size * 2u * sizeof(float);
+
+    ID3D11Texture2D* tex = nullptr;
+    if (FAILED(device->CreateTexture2D(&td, &init, &tex)) || !tex)
+        return nullptr;
+
+    D3D11_SHADER_RESOURCE_VIEW_DESC sd = {};
+    sd.Format                    = DXGI_FORMAT_R32G32_FLOAT;
+    sd.ViewDimension             = D3D11_SRV_DIMENSION_TEXTURE2D;
+    sd.Texture2D.MostDetailedMip = 0;
+    sd.Texture2D.MipLevels       = 1;
+
+    ID3D11ShaderResourceView* srv = nullptr;
+    device->CreateShaderResourceView(tex, &sd, &srv);
+    tex->Release();
+    return srv;
+}
+
+void GDXDX11RenderBackend::LoadIBL(const wchar_t* hdrPath)
+{
+    if (!m_device || !m_ctx) return;
+
+    // Alte SRVs freigeben
+    if (m_iblIrradiance)  { m_iblIrradiance->Release();  m_iblIrradiance  = nullptr; }
+    if (m_iblPrefiltered) { m_iblPrefiltered->Release(); m_iblPrefiltered = nullptr; }
+    if (m_iblBrdfLut)     { m_iblBrdfLut->Release();     m_iblBrdfLut     = nullptr; }
+    m_iblValid = false;
+
+    // CPU-Baking (backend-agnostisch)
+    GDXIBLData data = (hdrPath && hdrPath[0] != L'\0')
+        ? GDXIBLBaker::Bake(hdrPath)
+        : GDXIBLBaker::MakeFallback();
+
+    if (!data.valid) return;
+
+    // DX11-Upload
+    m_iblIrradiance  = IBL_CreateCubemapSRV(m_device,
+        data.irradiance.data(), data.irrSize, 1u);
+    m_iblPrefiltered = IBL_CreateCubemapSRV(m_device,
+        data.prefiltered.data(), data.envSize, data.envMips);
+    m_iblBrdfLut     = IBL_CreateLutSRV(m_device,
+        data.brdfLut.data(), data.lutSize);
+
+    m_iblValid = m_iblIrradiance && m_iblPrefiltered && m_iblBrdfLut;
+    if (!m_iblValid)
+        Debug::LogError(GDX_SRC_LOC, L"GDXDX11RenderBackend::LoadIBL: SRV-Upload fehlgeschlagen");
+}
+
 uint32_t GDXDX11RenderBackend::GetDrawCallCount() const
 {
     return m_executor.GetDrawCallCount();
@@ -590,6 +738,16 @@ uint32_t GDXDX11RenderBackend::GetDrawCallCount() const
 bool GDXDX11RenderBackend::HasShadowResources() const
 {
     return m_shadowMap.GetDSV() != nullptr && m_shadowMap.GetSRV() != nullptr;
+}
+
+bool GDXDX11RenderBackend::SupportsTextureFormat(GDXTextureFormat format) const
+{
+    if (!m_device) return false;
+    UINT support = 0;
+    const HRESULT hr = m_device->CheckFormatSupport(ToDxgiColorFormat(format), &support);
+    if (FAILED(hr)) return false;
+    return (support & D3D11_FORMAT_SUPPORT_RENDER_TARGET) != 0 &&
+           (support & D3D11_FORMAT_SUPPORT_SHADER_SAMPLE) != 0;
 }
 
 const IGDXRenderBackend::DefaultTextureSet& GDXDX11RenderBackend::GetDefaultTextures() const
@@ -951,6 +1109,9 @@ void GDXDX11RenderBackend::Shutdown(
     ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
     ResourceStore<GDXTextureResource, TextureTag>& texStore)
 {
+    if (m_iblIrradiance)  { m_iblIrradiance->Release();  m_iblIrradiance  = nullptr; }
+    if (m_iblPrefiltered) { m_iblPrefiltered->Release(); m_iblPrefiltered = nullptr; }
+    if (m_iblBrdfLut)     { m_iblBrdfLut->Release();     m_iblBrdfLut     = nullptr; }
     m_executor.Shutdown();
     m_lightSystem.Shutdown();
 
