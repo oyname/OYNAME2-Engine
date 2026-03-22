@@ -23,6 +23,7 @@ enum class GDXDepthMode : uint8_t
 enum class GDXPrimitiveTopology : uint8_t
 {
     TriangleList = 0,
+    LineList     = 1,
 };
 
 struct GDXPipelineStateDesc

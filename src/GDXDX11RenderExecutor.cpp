@@ -542,6 +542,9 @@ void GDXDX11RenderExecutor::ApplyPrimitiveTopology(const RenderCommand& cmd)
     default:
         topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
         break;
+    case GDXPrimitiveTopology::LineList:
+        topology = D3D11_PRIMITIVE_TOPOLOGY_LINELIST;
+        break;
     }
 
     m_context->IASetPrimitiveTopology(topology);
