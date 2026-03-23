@@ -79,11 +79,14 @@ public:
     bool UpdatePostProcessConstants(PostProcessResource& pass, const void* data, uint32_t size) override;
     void DestroyPostProcessPasses(ResourceStore<PostProcessResource, PostProcessTag>& postStore) override;
     bool ExecutePostProcessChain(const std::vector<PostProcessHandle>& orderedPasses,
-                                 ResourceStore<PostProcessResource, PostProcessTag>& postStore,
-                                 ResourceStore<GDXTextureResource, TextureTag>& texStore,
-                                 TextureHandle sceneTexture,
-                                 float viewportWidth,
-                                 float viewportHeight) override;
+                                ResourceStore<PostProcessResource, PostProcessTag>& postStore,
+                                ResourceStore<GDXTextureResource, TextureTag>& texStore,
+                                ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore,
+                                const PostProcessExecutionInputs& execInputs,
+                                float viewportWidth,
+                                float viewportHeight,
+                                RenderTargetHandle outputTarget = RenderTargetHandle::Invalid(),
+                                bool outputToBackbuffer = true) override;
 
     uint32_t GetDrawCallCount() const override;
     bool HasShadowResources() const override;

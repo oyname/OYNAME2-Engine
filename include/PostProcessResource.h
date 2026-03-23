@@ -74,6 +74,77 @@ struct alignas(16) BloomCompositeParams
 };
 static_assert(sizeof(BloomCompositeParams) == 32);
 
+
+// ---------------------------------------------------------------------------
+// Deklarative Input-Slots für backend-neutrales Post-Processing
+// ---------------------------------------------------------------------------
+
+enum class PostProcessInputSemantic : uint8_t
+{
+    SceneColor = 0,
+    OriginalSceneColor = 1,
+    SceneDepth = 2,
+    SceneNormals = 3,
+    Custom = 4,
+};
+
+struct PostProcessInputSlotDesc
+{
+    std::wstring             name;
+    uint32_t                 shaderRegister = 0u;
+    PostProcessInputSemantic semantic = PostProcessInputSemantic::SceneColor;
+    bool                     required = true;
+};
+
+struct PostProcessInputSlot
+{
+    std::wstring             name;
+    uint32_t                 shaderRegister = 0u;
+    PostProcessInputSemantic semantic = PostProcessInputSemantic::SceneColor;
+    bool                     required = true;
+    TextureHandle            customTexture = TextureHandle::Invalid();
+};
+
+struct PostProcessExecutionInputs
+{
+    TextureHandle sceneColor         = TextureHandle::Invalid();
+    TextureHandle originalSceneColor = TextureHandle::Invalid();
+    TextureHandle sceneDepth         = TextureHandle::Invalid();
+    TextureHandle sceneNormals       = TextureHandle::Invalid();
+
+    void Reset()
+    {
+        sceneColor         = TextureHandle::Invalid();
+        originalSceneColor = TextureHandle::Invalid();
+        sceneDepth         = TextureHandle::Invalid();
+        sceneNormals       = TextureHandle::Invalid();
+    }
+};
+
+struct ResolvedPostProcessBinding
+{
+    std::wstring  name;
+    uint32_t      shaderRegister = 0u;
+    TextureHandle texture        = TextureHandle::Invalid();
+    bool          required       = true;
+};
+
+inline std::vector<PostProcessInputSlot> BuildDefaultPostProcessInputs(
+    const std::vector<PostProcessInputSlotDesc>& declared)
+{
+    std::vector<PostProcessInputSlot> out;
+    if (declared.empty())
+    {
+        out.push_back(PostProcessInputSlot{L"SceneColor", 0u, PostProcessInputSemantic::SceneColor, true, TextureHandle::Invalid()});
+        out.push_back(PostProcessInputSlot{L"OriginalSceneColor", 1u, PostProcessInputSemantic::OriginalSceneColor, false, TextureHandle::Invalid()});
+        return out;
+    }
+    out.reserve(declared.size());
+    for (const auto& d : declared)
+        out.push_back(PostProcessInputSlot{d.name, d.shaderRegister, d.semantic, d.required, TextureHandle::Invalid()});
+    return out;
+}
+
 // ---------------------------------------------------------------------------
 // Post-Process Pass Descriptor
 // ---------------------------------------------------------------------------
@@ -85,12 +156,14 @@ struct PostProcessPassDesc
     std::wstring debugName;
     uint32_t constantBufferBytes = 0u;
     bool enabled = true;
+    std::vector<PostProcessInputSlotDesc> inputSlots;
 };
 
 struct PostProcessResource
 {
     PostProcessPassDesc desc;
     std::vector<uint8_t> constantData;
+    std::vector<PostProcessInputSlot> inputs;
     uint32_t constantBufferBytes = 0u;
     bool enabled = true;
     bool cpuDirty = false;

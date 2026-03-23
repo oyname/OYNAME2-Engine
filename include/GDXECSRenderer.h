@@ -100,6 +100,11 @@ public:
     PostProcessHandle  CreatePostProcessPass(const PostProcessPassDesc& desc);
     bool               SetPostProcessConstants(PostProcessHandle h, const void* data, uint32_t size);
     bool               SetPostProcessEnabled(PostProcessHandle h, bool enabled);
+    // Setzt eine Textur für einen Custom-Slot eines Passes (Stufe E).
+    // slotName muss dem PostProcessInputSlotDesc::name des deklarierten Slots entsprechen.
+    bool               SetPostProcessCustomInput(PostProcessHandle h,
+                                                 const std::wstring& slotName,
+                                                 TextureHandle texture);
     void               ClearPostProcessPasses();
 
     // Bloom — wraps Bright + BlurH + BlurV + Composite passes.
@@ -127,6 +132,11 @@ public:
                                 float contrastThreshold = 0.0312f,
                                 float relativeThreshold = 0.125f);
     void               DisableFXAA();
+
+    // Minimaler Test-Pass: visualisiert SceneDepth als Graustufenbild.
+    // Dient nur zum Nachweis, dass die Depth-SRV im Post-Processing ankommt.
+    void               SetDepthDebugView(bool enabled);
+    void               SetDepthFogTest(bool enabled);
 
     struct FrameStats
     {
@@ -254,6 +264,7 @@ private:
 
     std::vector<PostProcessHandle> m_postProcessPassOrder;
     RenderTargetHandle m_mainScenePostProcessTarget = RenderTargetHandle::Invalid();
+    std::unordered_map<RenderTargetHandle, RenderTargetHandle> m_rttPostProcessTargets;
     PostProcessHandle  m_toneMappingPass            = PostProcessHandle::Invalid();
     ToneMappingMode    m_toneMappingMode             = ToneMappingMode::None;
     PostProcessHandle  m_fxaaPass                   = PostProcessHandle::Invalid();
@@ -261,6 +272,8 @@ private:
     PostProcessHandle  m_bloomBlurHPass              = PostProcessHandle::Invalid();
     PostProcessHandle  m_bloomBlurVPass              = PostProcessHandle::Invalid();
     PostProcessHandle  m_bloomCompositePass          = PostProcessHandle::Invalid();
+    PostProcessHandle  m_depthDebugPass              = PostProcessHandle::Invalid();
+    PostProcessHandle  m_depthFogTestPass            = PostProcessHandle::Invalid();
 
     JobSystem        m_jobSystem;
     SystemScheduler  m_systemScheduler;

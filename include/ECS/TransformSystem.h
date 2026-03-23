@@ -1,6 +1,6 @@
 #pragma once
 #include "Components.h"
-#include "Registry.h"
+#include "ECS/Registry.h"
 
 class JobSystem;
 

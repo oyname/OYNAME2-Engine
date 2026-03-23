@@ -192,9 +192,12 @@ void GDXOpenGLRenderBackend::DestroyPostProcessPasses(ResourceStore<PostProcessR
 bool GDXOpenGLRenderBackend::ExecutePostProcessChain(const std::vector<PostProcessHandle>&,
                                                      ResourceStore<PostProcessResource, PostProcessTag>&,
                                                      ResourceStore<GDXTextureResource, TextureTag>&,
-                                                     TextureHandle,
+                                                     ResourceStore<GDXRenderTargetResource, RenderTargetTag>*,
+                                                     const PostProcessExecutionInputs&,
                                                      float,
-                                                     float)
+                                                     float,
+                                                     RenderTargetHandle,
+                                                     bool)
 {
     return false;
 }

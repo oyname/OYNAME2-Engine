@@ -19,6 +19,7 @@ struct GDXRenderTargetResource
     void* srv = nullptr;            // Shader-Read-View / Texture-Handle
     void* depthTexture = nullptr;   // API-spezifische Depth-Textur
     void* dsv = nullptr;            // DepthStencil-View / Depth-Attachment
+    void* depthSrv = nullptr;       // Shader-Read-View der Depth-Textur (optional)
 
     uint32_t width = 0u;
     uint32_t height = 0u;
@@ -27,6 +28,8 @@ struct GDXRenderTargetResource
 
     // Farbausgabe des RenderTargets als normale Engine-Textur nutzbar.
     TextureHandle exposedTexture = TextureHandle::Invalid();
+    // Samplebare Depth-Ausgabe des RenderTargets als Engine-Textur nutzbar.
+    TextureHandle exposedDepthTexture = TextureHandle::Invalid();
 
     std::wstring debugName;
 

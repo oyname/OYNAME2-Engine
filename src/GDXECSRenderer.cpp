@@ -50,6 +50,7 @@ RenderPassBuilder::PostProcContext GDXECSRenderer::MakePostProcContext()
     ctx.rtStore          = &m_rtStore;
     ctx.texStore         = &m_texStore;
     ctx.mainSceneTarget  = &m_mainScenePostProcessTarget;
+    ctx.rttSceneTargets  = &m_rttPostProcessTargets;
     return ctx;
 }
 
@@ -312,6 +313,23 @@ bool GDXECSRenderer::SetPostProcessEnabled(PostProcessHandle h, bool enabled)
     return true;
 }
 
+bool GDXECSRenderer::SetPostProcessCustomInput(PostProcessHandle h,
+                                                const std::wstring& slotName,
+                                                TextureHandle texture)
+{
+    auto* pass = m_postProcessStore.Get(h);
+    if (!pass) return false;
+    for (PostProcessInputSlot& slot : pass->inputs)
+    {
+        if (slot.semantic == PostProcessInputSemantic::Custom && slot.name == slotName)
+        {
+            slot.customTexture = texture;
+            return true;
+        }
+    }
+    return false; // Slot mit diesem Namen nicht gefunden
+}
+
 void GDXECSRenderer::ClearPostProcessPasses()
 {
     if (m_backend)
@@ -331,6 +349,8 @@ void GDXECSRenderer::ClearPostProcessPasses()
     m_bloomBlurHPass     = PostProcessHandle::Invalid();
     m_bloomBlurVPass     = PostProcessHandle::Invalid();
     m_bloomCompositePass = PostProcessHandle::Invalid();
+    m_depthDebugPass     = PostProcessHandle::Invalid();
+    m_depthFogTestPass   = PostProcessHandle::Invalid();
     m_toneMappingPass    = PostProcessHandle::Invalid();
     m_toneMappingMode    = ToneMappingMode::None;
     m_fxaaPass           = PostProcessHandle::Invalid();
@@ -516,6 +536,96 @@ void GDXECSRenderer::DisableFXAA()
 {
     if (m_fxaaPass.IsValid())
         SetPostProcessEnabled(m_fxaaPass, false);
+}
+
+void GDXECSRenderer::SetDepthDebugView(bool enabled)
+{
+    if (!enabled)
+    {
+        if (m_depthDebugPass.IsValid())
+            SetPostProcessEnabled(m_depthDebugPass, false);
+        return;
+    }
+
+    if (!m_depthDebugPass.IsValid())
+    {
+        PostProcessPassDesc desc{};
+        desc.vertexShaderFile    = L"PostProcessFullscreenVS.hlsl";
+        desc.pixelShaderFile     = L"PostProcessDepthDebugPS.hlsl";
+        desc.debugName           = L"DepthDebug";
+        desc.constantBufferBytes = 0u;
+        desc.enabled             = true;
+        desc.inputSlots = {
+            { L"SceneDepth", 0u, PostProcessInputSemantic::SceneDepth, true }
+        };
+        m_depthDebugPass = CreatePostProcessPass(desc);
+    }
+
+    if (!m_depthDebugPass.IsValid())
+        return;
+
+    SetPostProcessEnabled(m_depthDebugPass, true);
+
+    auto& order = m_postProcessPassOrder;
+    auto it = std::find(order.begin(), order.end(), m_depthDebugPass);
+    if (it != order.end())
+        order.erase(it);
+    order.push_back(m_depthDebugPass);
+}
+
+
+void GDXECSRenderer::SetDepthFogTest(bool enabled)
+{
+    if (enabled)
+    {
+        if (!m_depthFogTestPass.IsValid())
+        {
+            PostProcessPassDesc desc{};
+            desc.vertexShaderFile    = L"PostProcessFullscreenVS.hlsl";
+            desc.pixelShaderFile     = L"PostProcessDepthFogPS.hlsl";
+            desc.debugName           = L"DepthFogTest";
+            desc.constantBufferBytes = 0u;
+            desc.enabled             = true;
+            desc.inputSlots =
+            {
+                { L"SceneColor", 0u, PostProcessInputSemantic::SceneColor, true },
+                { L"SceneDepth", 1u, PostProcessInputSemantic::SceneDepth, true }
+            };
+            m_depthFogTestPass = CreatePostProcessPass(desc);
+        }
+
+        if (!m_depthFogTestPass.IsValid())
+            return;
+
+        SetPostProcessEnabled(m_depthFogTestPass, true);
+
+        auto& order = m_postProcessPassOrder;
+        auto fogIt = std::find(order.begin(), order.end(), m_depthFogTestPass);
+        if (fogIt != order.end())
+        {
+            PostProcessHandle fog = *fogIt;
+            order.erase(fogIt);
+
+            auto tmIt = std::find(order.begin(), order.end(), m_toneMappingPass);
+            if (tmIt != order.end())
+            {
+                order.insert(tmIt, fog);
+            }
+            else
+            {
+                auto fxaaIt = std::find(order.begin(), order.end(), m_fxaaPass);
+                if (fxaaIt != order.end())
+                    order.insert(fxaaIt, fog);
+                else
+                    order.push_back(fog);
+            }
+        }
+    }
+    else
+    {
+        if (m_depthFogTestPass.IsValid())
+            SetPostProcessEnabled(m_depthFogTestPass, false);
+    }
 }
 
 void GDXECSRenderer::SetShadowMapSize(uint32_t size)
@@ -786,6 +896,7 @@ void GDXECSRenderer::Shutdown()
             for (const RenderTargetHandle h : rtHandles)
                 m_backend->DestroyRenderTarget(h, m_rtStore, m_texStore);
             m_mainScenePostProcessTarget = RenderTargetHandle::Invalid();
+            m_rttPostProcessTargets.clear();
         }
         {
             std::vector<MeshHandle> meshHandles;

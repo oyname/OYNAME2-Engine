@@ -19,6 +19,8 @@ enum class GDXTextureSemantic : uint8_t
     Emissive,
     Detail,
     RenderTarget,
+    Depth,
+    ScreenNormals,
     Procedural,
 };
 

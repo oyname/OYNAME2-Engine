@@ -103,12 +103,16 @@ public:
     virtual bool ExecutePostProcessChain(const std::vector<PostProcessHandle>& orderedPasses,
                                          ResourceStore<PostProcessResource, PostProcessTag>& postStore,
                                          ResourceStore<GDXTextureResource, TextureTag>& texStore,
-                                         TextureHandle sceneTexture,
+                                         ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore,
+                                         const PostProcessExecutionInputs& execInputs,
                                          float viewportWidth,
-                                         float viewportHeight)
+                                         float viewportHeight,
+                                         RenderTargetHandle outputTarget = RenderTargetHandle::Invalid(),
+                                         bool outputToBackbuffer = true)
     {
-        (void)orderedPasses; (void)postStore; (void)texStore;
-        (void)sceneTexture; (void)viewportWidth; (void)viewportHeight;
+        (void)orderedPasses; (void)postStore; (void)texStore; (void)rtStore;
+        (void)execInputs; (void)viewportWidth; (void)viewportHeight;
+        (void)outputTarget; (void)outputToBackbuffer;
         return false;
     }
 

@@ -39,7 +39,7 @@ public:
     PostProcessHandle CreatePostProcessPass(ResourceStore<PostProcessResource, PostProcessTag>&, const PostProcessPassDesc&) override { return PostProcessHandle::Invalid(); }
     bool UpdatePostProcessConstants(PostProcessResource&, const void*, uint32_t) override { return false; }
     void DestroyPostProcessPasses(ResourceStore<PostProcessResource, PostProcessTag>&) override {}
-    bool ExecutePostProcessChain(const std::vector<PostProcessHandle>&, ResourceStore<PostProcessResource, PostProcessTag>&, ResourceStore<GDXTextureResource, TextureTag>&, TextureHandle, float, float) override { return false; }
+    bool ExecutePostProcessChain(const std::vector<PostProcessHandle>&, ResourceStore<PostProcessResource, PostProcessTag>&, ResourceStore<GDXTextureResource, TextureTag>&, ResourceStore<GDXRenderTargetResource, RenderTargetTag>*, const PostProcessExecutionInputs&, float, float, RenderTargetHandle = RenderTargetHandle::Invalid(), bool = true) override { return false; }
     uint32_t GetDrawCallCount() const override { return 0u; }
     bool HasShadowResources() const override { return false; }
     const DefaultTextureSet& GetDefaultTextures() const override { return m_defaults; }

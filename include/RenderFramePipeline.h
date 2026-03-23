@@ -116,10 +116,20 @@ struct PassExec
 
 struct PostProcExec
 {
-    bool          enabled     = false;
-    TextureHandle sceneTexture = TextureHandle::Invalid();
+    bool          enabled      = false;
+    TextureHandle sceneTexture = TextureHandle::Invalid();  // bleibt für FrameGraph-Key-Berechnung
+    PostProcessExecutionInputs execInputs{};                // vollständige deklarative Inputs (Stufe B)
+    RenderTargetHandle outputTarget = RenderTargetHandle::Invalid();
+    bool          outputToBackbuffer = true;
 
-    void Reset() { enabled = false; sceneTexture = TextureHandle::Invalid(); }
+    void Reset()
+    {
+        enabled = false;
+        sceneTexture = TextureHandle::Invalid();
+        execInputs.Reset();
+        outputTarget = RenderTargetHandle::Invalid();
+        outputToBackbuffer = true;
+    }
 };
 
 struct PresentExec

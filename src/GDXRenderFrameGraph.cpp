@@ -129,6 +129,7 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
 
     const uint32_t rttCount = static_cast<uint32_t>(pipeline.rttViews.size());
     std::vector<FGResourceID> rttColorIDs(rttCount, FG_INVALID_RESOURCE);
+    std::vector<FGResourceID> rttSceneIDs(rttCount, FG_INVALID_RESOURCE);
     for (uint32_t i = 0u; i < rttCount; ++i)
     {
         const RFG::ViewPassData& view = pipeline.rttViews[i];
@@ -137,6 +138,15 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
         if (!rt || !rt->ready) continue;
         rttColorIDs[i] = pipeline.frameGraph.RegisterResource(
             TextureHandle::Invalid(), view.prepared.graphicsView.renderTarget, "RTT");
+
+        if (view.execute.presentation.postProcess.enabled &&
+            view.execute.presentation.postProcess.sceneTexture.IsValid())
+        {
+            rttSceneIDs[i] = pipeline.frameGraph.RegisterResource(
+                view.execute.presentation.postProcess.sceneTexture,
+                view.execute.graphicsPass.desc.target.renderTarget,
+                "RTTSceneColor");
+        }
     }
 
     // --- Schritt 2: Nodes bauen ---
@@ -172,9 +182,48 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
             node.countedAsRenderTargetView = true;
             if (view.execute.shadowPass.enabled)
                 node.reads.push_back(shadowMapID);
-            if (rttColorIDs[i] != FG_INVALID_RESOURCE)
+            if (view.execute.presentation.postProcess.enabled && rttSceneIDs[i] != FG_INVALID_RESOURCE)
+                node.writes.push_back(rttSceneIDs[i]);
+            else if (rttColorIDs[i] != FG_INVALID_RESOURCE)
                 node.writes.push_back(rttColorIDs[i]);
             node.executeFn  = MakeGraphicsExecFn(&view.execute);
+            pipeline.frameGraph.nodes.push_back(std::move(node));
+        }
+
+        if (view.execute.presentation.postProcess.enabled &&
+            view.execute.presentation.postProcess.sceneTexture.IsValid() &&
+            rttSceneIDs[i] != FG_INVALID_RESOURCE &&
+            rttColorIDs[i] != FG_INVALID_RESOURCE)
+        {
+            RFG::Node node{};
+            node.kind = RFG::NodeKind::Presentation;
+            node.executeInput = &view.execute;
+            node.statsOutput = &view.stats;
+            node.viewIndex = i;
+            node.enabled = true;
+            node.countedAsRenderTargetView = true;
+            node.updateFrameConstants = false;
+            node.reads.push_back(rttSceneIDs[i]);
+            node.writes.push_back(rttColorIDs[i]);
+            const RFG::ExecuteData* exec = &view.execute;
+            node.executeFn = [exec](const RFG::ExecContext& c, RFG::ViewStats* s)
+            {
+                if (c.backend &&
+                    exec->presentation.postProcess.enabled &&
+                    exec->presentation.postProcess.sceneTexture.IsValid())
+                {
+                    assert(c.postProcessPassOrder != nullptr);
+                    assert(c.postProcessStore != nullptr);
+                    const bool ok = c.backend->ExecutePostProcessChain(
+                        *c.postProcessPassOrder, *c.postProcessStore, *c.texStore, c.rtStore,
+                        exec->presentation.postProcess.execInputs,
+                        exec->frame.viewportWidth,
+                        exec->frame.viewportHeight,
+                        exec->presentation.postProcess.outputTarget,
+                        exec->presentation.postProcess.outputToBackbuffer);
+                    s->presentationExecuted = ok;
+                }
+            };
             pipeline.frameGraph.nodes.push_back(std::move(node));
         }
     }
@@ -230,10 +279,12 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
                 assert(c.postProcessPassOrder != nullptr);
                 assert(c.postProcessStore     != nullptr);
                 const bool ok = c.backend->ExecutePostProcessChain(
-                    *c.postProcessPassOrder, *c.postProcessStore, *c.texStore,
-                    exec->presentation.postProcess.sceneTexture,
+                    *c.postProcessPassOrder, *c.postProcessStore, *c.texStore, c.rtStore,
+                    exec->presentation.postProcess.execInputs,
                     exec->frame.viewportWidth,
-                    exec->frame.viewportHeight);
+                    exec->frame.viewportHeight,
+                    exec->presentation.postProcess.outputTarget,
+                    exec->presentation.postProcess.outputToBackbuffer);
                 s->presentationExecuted = ok;
             }
         };

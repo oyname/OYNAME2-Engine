@@ -24,6 +24,7 @@
 
 #include <functional>
 #include <vector>
+#include <unordered_map>
 
 class IGDXRenderBackend;
 
@@ -48,6 +49,7 @@ namespace RenderPassBuilder
         ResourceStore<GDXRenderTargetResource, RenderTargetTag>*         rtStore           = nullptr;
         ResourceStore<GDXTextureResource,      TextureTag>*              texStore          = nullptr;
         RenderTargetHandle*                                              mainSceneTarget   = nullptr; // in/out
+        std::unordered_map<RenderTargetHandle, RenderTargetHandle>*      rttSceneTargets   = nullptr; // source RT per RTT view
     };
 
     // --- Einzelne Build-Schritte (werden intern von den Frame-Level-Funktionen gerufen) ---
@@ -85,9 +87,10 @@ namespace RenderPassBuilder
 
     // Baut alle Execute-Inputs für alle RTT-Views.
     void BuildRTTExecuteInputs(
-        std::vector<RFG::ViewPassData>&                          views,
+        std::vector<RFG::ViewPassData>&                           views,
         ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore,
-        const DebugAppendFn&                                     debugFn);
+        const PostProcContext&                                    ppCtx,
+        const DebugAppendFn&                                      debugFn);
 
     // Baut Execute-Inputs für den gesamten Frame (RTT + Main).
     void BuildFrameExecuteInputs(

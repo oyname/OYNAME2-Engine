@@ -6,6 +6,7 @@
 #include "Core/Debug.h"
 #include "GDXResourceState.h"
 #include "RenderQueue.h"
+#include "PostProcessBindingResolver.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -831,6 +832,8 @@ PostProcessHandle GDXDX11RenderBackend::CreatePostProcessPass(ResourceStore<Post
     pass.desc = desc;
     pass.enabled = desc.enabled;
     pass.constantBufferBytes = desc.constantBufferBytes;
+    // Slot-Datenmodell aufbauen: falls desc.inputSlots leer → Default-Mapping (t0=SceneColor, t1=OriginalSceneColor).
+    pass.inputs = BuildDefaultPostProcessInputs(desc.inputSlots);
 
     Dx11PostProcessRuntime runtime{};
     runtime.vertexShader = vs;
@@ -912,12 +915,16 @@ void GDXDX11RenderBackend::DestroyPostProcessPasses(ResourceStore<PostProcessRes
 bool GDXDX11RenderBackend::ExecutePostProcessChain(const std::vector<PostProcessHandle>& orderedPasses,
     ResourceStore<PostProcessResource, PostProcessTag>& postStore,
     ResourceStore<GDXTextureResource, TextureTag>& texStore,
-    TextureHandle sceneTexture,
+    ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore,
+    const PostProcessExecutionInputs& execInputs,
     float viewportWidth,
-    float viewportHeight)
+    float viewportHeight,
+    RenderTargetHandle outputTarget,
+    bool outputToBackbuffer)
 {
-    if (!m_ctx || !m_context || !sceneTexture.IsValid()) return false;
+    if (!m_ctx || !m_context || !execInputs.sceneColor.IsValid()) return false;
 
+    // --- Aktive Passes sammeln ---
     std::vector<PostProcessHandle> active;
     active.reserve(orderedPasses.size());
     for (const PostProcessHandle handle : orderedPasses)
@@ -928,11 +935,13 @@ bool GDXDX11RenderBackend::ExecutePostProcessChain(const std::vector<PostProcess
     }
     if (active.empty()) return false;
 
-    const auto* sceneRes = texStore.Get(sceneTexture);
+    // --- SceneColor-Textur als Basis für Ping-Pong ---
+    const auto* sceneRes = texStore.Get(execInputs.sceneColor);
     if (!sceneRes || !sceneRes->srv) return false;
 
-    const uint32_t width = (std::max)(1u, static_cast<uint32_t>(viewportWidth));
+    const uint32_t width  = (std::max)(1u, static_cast<uint32_t>(viewportWidth));
     const uint32_t height = (std::max)(1u, static_cast<uint32_t>(viewportHeight));
+
     if (active.size() > 1u)
     {
         const GDXTextureFormat intermediateFormat = MakeLinearPostProcessFormat(sceneRes->format);
@@ -940,9 +949,38 @@ bool GDXDX11RenderBackend::ExecutePostProcessChain(const std::vector<PostProcess
         if (!EnsurePostProcessSurface(m_postProcessPong, width, height, intermediateFormat, L"PostProcessPong")) return false;
     }
 
-    auto* backbufferRTV = static_cast<ID3D11RenderTargetView*>(m_context->GetRenderTarget());
-    ID3D11ShaderResourceView* inputSrv = static_cast<ID3D11ShaderResourceView*>(sceneRes->srv);
+    ID3D11RenderTargetView* backbufferRTV = nullptr;
+    if (outputToBackbuffer)
+    {
+        backbufferRTV = static_cast<ID3D11RenderTargetView*>(m_context->GetRenderTarget());
+    }
+    else
+    {
+        if (!rtStore || !outputTarget.IsValid()) return false;
+        const GDXRenderTargetResource* outputRt = rtStore->Get(outputTarget);
+        if (!outputRt || !outputRt->ready || !outputRt->rtv) return false;
+        backbufferRTV = static_cast<ID3D11RenderTargetView*>(outputRt->rtv);
+    }
+    // inputSrv: wird pro Pass auf das letzte Ergebnis umgebogen (Ping-Pong SceneColor)
+    ID3D11ShaderResourceView* inputSrv         = static_cast<ID3D11ShaderResourceView*>(sceneRes->srv);
+    // originalSceneSrv: bleibt für alle Passes stabil (OriginalSceneColor-Slot)
     ID3D11ShaderResourceView* originalSceneSrv = static_cast<ID3D11ShaderResourceView*>(sceneRes->srv);
+
+    // Optionaler Depth-SRV — im aktuellen Bestand noch kein echtes Depth-RT vorhanden;
+    // wird befüllt sobald execInputs.sceneDepth gesetzt ist.
+    ID3D11ShaderResourceView* depthSrv   = nullptr;
+    ID3D11ShaderResourceView* normalsSrv = nullptr;
+    if (execInputs.sceneDepth.IsValid())
+    {
+        if (const auto* depthRes = texStore.Get(execInputs.sceneDepth))
+            depthSrv = static_cast<ID3D11ShaderResourceView*>(depthRes->srv);
+    }
+    if (execInputs.sceneNormals.IsValid())
+    {
+        if (const auto* normRes = texStore.Get(execInputs.sceneNormals))
+            normalsSrv = static_cast<ID3D11ShaderResourceView*>(normRes->srv);
+    }
+
     ID3D11RenderTargetView* tempTargets[2] = {
         static_cast<ID3D11RenderTargetView*>(m_postProcessPing.rtv),
         static_cast<ID3D11RenderTargetView*>(m_postProcessPong.rtv)
@@ -958,11 +996,15 @@ bool GDXDX11RenderBackend::ExecutePostProcessChain(const std::vector<PostProcess
     m_samplerCache.BindAll(m_ctx);
 
     D3D11_VIEWPORT vp = {};
-    vp.Width = static_cast<float>(width);
-    vp.Height = static_cast<float>(height);
+    vp.Width    = static_cast<float>(width);
+    vp.Height   = static_cast<float>(height);
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
     m_ctx->RSSetViewports(1, &vp);
+
+    // Maximale Anzahl gebundener SRV-Slots: D3D11 erlaubt 128 PS-SRV-Slots.
+    // Wir nutzen maximal so viele wie der Pass mit dem meisten Slots braucht.
+    constexpr uint32_t kMaxBindSlots = 16u;
 
     for (size_t i = 0; i < active.size(); ++i)
     {
@@ -972,6 +1014,7 @@ bool GDXDX11RenderBackend::ExecutePostProcessChain(const std::vector<PostProcess
         if (runtimeIt == m_postProcessRuntime.end()) continue;
         Dx11PostProcessRuntime& runtime = runtimeIt->second;
 
+        // --- Constant Buffer Upload ---
         if (runtime.constantBuffer && pass->cpuDirty)
         {
             D3D11_MAPPED_SUBRESOURCE mapped = {};
@@ -983,15 +1026,82 @@ bool GDXDX11RenderBackend::ExecutePostProcessChain(const std::vector<PostProcess
             }
         }
 
+        // --- Deklarative Slot-Auflösung (Stufen C + D) ---
+        // inputSrv zeigt auf das aktuelle Ping-Pong-Ergebnis (SceneColor für diesen Pass).
+        // originalSceneSrv bleibt über alle Passes stabil.
+
+        // SRV-Array mit kMaxBindSlots Einträgen vorbereiten (alle null).
+        ID3D11ShaderResourceView* srvArray[kMaxBindSlots] = {};
+        uint32_t maxBoundSlot = 0u;
+
+        if (pass->inputs.empty())
+        {
+            // Kein Slot deklariert → Default-Mapping: t0=SceneColor, t1=OriginalSceneColor
+            srvArray[0] = inputSrv;
+            srvArray[1] = originalSceneSrv;
+            maxBoundSlot = 2u;
+        }
+        else
+        {
+            // Deklarierte Slots auflösen.
+            bool hasMissingRequired = false;
+            for (const PostProcessInputSlot& slot : pass->inputs)
+            {
+                // sceneColor: inputSrv (wird pro Pass umgebogen)
+                ID3D11ShaderResourceView* srv = nullptr;
+                switch (slot.semantic)
+                {
+                case PostProcessInputSemantic::SceneColor:
+                    srv = inputSrv;
+                    break;
+                case PostProcessInputSemantic::OriginalSceneColor:
+                    srv = originalSceneSrv;
+                    break;
+                case PostProcessInputSemantic::SceneDepth:
+                    srv = depthSrv;
+                    break;
+                case PostProcessInputSemantic::SceneNormals:
+                    srv = normalsSrv;
+                    break;
+                case PostProcessInputSemantic::Custom:
+                    if (slot.customTexture.IsValid())
+                    {
+                        if (const auto* customRes = texStore.Get(slot.customTexture))
+                            srv = static_cast<ID3D11ShaderResourceView*>(customRes->srv);
+                    }
+                    break;
+                default: break;
+                }
+
+                if (!srv && slot.required)
+                {
+                    hasMissingRequired = true;
+                    Debug::LogWarning(GDX_SRC_LOC,
+                        L"PostProcess: Required Slot '" + slot.name + L"' hat keine gueltige Textur — Pass wird uebersprungen.");
+                    break;
+                }
+
+                const uint32_t reg = slot.shaderRegister;
+                if (reg < kMaxBindSlots)
+                {
+                    srvArray[reg] = srv;
+                    if (reg + 1u > maxBoundSlot) maxBoundSlot = reg + 1u;
+                }
+            }
+
+            if (hasMissingRequired) continue; // Pass überspringen
+        }
+
+        // --- Render Target setzen (Ping-Pong / Backbuffer) ---
         const bool isLast = (i + 1u) == active.size();
         ID3D11RenderTargetView* outputRtv = isLast ? backbufferRTV : tempTargets[i % 2u];
         m_ctx->OMSetRenderTargets(1, &outputRtv, nullptr);
         m_ctx->ClearRenderTargetView(outputRtv, clearColor);
 
+        // --- Shader + SRVs binden ---
         m_ctx->VSSetShader(runtime.vertexShader, nullptr, 0);
         m_ctx->PSSetShader(runtime.pixelShader, nullptr, 0);
-        ID3D11ShaderResourceView* srvs[2] = { inputSrv, originalSceneSrv };
-        m_ctx->PSSetShaderResources(0, 2, srvs);
+        m_ctx->PSSetShaderResources(0, maxBoundSlot, srvArray);
 
         if (runtime.constantBuffer)
         {
@@ -1008,17 +1118,23 @@ bool GDXDX11RenderBackend::ExecutePostProcessChain(const std::vector<PostProcess
 
         m_ctx->Draw(3, 0);
 
-        ID3D11ShaderResourceView* nullSrvs[2] = { nullptr, nullptr };
-        m_ctx->PSSetShaderResources(0, 2, nullSrvs);
+        // SRVs lösen (alle gebundenen Slots nullen)
+        ID3D11ShaderResourceView* nullSrvs[kMaxBindSlots] = {};
+        m_ctx->PSSetShaderResources(0, maxBoundSlot, nullSrvs);
 
+        // --- Ping-Pong: inputSrv auf das gerade geschriebene Intermediate umbiegen ---
         if (!isLast)
-            inputSrv = (i % 2u == 0u) ? static_cast<ID3D11ShaderResourceView*>(m_postProcessPing.srv)
-            : static_cast<ID3D11ShaderResourceView*>(m_postProcessPong.srv);
+        {
+            const Dx11PostProcessSurface& src =
+                (i % 2u == 0u) ? m_postProcessPing : m_postProcessPong;
+            inputSrv = static_cast<ID3D11ShaderResourceView*>(src.srv);
+        }
     }
 
-    ID3D11ShaderResourceView* nullSrvs[2] = { nullptr, nullptr };
+    // Cleanup
+    ID3D11ShaderResourceView* nullSrvs[kMaxBindSlots] = {};
+    m_ctx->PSSetShaderResources(0, kMaxBindSlots, nullSrvs);
     ID3D11Buffer* nullCb = nullptr;
-    m_ctx->PSSetShaderResources(0, 2, nullSrvs);
     m_ctx->VSSetConstantBuffers(0, 1, &nullCb);
     m_ctx->PSSetConstantBuffers(0, 1, &nullCb);
     m_ctx->VSSetShader(nullptr, nullptr, 0);
@@ -1219,26 +1335,49 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
     hr = m_device->CreateShaderResourceView(colorTex, nullptr, &srv);
     if (FAILED(hr)) { rtv->Release(); colorTex->Release(); return RenderTargetHandle::Invalid(); }
 
-    // --- Depth-Textur ---
+    // --- Depth-Textur (typeless, damit DSV + SRV moeglich sind) ---
     D3D11_TEXTURE2D_DESC depthDesc = {};
     depthDesc.Width = width;
     depthDesc.Height = height;
     depthDesc.MipLevels = 1;
     depthDesc.ArraySize = 1;
-    depthDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    depthDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;
     depthDesc.SampleDesc.Count = 1;
     depthDesc.Usage = D3D11_USAGE_DEFAULT;
-    depthDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+    depthDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
 
     ID3D11Texture2D* depthTex = nullptr;
     hr = m_device->CreateTexture2D(&depthDesc, nullptr, &depthTex);
     if (FAILED(hr)) { srv->Release(); rtv->Release(); colorTex->Release(); return RenderTargetHandle::Invalid(); }
 
+    D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+    dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+    dsvDesc.Texture2D.MipSlice = 0;
+
     ID3D11DepthStencilView* dsv = nullptr;
-    hr = m_device->CreateDepthStencilView(depthTex, nullptr, &dsv);
+    hr = m_device->CreateDepthStencilView(depthTex, &dsvDesc, &dsv);
     if (FAILED(hr)) { depthTex->Release(); srv->Release(); rtv->Release(); colorTex->Release(); return RenderTargetHandle::Invalid(); }
 
-    // --- SRV als Engine-Textur registrieren ---
+    D3D11_SHADER_RESOURCE_VIEW_DESC depthSrvDesc = {};
+    depthSrvDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+    depthSrvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    depthSrvDesc.Texture2D.MostDetailedMip = 0;
+    depthSrvDesc.Texture2D.MipLevels = 1;
+
+    ID3D11ShaderResourceView* depthSrv = nullptr;
+    hr = m_device->CreateShaderResourceView(depthTex, &depthSrvDesc, &depthSrv);
+    if (FAILED(hr))
+    {
+        dsv->Release();
+        depthTex->Release();
+        srv->Release();
+        rtv->Release();
+        colorTex->Release();
+        return RenderTargetHandle::Invalid();
+    }
+
+    // --- SRVs als Engine-Texturen registrieren ---
     GDXTextureResource texRes;
     texRes.srv = srv;
     texRes.width = width;
@@ -1252,6 +1391,19 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
     if (exposedTex.IsValid())
         m_executor.TransitionTexture(exposedTex, ResourceState::Unknown, ResourceState::ShaderRead, "CreateRenderTarget initial state");
 
+    GDXTextureResource depthTexRes;
+    depthTexRes.srv = depthSrv;
+    depthTexRes.width = width;
+    depthTexRes.height = height;
+    depthTexRes.ready = true;
+    depthTexRes.isSRGB = false;
+    depthTexRes.format = GDXTextureFormat::Unknown;
+    depthTexRes.semantic = GDXTextureSemantic::Depth;
+    depthTexRes.debugName = debugName + L"_Depth";
+    TextureHandle exposedDepthTex = texStore.Add(std::move(depthTexRes));
+    if (exposedDepthTex.IsValid())
+        m_executor.TransitionTexture(exposedDepthTex, ResourceState::Unknown, ResourceState::ShaderRead, "CreateRenderTarget depth initial state");
+
     // --- RenderTargetResource anlegen ---
     GDXRenderTargetResource rt;
     rt.colorTexture = colorTex;
@@ -1259,11 +1411,13 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
     rt.srv = srv;
     rt.depthTexture = depthTex;
     rt.dsv = dsv;
+    rt.depthSrv = depthSrv;
     rt.width = width;
     rt.height = height;
     rt.ready = true;
     rt.colorFormat = colorFormat;
     rt.exposedTexture = exposedTex;
+    rt.exposedDepthTexture = exposedDepthTex;
     rt.debugName = debugName;
 
     return rtStore.Add(std::move(rt));
@@ -1301,6 +1455,19 @@ void GDXDX11RenderBackend::DestroyRenderTarget(
         rt->exposedTexture = TextureHandle::Invalid();
     }
     rt->srv = nullptr; // COM-Release oben via texStore-Eintrag erfolgt
+
+    if (rt->exposedDepthTexture.IsValid())
+    {
+        GDXTextureResource* depthTexRes = texStore.Get(rt->exposedDepthTexture);
+        if (depthTexRes && depthTexRes->srv)
+        {
+            static_cast<ID3D11ShaderResourceView*>(depthTexRes->srv)->Release();
+            depthTexRes->srv = nullptr;
+        }
+        texStore.Release(rt->exposedDepthTexture);
+        rt->exposedDepthTexture = TextureHandle::Invalid();
+    }
+    rt->depthSrv = nullptr; // COM-Release oben via texStore-Eintrag erfolgt
 
     if (rt->dsv) { static_cast<ID3D11DepthStencilView*>(rt->dsv)->Release();   rt->dsv = nullptr; }
     if (rt->depthTexture) { static_cast<ID3D11Texture2D*>(rt->depthTexture)->Release(); rt->depthTexture = nullptr; }
