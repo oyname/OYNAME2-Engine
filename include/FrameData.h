@@ -16,7 +16,7 @@
 // ---------------------------------------------------------------------------
 
 // Maximale Anzahl Lichter — muss mit dem HLSL LightBuffer übereinstimmen.
-static constexpr uint32_t MAX_LIGHTS = 32u;
+static constexpr uint32_t MAX_LIGHTS = 256u;
 
 // Maximale Anzahl Shadow-Kaskaden (CSM).
 static constexpr uint32_t MAX_SHADOW_CASCADES = 4u;

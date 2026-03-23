@@ -67,24 +67,32 @@ cbuffer MaterialConstants : register(b2)
 #define ROUGHNESS_MIN      0.04f
 
 // ---------------------------------------------------------------------------
-// LightBuffer (b3)
+// ---------------------------------------------------------------------------
+// Forward+ Light Data (t20/t21/t22) + Tile Info (b3)
 // ---------------------------------------------------------------------------
 struct LightData
 {
-    float4 position;
-    float4 direction;
-    float4 diffuse;
+    float4 position;       // xyz=pos, w: 0=directional, 1=point, 2=spot
+    float4 direction;      // xyz=dir (world space), w=castShadows
+    float4 diffuse;        // rgb=color*intensity, a=radius
     float  innerCosAngle;
     float  outerCosAngle;
     float  _pad0;
     float  _pad1;
 };
 
-cbuffer LightBuffer : register(b3)
+StructuredBuffer<LightData> gTileLights     : register(t20);  // all light data
+StructuredBuffer<uint>      gLightIndexList : register(t21);  // flat index list
+StructuredBuffer<uint2>     gLightGrid      : register(t22);  // (offset,count) per tile
+
+cbuffer TileInfo : register(b3)
 {
-    LightData lights[32];
-    float3    sceneAmbient;
-    uint      lightCount;
+    float3 sceneAmbient;
+    uint   lightCount;
+    uint   tileCountX;
+    uint   tileCountY;
+    float  _tPad0;
+    float  _tPad1;
 };
 
 // ---------------------------------------------------------------------------
@@ -329,6 +337,14 @@ float4 main(PS_INPUT input) : SV_TARGET
     float4 viewPos = mul(float4(input.worldPosition, 1.0f), gView);
     float  viewDepth = viewPos.z;
 
+    // --- Forward+: Tile-Index bestimmen ---
+    uint2  tileIdx     = uint2(input.position.xy) / uint2(16u, 16u);
+    uint   tileFlat    = tileIdx.y * tileCountX + tileIdx.x;
+    uint2  tileGrid    = (tileCountX > 0u) ? gLightGrid[tileFlat] : uint2(0u, lightCount);
+    uint   tileOffset  = tileGrid.x;
+    uint   tileLights  = tileGrid.y;
+
+
     // --- Lighting ---
     float3 V     = normalize(input.viewDirection);
     bool   isPBR = (gFlags & MF_SHADING_PBR) != 0u;
@@ -337,59 +353,65 @@ float4 main(PS_INPUT input) : SV_TARGET
     float3 diffuseAcc  = float3(0, 0, 0);
     float3 specularAcc = float3(0, 0, 0);
 
+    // Find shadow-casting directional light (first in tile list)
     int    shadowIdx = -1;
     float3 shadowDir = float3(0, -1, 0);
-    [loop] for (uint s = 0; s < lightCount; ++s)
+    [loop] for (uint s = 0; s < tileLights; ++s)
     {
-        const bool isDirectional = (lights[s].position.w < 0.5f);
-        const bool castsShadows  = (lights[s].direction.w > 0.5f);
+        uint lightIdx = (tileCountX > 0u) ? gLightIndexList[tileOffset + s] : s;
+        const bool isDirectional = (gTileLights[lightIdx].position.w < 0.5f);
+        const bool castsShadows  = (gTileLights[lightIdx].direction.w > 0.5f);
         if (isDirectional && castsShadows)
         {
-            shadowIdx = (int)s;
-            shadowDir = normalize(lights[s].direction.xyz);
+            shadowIdx = (int)lightIdx;
+            shadowDir = normalize(gTileLights[lightIdx].direction.xyz);
             break;
         }
     }
 
+    // Main lighting loop — only tile-visible lights
     [loop]
-    for (uint i = 0; i < lightCount; ++i)
+    for (uint i = 0; i < tileLights; ++i)
     {
-        float  lightType  = lights[i].position.w;
-        float3 lightColor = lights[i].diffuse.rgb;
-        float  radius     = lights[i].diffuse.a;
+        uint      lightIdx  = (tileCountX > 0u) ? gLightIndexList[tileOffset + i] : i;
+        LightData light     = gTileLights[lightIdx];
+
+        float  lightType  = light.position.w;
+        float3 lightColor = light.diffuse.rgb;
+        float  radius     = light.diffuse.a;
 
         float3 lightDir;
         float  attenuation = 1.0f;
 
         if (lightType < 0.5f)
         {
-            lightDir    = normalize(lights[i].direction.xyz);
+            lightDir    = normalize(light.direction.xyz);
             attenuation = 1.0f;
         }
         else if (lightType < 1.5f)
         {
-            float3 toLight = lights[i].position.xyz - input.worldPosition;
+            float3 toLight = light.position.xyz - input.worldPosition;
             float  dist    = length(toLight);
             lightDir       = -normalize(toLight);
             attenuation    = CalcAttenuation(dist, radius);
         }
         else
         {
-            float3 toLight  = lights[i].position.xyz - input.worldPosition;
+            float3 toLight  = light.position.xyz - input.worldPosition;
             float  dist     = length(toLight);
             float3 toLightN = normalize(toLight);
             lightDir        = -toLightN;
             float distAtt   = CalcAttenuation(dist, radius);
             float coneAtt   = CalcSpotCone(
-                lights[i].direction.xyz, -toLightN,
-                lights[i].innerCosAngle, lights[i].outerCosAngle);
+                light.direction.xyz, -toLightN,
+                light.innerCosAngle, light.outerCosAngle);
             attenuation = distAtt * coneAtt;
         }
 
         if (attenuation <= 0.0f) continue;
 
         float shadow = 1.0f;
-        if (shadowIdx >= 0 && gReceiveShadows > 0.5f && (int)i == shadowIdx)
+        if (shadowIdx >= 0 && gReceiveShadows > 0.5f && (int)lightIdx == shadowIdx)
             shadow = CalculateShadowCSM(input.worldPosition, N, shadowDir, viewDepth);
 
         float NdotL = max(dot(N, -lightDir), 0.0f);

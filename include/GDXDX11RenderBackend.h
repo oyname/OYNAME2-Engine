@@ -6,6 +6,7 @@
 #include "GDXDX11RenderExecutor.h"
 #include "GDXDX11LightSystem.h"
 #include "GDXSamplerCache.h"
+#include "GDXDX11TileLightCuller.h"
 #include "GDXShadowMap.h"
 #include "ResourceStore.h"
 #include "GDXRenderTargetResource.h"
@@ -22,6 +23,7 @@ struct ID3D11BlendState;
 struct ID3D11VertexShader;
 struct ID3D11PixelShader;
 struct ID3D11Buffer;
+struct ID3D11ComputeShader;
 
 class GDXDX11RenderBackend final : public IGDXRenderBackend
 {
@@ -137,6 +139,8 @@ private:
     GDXSamplerCache m_samplerCache;
     GDXShadowMap    m_shadowMap;
     GDXDX11LightSystem  m_lightSystem;
+    GDXDX11TileLightCuller  m_tileCuller;
+    ID3D11ComputeShader* m_tileLightCullCS = nullptr;
     uint32_t        m_shadowMapSize = 2048u;
 
     DefaultTextureSet m_defaultTextures;

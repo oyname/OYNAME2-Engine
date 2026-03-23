@@ -34,6 +34,7 @@
 #include "RenderViewPrep.h"
 #include "RenderPassBuilder.h"
 #include "CullGatherSystem.h"
+#include "FrameDispatch.h"
 
 #include <unordered_map>
 #include <memory>
@@ -101,6 +102,32 @@ public:
     bool               SetPostProcessEnabled(PostProcessHandle h, bool enabled);
     void               ClearPostProcessPasses();
 
+    // Bloom — wraps Bright + BlurH + BlurV + Composite passes.
+    // Call once after engine.Initialize(). On resize call again with the new size.
+    // Requires RGBA16_FLOAT — check SupportsTextureFormat() before calling.
+    void               SetBloom(int viewportW, int viewportH,
+                                float threshold = 1.0f,
+                                float intensity = 2.0f,
+                                float strength  = 0.1f,
+                                float tintR = 1.0f, float tintG = 1.0f, float tintB = 1.0f);
+    void               DisableBloom();
+
+    // Tone mapping — wraps the PostProcessToneMappingPS.hlsl pass.
+    // Call once (or whenever parameters change); creates the pass on first call.
+    // SetToneMapping(None) disables without destroying (re-enabling is cheap).
+    void               SetToneMapping(ToneMappingMode mode,
+                                      float exposure = 1.0f,
+                                      float gamma    = 2.2f);
+    void               DisableToneMapping();
+
+    // FXAA — wraps PostProcessFXAAPS.hlsl.
+    // Call once or on resize; pass current viewport size.
+    // FXAA should be the last pass before tone mapping (or the very last if no TM).
+    void               SetFXAA(int viewportW, int viewportH,
+                                float contrastThreshold = 0.0312f,
+                                float relativeThreshold = 0.125f);
+    void               DisableFXAA();
+
     struct FrameStats
     {
         uint32_t drawCalls = 0u;
@@ -157,14 +184,9 @@ private:
     // Scene extraction
     void CaptureFrameSnapshot(FrameData& outFrame);
 
-    // Cull + Gather — delegated to CullGather free functions via context
-    CullGather::Context MakeCullGatherContext(const RenderGatherSystem::ShaderResolver& rs);
-
-    // FrameGraph build — named method, no longer inline in EndFrame
-    void BuildFrameGraph();
-
-    // Queue finalization — delegates to CullGather::FinalizeFrameQueues
-    void FinalizeFrameQueues();
+    // Fills m_frameDispatch with all per-frame contexts.
+    // Must be called at the start of EndFrame before scheduling tasks.
+    void FillFrameDispatch(const RenderGatherSystem::ShaderResolver& rs);
 
     // Debug culling — uses m_debugCulling (owned state)
     bool EnsureDebugCullingResources();
@@ -178,10 +200,11 @@ private:
     void UpdatePreparedMainViewFrameTransient(RFG::ViewPassData& preparedView);
 
     // ---------------------------------------------------------------------------
-    // Context builders — return filled contexts for free functions
+    // Context builders — used internally by FillFrameDispatch
     // ---------------------------------------------------------------------------
-    RenderViewPrep::Context  MakeViewPrepContext()  const;
+    RenderViewPrep::Context            MakeViewPrepContext()   const;
     RenderPassBuilder::PostProcContext MakePostProcContext();
+    CullGather::Context                MakeCullGatherContext(const RenderGatherSystem::ShaderResolver& rs);
 
     // ---------------------------------------------------------------------------
     // Owned state
@@ -231,10 +254,18 @@ private:
 
     std::vector<PostProcessHandle> m_postProcessPassOrder;
     RenderTargetHandle m_mainScenePostProcessTarget = RenderTargetHandle::Invalid();
+    PostProcessHandle  m_toneMappingPass            = PostProcessHandle::Invalid();
+    ToneMappingMode    m_toneMappingMode             = ToneMappingMode::None;
+    PostProcessHandle  m_fxaaPass                   = PostProcessHandle::Invalid();
+    PostProcessHandle  m_bloomBrightPass             = PostProcessHandle::Invalid();
+    PostProcessHandle  m_bloomBlurHPass              = PostProcessHandle::Invalid();
+    PostProcessHandle  m_bloomBlurVPass              = PostProcessHandle::Invalid();
+    PostProcessHandle  m_bloomCompositePass          = PostProcessHandle::Invalid();
 
     JobSystem        m_jobSystem;
     SystemScheduler  m_systemScheduler;
     RenderFramePhase m_framePhase = RenderFramePhase::Idle;
 
+    FrameDispatch       m_frameDispatch{};
     GDXRenderFrameGraph m_frameGraph;
 };

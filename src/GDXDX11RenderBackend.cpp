@@ -2,6 +2,7 @@
 #include "GDXIBLBaker.h"
 #include "GDXRenderTargetResource.h"
 #include "GDXVertexFlags.h"
+#include "GDXDX11ShaderCompiler.h"
 #include "Core/Debug.h"
 #include "GDXResourceState.h"
 #include "RenderQueue.h"
@@ -11,9 +12,10 @@
 #include <d3d11.h>
 #include <d3dcompiler.h>
 
-#include <array>
+#include <algorithm>
 #include <cstring>
-#include <filesystem>
+#include <string>
+#include <vector>
 
 namespace
 {
@@ -39,12 +41,6 @@ namespace
         }
     }
 }
-#include <string>
-#include <system_error>
-#include <vector>
-#include <algorithm>
-
-#pragma comment(lib, "d3dcompiler.lib")
 
 bool GDXTextureLoader_LoadFromFile(ID3D11Device*, ID3D11DeviceContext*,
     const wchar_t*, GDXTextureResource&, bool isSRGB);
@@ -64,6 +60,7 @@ namespace
         GDXShadowMap& shadowMap,
         bool hasShadowPass,
         bool iblValid, ID3D11ShaderResourceView* iblIrr, ID3D11ShaderResourceView* iblEnv, ID3D11ShaderResourceView* iblLut,
+        GDXDX11TileLightCuller& tileCuller,
         Registry& registry,
         const ICommandList& opaqueQueue,
         const ICommandList& transparentQueue,
@@ -89,6 +86,10 @@ namespace
             ctx->PSSetShaderResources(17u, 3u, iblSRVs);
         }
 
+        // Forward+: bind tile light SRVs (t20/t21/t22) + tile info cbuffer (b3)
+        if (tileCuller.IsReady())
+            tileCuller.BindForPS(ctx);
+
         if (!opaqueQueue.Empty())
             executor.ExecuteQueue(registry, opaqueQueue, meshStore, matStore, shaderStore, texStore, shadowSrv);
 
@@ -99,70 +100,9 @@ namespace
 
         ctx->OMSetDepthStencilState(depthStencilState, 0u);
         ctx->OMSetBlendState(blendState, bf, 0xFFFFFFFF);
-    }
 
-    std::filesystem::path GetExeDir()
-    {
-        std::array<wchar_t, 4096> buf{};
-        const DWORD len = GetModuleFileNameW(nullptr, buf.data(), (DWORD)buf.size());
-        if (len == 0 || len >= buf.size()) return std::filesystem::current_path();
-        return std::filesystem::path(buf.data()).parent_path();
-    }
-
-    std::filesystem::path FindShaderPath(const std::wstring& file)
-    {
-        const auto exe = GetExeDir();
-        const std::vector<std::filesystem::path> candidates =
-        {
-            exe / L"shader" / file,
-            exe / L".." / L"shader" / file,
-            exe / L"..\\..\\shader" / file,
-            exe / L"..\\..\\..\\" / L"shader" / file,
-            std::filesystem::current_path() / L"shader" / file,
-            std::filesystem::current_path() / L".." / L"shader" / file,
-        };
-
-        for (const auto& c : candidates)
-        {
-            std::error_code ec;
-            if (std::filesystem::exists(c, ec))
-                return std::filesystem::weakly_canonical(c, ec);
-        }
-        return {};
-    }
-
-    bool CompileFromFile(const std::wstring& path, const std::string& entry,
-        const std::string& target, ID3DBlob** out)
-    {
-        if (!out) return false;
-        *out = nullptr;
-
-        UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
-#if defined(_DEBUG)
-        flags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-#endif
-        ID3DBlob* err = nullptr;
-        const HRESULT hr = D3DCompileFromFile(
-            path.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE,
-            entry.c_str(), target.c_str(), flags, 0, out, &err);
-
-        if (FAILED(hr))
-        {
-            if (err)
-            {
-                const char* msg = static_cast<const char*>(err->GetBufferPointer());
-                Debug::LogError("HLSL compile failed: ", path, " [", entry.c_str(), " / ", target.c_str(), "] ", msg ? msg : "");
-                err->Release();
-            }
-            else
-            {
-                Debug::LogError("HLSL compile failed: ", path, " [", entry.c_str(), " / ", target.c_str(), "] (no compiler message)");
-            }
-            return false;
-        }
-
-        if (err) err->Release();
-        return true;
+        if (tileCuller.IsReady())
+            tileCuller.UnbindFromPS(ctx);
     }
 
     HRESULT BuildInputLayout(ID3D11Device* device, uint32_t flags,
@@ -219,6 +159,29 @@ bool GDXDX11RenderBackend::Initialize(ResourceStore<GDXTextureResource, TextureT
     if (!InitDefaultTextures(texStore)) return false;
     if (!m_shadowMap.Create(m_device, m_shadowMapSize, GDXShadowMap::kMaxCascades)) return false;
     if (!m_lightSystem.Init(m_device)) return false;
+
+    ID3DBlob* tileCsBlob = nullptr;
+    if (GDXDX11CompileShaderFromFile(L"TileLightCullCS.hlsl", "main", "cs_5_0", &tileCsBlob))
+    {
+        if (SUCCEEDED(m_device->CreateComputeShader(
+                tileCsBlob->GetBufferPointer(),
+                tileCsBlob->GetBufferSize(),
+                nullptr,
+                &m_tileLightCullCS)))
+        {
+            if (!m_tileCuller.Init(m_device, m_tileLightCullCS))
+                Debug::LogWarning(GDX_SRC_LOC, L"GDXDX11TileLightCuller: Init fehlgeschlagen — Forward+ deaktiviert");
+        }
+        else
+        {
+            Debug::LogWarning(GDX_SRC_LOC, L"GDXDX11TileLightCuller: Compute-Shader-Erzeugung fehlgeschlagen — Forward+ deaktiviert");
+        }
+        tileCsBlob->Release();
+    }
+    else
+    {
+        Debug::LogWarning(GDX_SRC_LOC, L"GDXDX11TileLightCuller: Compute-Shader-Kompilierung fehlgeschlagen — Forward+ deaktiviert");
+    }
 
     m_meshUploader = std::make_unique<GDXDX11MeshUploader>(m_device, m_ctx);
 
@@ -277,12 +240,10 @@ ShaderHandle GDXDX11RenderBackend::CreateShader(
     const GDXShaderLayout& shaderLayout,
     const std::wstring& debugName)
 {
-    const auto vsPath = FindShaderPath(vsFile);
-    const auto psPath = FindShaderPath(psFile);
-    if (vsPath.empty() || psPath.empty() || !m_device) return ShaderHandle::Invalid();
+    if (!m_device) return ShaderHandle::Invalid();
 
     ID3DBlob* vsBlob = nullptr;
-    if (!CompileFromFile(vsPath.wstring(), "main", "vs_5_0", &vsBlob))
+    if (!GDXDX11CompileShaderFromFile(vsFile, "main", "vs_5_0", &vsBlob))
         return ShaderHandle::Invalid();
 
     ID3D11VertexShader* vs = nullptr;
@@ -302,7 +263,7 @@ ShaderHandle GDXDX11RenderBackend::CreateShader(
     vsBlob->Release();
 
     ID3DBlob* psBlob = nullptr;
-    if (!CompileFromFile(psPath.wstring(), "main", "ps_5_0", &psBlob))
+    if (!GDXDX11CompileShaderFromFile(psFile, "main", "ps_5_0", &psBlob))
     {
         vs->Release();
         inputLayout->Release();
@@ -429,7 +390,21 @@ void GDXDX11RenderBackend::ExtractLightData(Registry& registry, FrameData& frame
 
 void GDXDX11RenderBackend::UploadLightConstants(const FrameData& frame)
 {
+    // Legacy cbuffer upload (keeps shadow + ambient path working)
     m_lightSystem.UploadLightBuffer(frame, m_ctx);
+
+    // Forward+: upload lights to StructuredBuffer, run tile cull compute
+    if (m_tileCuller.IsReady())
+    {
+        m_tileCuller.EnsureSize(m_device,
+            static_cast<uint32_t>(frame.viewportWidth),
+            static_cast<uint32_t>(frame.viewportHeight));
+        m_tileCuller.UploadLights(m_ctx, frame);
+        m_tileCuller.Dispatch(m_ctx, frame,
+            static_cast<uint32_t>(frame.viewportWidth),
+            static_cast<uint32_t>(frame.viewportHeight));
+        m_tileCuller.UploadPSInfoCB(m_ctx, frame);
+    }
 }
 
 void GDXDX11RenderBackend::UpdateFrameConstants(const FrameData& frame)
@@ -554,6 +529,7 @@ void* GDXDX11RenderBackend::ExecuteRenderPass(
                 m_shadowMap,
                 m_hasShadowPass,
                 m_iblValid, m_iblIrradiance, m_iblPrefiltered, m_iblBrdfLut,
+                m_tileCuller,
                 registry,
                 opaqueRef,
                 alphaRef,
@@ -828,18 +804,15 @@ PostProcessHandle GDXDX11RenderBackend::CreatePostProcessPass(ResourceStore<Post
 {
     if (!m_device) return PostProcessHandle::Invalid();
 
-    const auto vsPath = FindShaderPath(desc.vertexShaderFile);
-    const auto psPath = FindShaderPath(desc.pixelShaderFile);
-    if (vsPath.empty() || psPath.empty())
-    {
-        Debug::LogError("PostProcess shader not found: ", desc.debugName.empty() ? desc.pixelShaderFile : desc.debugName);
-        return PostProcessHandle::Invalid();
-    }
-
     ID3DBlob* vsBlob = nullptr;
     ID3DBlob* psBlob = nullptr;
-    if (!CompileFromFile(vsPath.wstring(), "main", "vs_5_0", &vsBlob)) return PostProcessHandle::Invalid();
-    if (!CompileFromFile(psPath.wstring(), "main", "ps_5_0", &psBlob)) { vsBlob->Release(); return PostProcessHandle::Invalid(); }
+    if (!GDXDX11CompileShaderFromFile(desc.vertexShaderFile, "main", "vs_5_0", &vsBlob))
+        return PostProcessHandle::Invalid();
+    if (!GDXDX11CompileShaderFromFile(desc.pixelShaderFile, "main", "ps_5_0", &psBlob))
+    {
+        vsBlob->Release();
+        return PostProcessHandle::Invalid();
+    }
 
     ID3D11VertexShader* vs = nullptr;
     ID3D11PixelShader* ps = nullptr;

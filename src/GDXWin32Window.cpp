@@ -22,7 +22,6 @@ namespace
         case VK_UP:     return Key::Up;
         case VK_DOWN:   return Key::Down;
 
-            // Zahlenreihe oben
         case '0': return Key::Num0;
         case '1': return Key::Num1;
         case '2': return Key::Num2;
@@ -34,7 +33,6 @@ namespace
         case '8': return Key::Num8;
         case '9': return Key::Num9;
 
-            // Numpad
         case VK_NUMPAD0: return Key::Num0;
         case VK_NUMPAD1: return Key::Num1;
         case VK_NUMPAD2: return Key::Num2;
@@ -46,8 +44,25 @@ namespace
         case VK_NUMPAD8: return Key::Num8;
         case VK_NUMPAD9: return Key::Num9;
 
+        case VK_ADD:      return Key::Plus;
+        case VK_SUBTRACT: return Key::Minus;
+        case VK_OEM_PLUS: return (GetKeyState(VK_SHIFT) & 0x8000) ? Key::Plus : Key::Equals;
+        case VK_OEM_MINUS:return Key::Minus;
+
+        case VK_F1:  return Key::F1;
+        case VK_F2:  return Key::F2;
+        case VK_F3:  return Key::F3;
+        case VK_F4:  return Key::F4;
+        case VK_F5:  return Key::F5;
+        case VK_F6:  return Key::F6;
+        case VK_F7:  return Key::F7;
+        case VK_F8:  return Key::F8;
+        case VK_F9:  return Key::F9;
+        case VK_F10: return Key::F10;
+        case VK_F11: return Key::F11;
+        case VK_F12: return Key::F12;
+
         default:
-            // A-Z: Win32 VK-Codes für Buchstaben sind identisch mit ASCII 'A'-'Z'
             if (wp >= 'A' && wp <= 'Z')
                 return static_cast<Key>(static_cast<int>(Key::A) + (wp - 'A'));
 

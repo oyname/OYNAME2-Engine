@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.12.35707.178
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ProjectGIDX", "ProjectGIDX\ProjectGIDX.vcxproj", "{3301DC4C-6A88-4573-AEEF-7FC1A5EDB9F1}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "oyname", "ProjectGIDX\ProjectGIDX.vcxproj", "{3301DC4C-6A88-4573-AEEF-7FC1A5EDB9F1}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -24,5 +24,8 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {960AA939-F270-4447-898C-BC4E6277B90C}
 	EndGlobalSection
 EndGlobal

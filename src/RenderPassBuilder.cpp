@@ -24,7 +24,7 @@ void BuildShadowPassExecuteInput(RFG::ViewPassData& view)
         view.prepared.shadowEnabled && !view.shadowQueue.Empty();
     if (!view.execute.shadowPass.enabled) return;
 
-    view.execute.shadowPass.desc = BackendRenderPassDesc::Shadow(view.prepared.frame);
+    view.execute.shadowPass.desc = BackendRenderPassDesc::Shadow(view.execute.frame);
 }
 
 // ---------------------------------------------------------------------------
@@ -38,7 +38,7 @@ void BuildGraphicsPassExecuteInput(
     view.execute.graphicsPass.enabled = true;
     view.execute.graphicsPass.desc    = BackendRenderPassDesc::Graphics(
         targetDesc,
-        &view.prepared.frame,
+        &view.execute.frame,
         RenderPass::Opaque);
     view.execute.graphicsPass.appendGraphicsVisibleSet = appendGraphicsVisibleSet;
     view.execute.graphicsPass.appendShadowVisibleSet   = appendShadowVisibleSet;

@@ -36,7 +36,7 @@
 #include "MeshUtilities.h"
 #include "WindowDesc.h"
 #include "Events.h"
-#include "Debug.h"
+#include "Core/Debug.h"
 
 #include <functional>
 #include <variant>

@@ -118,11 +118,27 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\app\50_Point_Lights.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="..\app\AdapterEnum.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\app\bone_animation.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\app\fxaa_example.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\app\hdr_tonemapping_example.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\app\ibl_example.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
@@ -233,6 +249,8 @@
     <ClCompile Include="..\src\GDXDebugCullingRenderer.cpp" />
     <ClCompile Include="..\src\GDXDX11LightSystem.cpp" />
     <ClCompile Include="..\src\GDXDX11RenderBackend.cpp" />
+    <ClCompile Include="..\src\GDXDX11ShaderCompiler.cpp" />
+    <ClCompile Include="..\src\GDXDX11TileLightCuller.cpp" />
     <ClCompile Include="..\src\GDXDX12RenderBackend.cpp" />
     <ClCompile Include="..\src\GDXIBLBaker.cpp" />
     <ClCompile Include="..\src\GDXInput.cpp" />
@@ -242,6 +260,7 @@
     <ClCompile Include="..\src\GDXShaderVariantCache.cpp" />
     <ClCompile Include="..\src\GDXShadowMap.cpp" />
     <ClCompile Include="..\src\GDXTextureLoader.cpp" />
+    <ClCompile Include="..\src\GDXTileLightCuller.cpp" />
     <ClCompile Include="..\src\HierarchySystem.cpp" />
     <ClCompile Include="..\src\JobSystem.cpp" />
     <ClCompile Include="..\src\RenderPassBuilder.cpp" />
@@ -288,16 +307,20 @@
     <ClInclude Include="..\include\Events.h" />
     <ClInclude Include="..\include\FrameContext.h" />
     <ClInclude Include="..\include\FrameData.h" />
+    <ClInclude Include="..\include\FrameDispatch.h" />
     <ClInclude Include="..\include\FrameTransientResources.h" />
     <ClInclude Include="..\include\GDXDebugCullingRenderer.h" />
     <ClInclude Include="..\include\GDXDX11LightSystem.h" />
     <ClInclude Include="..\include\GDXDX11RenderBackend.h" />
     <ClInclude Include="..\include\GDXDX11RenderExecutor.h" />
+    <ClInclude Include="..\include\GDXDX11ShaderCompiler.h" />
+    <ClInclude Include="..\include\GDXDX11TileLightCuller.h" />
     <ClInclude Include="..\include\GDXDX12RenderBackend.h" />
     <ClInclude Include="..\include\GDXECSRenderer.h" />
     <ClInclude Include="..\include\GDXIBLBaker.h" />
     <ClInclude Include="..\include\GDXRenderFrameGraph.h" />
     <ClInclude Include="..\include\GDXShaderVariantCache.h" />
+    <ClInclude Include="..\include\GDXTileLightCuller.h" />
     <ClInclude Include="..\include\GIDXEngine.h" />
     <ClInclude Include="..\include\GDXEventQueue.h" />
     <ClInclude Include="..\include\GDXFrameTimer.h" />
@@ -445,6 +468,11 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="..\shader\PixelShader.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="..\shader\PostProcessFXAAPS.hlsl">
       <FileType>Document</FileType>
     </Text>
   </ItemGroup>
