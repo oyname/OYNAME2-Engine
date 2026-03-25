@@ -22,6 +22,7 @@
 // ---------------------------------------------------------------------------
 
 #include "GDXECSRenderer.h"
+#include "Core/GDXMathOps.h"
 #include "GIDXEngine.h"
 #include "GDXInput.h"
 #include "GDXEventQueue.h"
@@ -483,8 +484,8 @@ namespace Engine
         auto* tc = _::renderer->GetRegistry().Get<TransformComponent>(e);
         if (!tc) { DBERROR(GDX_SRC_LOC, "Engine::TurnEntity: kein TransformComponent"); return; }
 
-        const Float4 delta = GIDX::QuaternionFromEulerDeg(pitchDeg, yawDeg, rollDeg);
-        tc->localRotation = GIDX::QuaternionMultiply(tc->localRotation, delta);
+        const Float4 delta = GDX::QuaternionFromEulerDeg(pitchDeg, yawDeg, rollDeg);
+        tc->localRotation = GDX::QuaternionMultiply(tc->localRotation, delta);
         TransformSystem::MarkDirty(_::renderer->GetRegistry(), e);
     }
 
@@ -507,22 +508,22 @@ namespace Engine
         const Float3 pos = tc->localPosition;
         const Float3 target = { tx, ty, tz };
 
-        Float3 forward = GIDX::Normalize3(
-            GIDX::Subtract(target, pos),
+        Float3 forward = GDX::Normalize3(
+            GDX::Subtract(target, pos),
             { 0.0f, 0.0f, 1.0f });
 
         Float3 up = { 0.0f, 1.0f, 0.0f };
-        if (std::fabs(GIDX::Dot3(forward, up)) > 0.999f)
+        if (std::abs(GDX::Dot3(forward, up)) > 0.999f)
             up = { 0.0f, 0.0f, 1.0f };
 
-        const Float3 right = GIDX::Normalize3(
-            GIDX::Cross(up, forward),
+        const Float3 right = GDX::Normalize3(
+            GDX::Cross(up, forward),
             { 1.0f, 0.0f, 0.0f });
-        const Float3 newUp = GIDX::Normalize3(
-            GIDX::Cross(forward, right),
+        const Float3 newUp = GDX::Normalize3(
+            GDX::Cross(forward, right),
             { 0.0f, 1.0f, 0.0f });
 
-        tc->localRotation = GIDX::QuaternionFromBasis(right, newUp, forward);
+        tc->localRotation = GDX::QuaternionFromBasis(right, newUp, forward);
         TransformSystem::MarkDirty(_::renderer->GetRegistry(), e);
     }
 

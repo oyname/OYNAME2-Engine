@@ -1,21 +1,8 @@
 #pragma once
 
-// ---------------------------------------------------------------------------
-// Components.h — ECS-Kern-Komponenten (renderer-frei).
-//
-// Enthält: TagComponent, TransformComponent, WorldTransformComponent,
-//          ParentComponent, ChildrenComponent.
-//
-// Renderer-Komponenten (RenderableComponent, CameraComponent, LightComponent
-// etc.) sind nach RenderComponents.h ausgelagert — analog zu
-// CollisionBodyComponent.h für das Collision-Modul.
-//
-// RenderComponents.h wird hier am Ende includiert damit bestehender App-Code
-// der nur Components.h includiert weiter kompiliert ohne Änderung.
-// ---------------------------------------------------------------------------
-
 #include "ECS/ECSTypes.h"
 #include "Core/GDXMath.h"
+#include "Core/GDXMathOps.h"
 
 #include <cstdint>
 #include <string>
@@ -38,22 +25,23 @@ struct TagComponent
 // ===========================================================================
 struct TransformComponent
 {
-    GIDX::Float3 localPosition = { 0.0f, 0.0f, 0.0f };
-    GIDX::Float4 localRotation = { 0.0f, 0.0f, 0.0f, 1.0f };
-    GIDX::Float3 localScale    = { 1.0f, 1.0f, 1.0f };
+    Float3 localPosition = { 0.0f, 0.0f, 0.0f };
+    Float4 localRotation = { 0.0f, 0.0f, 0.0f, 1.0f };
+    Float3 localScale = { 1.0f, 1.0f, 1.0f };
 
-    bool     dirty        = true;
+    bool     dirty = true;
     uint32_t localVersion = 1u;
     uint32_t worldVersion = 0u;
 
     TransformComponent() = default;
 
     TransformComponent(float px, float py, float pz)
-        : localPosition{ px, py, pz }, dirty(true) {}
+        : localPosition{ px, py, pz }, dirty(true) {
+    }
 
     void SetEulerDeg(float pitchDeg, float yawDeg, float rollDeg)
     {
-        localRotation = GIDX::QuaternionFromEulerDeg(pitchDeg, yawDeg, rollDeg);
+        localRotation = GDX::QuaternionFromEulerDeg(pitchDeg, yawDeg, rollDeg);
         dirty = true;
     }
 };
@@ -63,14 +51,10 @@ struct TransformComponent
 // ===========================================================================
 struct WorldTransformComponent
 {
-    GIDX::Float4x4 matrix  = {};
-    GIDX::Float4x4 inverse = {};
+    Matrix4 matrix = Matrix4::Identity();
+    Matrix4 inverse = Matrix4::Identity();
 
-    WorldTransformComponent()
-    {
-        matrix  = GIDX::Identity4x4();
-        inverse = GIDX::Identity4x4();
-    }
+    WorldTransformComponent() = default;
 };
 
 // ===========================================================================

@@ -8,6 +8,7 @@
 #include <windows.h>
 #include <d3d11.h>
 #include "Core/GDXMath.h"
+#include "Core/GDXMathOps.h"
 #include "Core/GDXMathHelpers.h"
 #include <cstring>
 
@@ -426,8 +427,12 @@ void GDXDX11RenderExecutor::ApplyScopedBindings(
         const uint64_t scopeKey = cmd.GetEffectiveBindingsKeyForScope(scope);
         const bool cacheHit = m_bindingCache.ShouldApply(scope, scopeKey) == false;
 
-        // Textures and cbuffer register bindings: skip when cache says nothing changed.
-        if (!cacheHit)
+        // Material textures must be rebound defensively.
+        // The recent scoped binding cache can otherwise leave t0..t4 stale/null
+        // when external code cleared SRVs or when the cache considers the state
+        // identical although the pixel shader needs a fresh bind. Correctness first.
+        const bool mustBindTextures = (!cacheHit) || (scope == ResourceBindingScope::Material);
+        if (mustBindTextures)
         {
             BindTexturesForScope(bindings, texStore, defaultWhiteTex, defaultNormalTex, defaultORMTex, defaultBlackTex, scope);
             // For non-Material cbuffers: only bind when cache misses.
@@ -473,7 +478,7 @@ void GDXDX11RenderExecutor::BindSkinningPalette(
     Dx11SkinConstants sc = {};
     for (uint32_t i = 0; i < SkinComponent::MaxBones; ++i)
     {
-        Float4x4 ident = GIDX::Identity4x4();
+        Matrix4 ident = Matrix4::Identity();
         std::memcpy(sc.boneMatrices[i], &ident, 64);
     }
 
@@ -518,8 +523,10 @@ void GDXDX11RenderExecutor::ApplyPipelineState(const RenderCommand& cmd)
     if (rs)
         m_context->RSSetState(rs);
 
-    ID3D11DepthStencilState* ds = (state.depthMode == GDXDepthMode::ReadOnly) ? m_dsReadOnly : m_dsReadWrite;
+    ID3D11DepthStencilState* ds = m_dsReadWrite;
     if (!state.depthTestEnabled)
+        ds = m_dsNoTest;
+    else if (state.depthMode == GDXDepthMode::ReadOnly)
         ds = m_dsReadOnly;
     if (ds)
         m_context->OMSetDepthStencilState(ds, 0u);
@@ -752,11 +759,11 @@ void GDXDX11RenderExecutor::ExecuteQueue(
             Dx11EntityConstants ec = {};
             std::memcpy(ec.worldMatrix, &cmd.worldMatrix, 64);
 
-            DirectX::XMMATRIX w = GDXMathHelpers::LoadFloat4x4(cmd.worldMatrix);
+            DirectX::XMMATRIX w = GDXMathHelpers::LoadMatrix4(cmd.worldMatrix);
             DirectX::XMMATRIX wIT = DirectX::XMMatrixTranspose(
                 DirectX::XMMatrixInverse(nullptr, w));
-            GIDX::Float4x4 witF;
-            GDXMathHelpers::StoreFloat4x4(witF, wIT);
+            Matrix4 witF;
+            GDXMathHelpers::StoreMatrix4(witF, wIT);
             std::memcpy(ec.worldInverseTranspose, &witF, 64);
 
             D3D11_MAPPED_SUBRESOURCE mapped = {};

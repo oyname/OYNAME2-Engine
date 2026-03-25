@@ -128,7 +128,7 @@ static void InverseProjection(const float src[16], float dst[16])
     const float m32 = src[14];
 
     std::memset(dst, 0, 64);
-    if (std::fabs(m00) < 1e-9f || std::fabs(m11) < 1e-9f) return;
+    if (std::abs(m00) < 1e-9f || std::abs(m11) < 1e-9f) return;
 
     dst[0]  = 1.0f / m00;
     dst[5]  = 1.0f / m11;

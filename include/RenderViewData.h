@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ECS/ECSTypes.h"
+#include "Core/GDXMathOps.h"
 #include "FrameData.h"
 #include "Components.h"
 #include "RenderComponents.h"
@@ -17,7 +18,7 @@ enum class RenderViewType : uint8_t
 
 struct FrustumPlane
 {
-    GIDX::Float3 normal = { 0.0f, 0.0f, 1.0f };
+    Float3 normal = { 0.0f, 0.0f, 1.0f };
     float d = 0.0f;
 };
 
@@ -49,7 +50,7 @@ struct RenderViewData
 struct VisibleRenderCandidate
 {
     EntityID entity = NULL_ENTITY;
-    GIDX::Float4x4 worldMatrix = GIDX::Identity4x4();
+    Matrix4 worldMatrix = Matrix4::Identity();
 
     MeshHandle mesh = MeshHandle::Invalid();
     MaterialHandle material = MaterialHandle::Invalid();
@@ -65,7 +66,7 @@ struct VisibleRenderCandidate
     uint32_t visibilityStateVersion = 0u;
 
     bool hasBounds = false;
-    GIDX::Float3 worldBoundsCenter = { 0.0f, 0.0f, 0.0f };
+    Float3 worldBoundsCenter = { 0.0f, 0.0f, 0.0f };
     float worldBoundsRadius = 0.0f;
 };
 

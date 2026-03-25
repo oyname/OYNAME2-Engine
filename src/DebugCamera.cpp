@@ -1,4 +1,5 @@
 #include "DebugCamera.h"
+#include "Core/GDXMathOps.h"
 #include "FrameData.h"
 #include "GDXInput.h"
 
@@ -15,27 +16,27 @@ void DebugCamera::SetYawPitch(float yawDeg, float pitchDeg)
     m_pitchDeg = std::clamp(pitchDeg, -89.f, 89.f);
 }
 
-GIDX::Float3 DebugCamera::ForwardVector() const
+Float3 DebugCamera::ForwardVector() const
 {
     const float yR = m_yawDeg   * (3.14159265f / 180.f);
     const float pR = m_pitchDeg * (3.14159265f / 180.f);
-    return GIDX::Normalize3({
+    return GDX::Normalize3({
         std::sin(yR) * std::cos(pR),
         -std::sin(pR),
         std::cos(yR) * std::cos(pR)
     });
 }
 
-GIDX::Float3 DebugCamera::RightVector() const
+Float3 DebugCamera::RightVector() const
 {
-    const GIDX::Float3 fwd = ForwardVector();
-    const GIDX::Float3 up  = { 0.f, 1.f, 0.f };
-    return GIDX::Normalize3(GIDX::Cross(fwd, up));
+    const Float3 fwd = ForwardVector();
+    const Float3 up  = { 0.f, 1.f, 0.f };
+    return GDX::Normalize3(GDX::Cross(fwd, up));
 }
 
-GIDX::Float3 DebugCamera::UpVector() const
+Float3 DebugCamera::UpVector() const
 {
-    return GIDX::Cross(RightVector(), ForwardVector());
+    return GDX::Cross(RightVector(), ForwardVector());
 }
 
 // ---------------------------------------------------------------------------
@@ -53,17 +54,17 @@ void DebugCamera::ProcessInput(float deltaTime)
     const float turn  = turnSpeedDeg * deltaTime;
 
     // Translation
-    const GIDX::Float3 fwd   = ForwardVector();
-    const GIDX::Float3 right = RightVector();
+    const Float3 fwd   = ForwardVector();
+    const Float3 right = RightVector();
 
     if (GDXInput::KeyDown(Key::W))
-        m_position = GIDX::Add(m_position, GIDX::Scale3(fwd,   move));
+        m_position = GDX::Add(m_position, GDX::Scale3(fwd,   move));
     if (GDXInput::KeyDown(Key::S))
-        m_position = GIDX::Add(m_position, GIDX::Scale3(fwd,  -move));
+        m_position = GDX::Add(m_position, GDX::Scale3(fwd,  -move));
     if (GDXInput::KeyDown(Key::D))
-        m_position = GIDX::Add(m_position, GIDX::Scale3(right,  move));
+        m_position = GDX::Add(m_position, GDX::Scale3(right,  move));
     if (GDXInput::KeyDown(Key::A))
-        m_position = GIDX::Add(m_position, GIDX::Scale3(right, -move));
+        m_position = GDX::Add(m_position, GDX::Scale3(right, -move));
     if (GDXInput::KeyDown(Key::E))
         m_position.y += move;
     if (GDXInput::KeyDown(Key::Q))
@@ -82,15 +83,15 @@ void DebugCamera::ProcessInput(float deltaTime)
 // Matrizen
 // ---------------------------------------------------------------------------
 
-GIDX::Float4x4 DebugCamera::ViewMatrix() const
+Matrix4 DebugCamera::ViewMatrix() const
 {
-    const GIDX::Float3 target = GIDX::Add(m_position, ForwardVector());
-    return GIDX::LookAtLH(m_position, target, { 0.f, 1.f, 0.f });
+    const Float3 target = GDX::Add(m_position, ForwardVector());
+    return GDX::LookAtLH(m_position, target, { 0.f, 1.f, 0.f });
 }
 
-GIDX::Float4x4 DebugCamera::ProjMatrix(float aspect) const
+Matrix4 DebugCamera::ProjMatrix(float aspect) const
 {
-    return GIDX::PerspectiveFovLH(
+    return GDX::PerspectiveFovLH(
         m_fovDeg * (3.14159265f / 180.f),
         aspect,
         m_near,
@@ -109,7 +110,7 @@ void DebugCamera::OverrideFrameData(FrameData& f) const
 
     f.viewMatrix     = ViewMatrix();
     f.projMatrix     = ProjMatrix(aspect);
-    f.viewProjMatrix = GIDX::Multiply(f.viewMatrix, f.projMatrix);
+    f.viewProjMatrix = GDX::Multiply(f.viewMatrix, f.projMatrix);
     f.cameraPos      = m_position;
     f.cameraForward  = ForwardVector();
 }

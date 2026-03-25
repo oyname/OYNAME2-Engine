@@ -127,10 +127,10 @@ public:
     // ACHTUNG: Gibt den Wert vom LETZTEN Frame zurück.
     // Korrekte Werte erst nach TransformSystem::Update() im aktuellen Frame.
     // -----------------------------------------------------------------------
-    static GIDX::Float3 GetWorldPosition(Registry& registry, EntityID id);
-    static GIDX::Float3 GetWorldForward (Registry& registry, EntityID id);
-    static GIDX::Float3 GetWorldUp      (Registry& registry, EntityID id);
-    static GIDX::Float3 GetWorldRight   (Registry& registry, EntityID id);
+    static Float3 GetWorldPosition(Registry& registry, EntityID id);
+    static Float3 GetWorldForward (Registry& registry, EntityID id);
+    static Float3 GetWorldUp      (Registry& registry, EntityID id);
+    static Float3 GetWorldRight   (Registry& registry, EntityID id);
 
     // -----------------------------------------------------------------------
     // MarkDirtySubtree
@@ -149,5 +149,5 @@ private:
     // Dekomponiert eine Weltmatrix zu localPosition/Rotation/Scale.
     // Schreibt direkt in die TransformComponent.
     static void DecomposeWorldIntoLocal(TransformComponent&     tc,
-                                        const GIDX::Float4x4& worldMatrix);
+                                        const Matrix4& worldMatrix);
 };

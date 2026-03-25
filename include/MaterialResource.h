@@ -8,12 +8,12 @@
 
 struct MaterialData
 {
-    GIDX::Float4 baseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-    GIDX::Float4 specularColor = { 0.5f, 0.5f, 0.5f, 1.0f };
-    GIDX::Float4 emissiveColor = { 0.0f, 0.0f, 0.0f, 1.0f };
-    GIDX::Float4 uvTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f };
-    GIDX::Float4 uvDetailTilingOffset  = { 1.0f, 1.0f, 0.0f, 0.0f };
-    GIDX::Float4 uvNormalTilingOffset  = { 1.0f, 1.0f, 0.0f, 0.0f };
+    Float4 baseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+    Float4 specularColor = { 0.5f, 0.5f, 0.5f, 1.0f };
+    Float4 emissiveColor = { 0.0f, 0.0f, 0.0f, 1.0f };
+    Float4 uvTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f };
+    Float4 uvDetailTilingOffset  = { 1.0f, 1.0f, 0.0f, 0.0f };
+    Float4 uvNormalTilingOffset  = { 1.0f, 1.0f, 0.0f, 0.0f };
     float metallic          = 0.0f;
     float roughness         = 0.5f;
     float normalScale       = 1.0f;
@@ -180,6 +180,7 @@ public:
         {
             auto& layer = textureLayers[i];
             const auto slot = static_cast<MaterialTextureSlot>(i);
+            layer.enabled = layer.texture.IsValid();
             if (layer.uvSet == MaterialTextureUVSet::Auto)
                 layer.uvSet = DefaultUVSetForSlot(slot);
             layer.expectsSRGB = DefaultExpectsSRGBForSlot(slot);

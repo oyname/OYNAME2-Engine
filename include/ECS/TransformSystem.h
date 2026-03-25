@@ -39,7 +39,7 @@ public:
 
 private:
     // Berechnet lokale Matrix aus TransformComponent.
-    static GIDX::Float4x4 ComputeLocalMatrix(const TransformComponent& t);
+    static Matrix4 ComputeLocalMatrix(const TransformComponent& t);
 
     // Aktualisiert eine Entity ohne Parent.
     static void UpdateRoot(TransformComponent& t, WorldTransformComponent& wt);

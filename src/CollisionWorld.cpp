@@ -9,12 +9,15 @@
 #include "Collision/CollisionWorld.h"
 #include "Collision/CollisionIntersect.h"
 #include "Collision/CollisionShapes.h"
+#include "Core/GDXMath.h"
+#include "Core/GDXMathOps.h"
 
 #include <cassert>
 #include <cstdint>
 
 namespace GIDX
 {
+using namespace GDX;
 
 // ===========================================================================
 // Body-Verwaltung

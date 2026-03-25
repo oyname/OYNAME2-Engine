@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/GDXMath.h"
+#include "Core/GDXMathOps.h"
 #include "SubmeshData.h"
 #include "MeshAssetResource.h"
 
@@ -24,23 +25,23 @@ namespace MeshUtilities
     {
         inline bool NearlyZero(float v)
         {
-            return std::fabs(v) <= 1e-8f;
+            return std::abs(v) <= 1e-8f;
         }
 
         inline Float3 SafeNormalize3(const Float3& v, const Float3& fallback)
         {
-            return GIDX::Normalize3(v, fallback);
+            return GDX::Normalize3(v, fallback);
         }
 
         inline float AreaSq(const Float3& p0, const Float3& p1, const Float3& p2)
         {
-            const Float3 e1 = GIDX::Subtract(p1, p0);
-            const Float3 e2 = GIDX::Subtract(p2, p0);
-            const Float3 c = GIDX::Cross(e1, e2);
-            return GIDX::Dot3(c, c);
+            const Float3 e1 = GDX::Subtract(p1, p0);
+            const Float3 e2 = GDX::Subtract(p2, p0);
+            const Float3 c = GDX::Cross(e1, e2);
+            return GDX::Dot3(c, c);
         }
 
-        inline Float4x4 Inverse3x4(const Float4x4& m)
+        inline Matrix4 Inverse3x4(const Matrix4& m)
         {
             const float a00 = m._11, a01 = m._12, a02 = m._13;
             const float a10 = m._21, a11 = m._22, a12 = m._23;
@@ -57,19 +58,19 @@ namespace MeshUtilities
             const float c22 =  (a00 * a11 - a01 * a10);
 
             const float det = a00 * c00 + a01 * c01 + a02 * c02;
-            if (std::fabs(det) <= 1e-12f)
-                return GIDX::Identity4x4();
+            if (std::abs(det) <= 1e-12f)
+                return Matrix4::Identity();
 
             const float invDet = 1.0f / det;
 
-            Float4x4 inv{};
+            Matrix4 inv{};
             inv._11 = c00 * invDet; inv._12 = c10 * invDet; inv._13 = c20 * invDet; inv._14 = 0.0f;
             inv._21 = c01 * invDet; inv._22 = c11 * invDet; inv._23 = c21 * invDet; inv._24 = 0.0f;
             inv._31 = c02 * invDet; inv._32 = c12 * invDet; inv._33 = c22 * invDet; inv._34 = 0.0f;
             inv._44 = 1.0f;
 
             const Float3 t = { m._41, m._42, m._43 };
-            const Float3 invT = GIDX::Scale3(GIDX::TransformVector(t, inv), -1.0f);
+            const Float3 invT = GDX::Scale3(GDX::TransformVector(t, inv), -1.0f);
             inv._41 = invT.x;
             inv._42 = invT.y;
             inv._43 = invT.z;
@@ -170,24 +171,23 @@ namespace MeshUtilities
         }
     }
 
-    inline void ApplyTransform(SubmeshData& s, const Float4x4& transform)
+    inline void ApplyTransform(SubmeshData& s, const Matrix4& transform)
     {
-        const Float4x4 inverse = _detail::Inverse3x4(transform);
-        const Float4x4 normalMatrix = {
-            inverse._11, inverse._21, inverse._31, 0.0f,
-            inverse._12, inverse._22, inverse._32, 0.0f,
-            inverse._13, inverse._23, inverse._33, 0.0f,
-            0.0f,        0.0f,        0.0f,        1.0f
-        };
+        const Matrix4 inverse = _detail::Inverse3x4(transform);
+        Matrix4 normalMatrix{};
+        normalMatrix._11 = inverse._11; normalMatrix._12 = inverse._21; normalMatrix._13 = inverse._31;
+        normalMatrix._21 = inverse._12; normalMatrix._22 = inverse._22; normalMatrix._23 = inverse._32;
+        normalMatrix._31 = inverse._13; normalMatrix._32 = inverse._23; normalMatrix._33 = inverse._33;
+        normalMatrix._44 = 1.0f;
 
         for (auto& p : s.positions)
-            p = GIDX::TransformPoint(p, transform);
+            p = GDX::TransformPoint(p, transform);
 
         if (s.HasNormals())
         {
             for (auto& n : s.normals)
                 n = _detail::SafeNormalize3(
-                    GIDX::TransformVector(n, normalMatrix),
+                    GDX::TransformVector(n, normalMatrix),
                     { 0.0f, 1.0f, 0.0f });
         }
 
@@ -196,7 +196,7 @@ namespace MeshUtilities
             for (auto& t : s.tangents)
             {
                 const Float3 tv = _detail::SafeNormalize3(
-                    GIDX::TransformVector({ t.x, t.y, t.z }, normalMatrix),
+                    GDX::TransformVector({ t.x, t.y, t.z }, normalMatrix),
                     { 1.0f, 0.0f, 0.0f });
                 t.x = tv.x;
                 t.y = tv.y;
@@ -240,13 +240,13 @@ namespace MeshUtilities
 
         auto accumulate = [&](uint32_t i0, uint32_t i1, uint32_t i2)
         {
-            const Float3 e1 = GIDX::Subtract(s.positions[i1], s.positions[i0]);
-            const Float3 e2 = GIDX::Subtract(s.positions[i2], s.positions[i0]);
-            const Float3 n = GIDX::Cross(e1, e2);
+            const Float3 e1 = GDX::Subtract(s.positions[i1], s.positions[i0]);
+            const Float3 e2 = GDX::Subtract(s.positions[i2], s.positions[i0]);
+            const Float3 n = GDX::Cross(e1, e2);
 
             auto addTo = [&](uint32_t idx)
             {
-                s.normals[idx] = GIDX::Add(s.normals[idx], n);
+                s.normals[idx] = GDX::Add(s.normals[idx], n);
             };
 
             addTo(i0);
@@ -317,12 +317,12 @@ namespace MeshUtilities
                 (s1 * z2 - s2 * z1) * r
             };
 
-            tan1[i0] = GIDX::Add(tan1[i0], sdir);
-            tan1[i1] = GIDX::Add(tan1[i1], sdir);
-            tan1[i2] = GIDX::Add(tan1[i2], sdir);
-            tan2[i0] = GIDX::Add(tan2[i0], tdir);
-            tan2[i1] = GIDX::Add(tan2[i1], tdir);
-            tan2[i2] = GIDX::Add(tan2[i2], tdir);
+            tan1[i0] = GDX::Add(tan1[i0], sdir);
+            tan1[i1] = GDX::Add(tan1[i1], sdir);
+            tan1[i2] = GDX::Add(tan1[i2], sdir);
+            tan2[i0] = GDX::Add(tan2[i0], tdir);
+            tan2[i1] = GDX::Add(tan2[i1], tdir);
+            tan2[i2] = GDX::Add(tan2[i2], tdir);
         };
 
         if (!s.indices.empty())
@@ -343,11 +343,11 @@ namespace MeshUtilities
             const Float3 n = s.normals[i];
             const Float3 t = tan1[i];
 
-            Float3 tangent = GIDX::Subtract(t, GIDX::Scale3(n, GIDX::Dot3(n, t)));
+            Float3 tangent = GDX::Subtract(t, GDX::Scale3(n, GDX::Dot3(n, t)));
             tangent = _detail::SafeNormalize3(tangent, { 1.0f, 0.0f, 0.0f });
 
-            const Float3 bitangent = GIDX::Cross(n, tangent);
-            const float handedness = (GIDX::Dot3(bitangent, tan2[i]) < 0.0f) ? -1.0f : 1.0f;
+            const Float3 bitangent = GDX::Cross(n, tangent);
+            const float handedness = (GDX::Dot3(bitangent, tan2[i]) < 0.0f) ? -1.0f : 1.0f;
 
             s.tangents[i] = {
                 tangent.x,

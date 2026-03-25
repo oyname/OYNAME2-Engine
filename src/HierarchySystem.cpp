@@ -1,5 +1,6 @@
 #include "ECS/HierarchySystem.h"
 #include "Core/GDXMath.h"
+#include "Core/GDXMathOps.h"
 #include <vector>
 #include <cstring>
 
@@ -15,12 +16,12 @@
 //   - Position: Zeile 3 (row-major, Translation am Ende)
 // ---------------------------------------------------------------------------
 void HierarchySystem::DecomposeWorldIntoLocal(TransformComponent&      tc,
-                                               const GIDX::Float4x4& worldMatrix)
+                                               const Matrix4& worldMatrix)
 {
-    GIDX::Float3 scale, translation;
-    GIDX::Float4 rotation;
+    Float3 scale, translation;
+    Float4 rotation;
 
-    if (!GIDX::Decompose(worldMatrix, scale, rotation, translation))
+    if (!GDX::DecomposeTRS(worldMatrix, translation, rotation, scale))
     {
         // Degenerierte Matrix (z. B. Scale = 0) — Fallback auf Identity-Werte
         tc.localPosition = { 0.0f, 0.0f, 0.0f };
@@ -146,7 +147,7 @@ bool HierarchySystem::SetParent(Registry& registry,
     // Muss VOR dem Umhängen berechnet werden solange die alten Matrizen noch
     // gültig sind.
     // -----------------------------------------------------------------------
-    GIDX::Float4x4 newLocalMatrix = {};
+    Matrix4 newLocalMatrix = {};
     bool        hasNewLocal   = false;
 
     if (keepWorldTransform)
@@ -156,8 +157,8 @@ bool HierarchySystem::SetParent(Registry& registry,
 
         if (childWT && newParentWT)
         {
-            const GIDX::Float4x4 parentWorldInv = GIDX::Inverse(newParentWT->matrix);
-            newLocalMatrix = GIDX::Multiply(childWT->matrix, parentWorldInv);
+            const Matrix4 parentWorldInv = GDX::Inverse(newParentWT->matrix);
+            newLocalMatrix = GDX::Multiply(childWT->matrix, parentWorldInv);
             hasNewLocal = true;
         }
     }
@@ -328,7 +329,7 @@ bool HierarchySystem::IsDescendantOf(Registry& registry, EntityID child, EntityI
 // ---------------------------------------------------------------------------
 // GetWorldPosition
 // ---------------------------------------------------------------------------
-GIDX::Float3 HierarchySystem::GetWorldPosition(Registry& registry, EntityID id)
+Float3 HierarchySystem::GetWorldPosition(Registry& registry, EntityID id)
 {
     const auto* wt = registry.Get<WorldTransformComponent>(id);
     if (!wt) return { 0.0f, 0.0f, 0.0f };
@@ -339,32 +340,32 @@ GIDX::Float3 HierarchySystem::GetWorldPosition(Registry& registry, EntityID id)
 // ---------------------------------------------------------------------------
 // GetWorldForward — Z-Achse (row 2) der Weltmatrix
 // ---------------------------------------------------------------------------
-GIDX::Float3 HierarchySystem::GetWorldForward(Registry& registry, EntityID id)
+Float3 HierarchySystem::GetWorldForward(Registry& registry, EntityID id)
 {
     const auto* wt = registry.Get<WorldTransformComponent>(id);
     if (!wt) return { 0.0f, 0.0f, 1.0f };
     // Zeile 2 = Z-Basis (Forward in LH)
-    return GIDX::Normalize3({ wt->matrix._31, wt->matrix._32, wt->matrix._33 });
+    return GDX::Normalize3({ wt->matrix._31, wt->matrix._32, wt->matrix._33 });
 }
 
 // ---------------------------------------------------------------------------
 // GetWorldUp — Y-Achse (row 1) der Weltmatrix
 // ---------------------------------------------------------------------------
-GIDX::Float3 HierarchySystem::GetWorldUp(Registry& registry, EntityID id)
+Float3 HierarchySystem::GetWorldUp(Registry& registry, EntityID id)
 {
     const auto* wt = registry.Get<WorldTransformComponent>(id);
     if (!wt) return { 0.0f, 1.0f, 0.0f };
     // Zeile 1 = Y-Basis (Up)
-    return GIDX::Normalize3({ wt->matrix._21, wt->matrix._22, wt->matrix._23 });
+    return GDX::Normalize3({ wt->matrix._21, wt->matrix._22, wt->matrix._23 });
 }
 
 // ---------------------------------------------------------------------------
 // GetWorldRight — X-Achse (row 0) der Weltmatrix
 // ---------------------------------------------------------------------------
-GIDX::Float3 HierarchySystem::GetWorldRight(Registry& registry, EntityID id)
+Float3 HierarchySystem::GetWorldRight(Registry& registry, EntityID id)
 {
     const auto* wt = registry.Get<WorldTransformComponent>(id);
     if (!wt) return { 1.0f, 0.0f, 0.0f };
     // Zeile 0 = X-Basis (Right)
-    return GIDX::Normalize3({ wt->matrix._11, wt->matrix._12, wt->matrix._13 });
+    return GDX::Normalize3({ wt->matrix._11, wt->matrix._12, wt->matrix._13 });
 }

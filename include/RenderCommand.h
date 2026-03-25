@@ -24,7 +24,7 @@ struct RenderCommand
     EntityID       ownerEntity = NULL_ENTITY;
     RenderPass     pass = RenderPass::Opaque;
 
-    GIDX::Float4x4 worldMatrix = {};
+    Matrix4 worldMatrix = {};
     ResourceBindingSet   resourceBindings{};
     GDXPipelineStateDesc pipelineState{};
     GDXPipelineStateKey  pipelineStateKey{};

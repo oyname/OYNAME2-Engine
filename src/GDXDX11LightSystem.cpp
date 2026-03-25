@@ -8,6 +8,7 @@
 #include <windows.h>
 #include <d3d11.h>
 #include "Core/GDXMath.h"
+#include "Core/GDXMathOps.h"
 #include "Core/GDXMathHelpers.h"
 #include <cstring>
 #include <cmath>
@@ -177,8 +178,8 @@ void GDXDX11LightSystem::FillFrameData(Registry& registry, FrameData& frame)
 
             le.radius         = lc.radius;
             le.intensity      = lc.intensity;
-            le.innerCosAngle  = cosf(GIDX::ToRadians(lc.innerConeAngle));
-            le.outerCosAngle  = cosf(GIDX::ToRadians(lc.outerConeAngle));
+            le.innerCosAngle  = cosf(GDX::ToRadians(lc.innerConeAngle));
+            le.outerCosAngle  = cosf(GDX::ToRadians(lc.outerConeAngle));
 
             // --- Cascaded Shadow Maps (erstes Directional mit castShadows) ---
             if (!frame.hasShadowPass
@@ -211,22 +212,22 @@ void GDXDX11LightSystem::FillFrameData(Registry& registry, FrameData& frame)
                 {
                     XMVECTOR corners[8];
                     BuildFrustumCornersViewSpace(
-                        GDXMathHelpers::LoadFloat4x4(frame.viewProjMatrix),
+                        GDXMathHelpers::LoadMatrix4(frame.viewProjMatrix),
                         splits[c], splits[c + 1],
                         corners);
 
                     const XMMATRIX cascadeVP = BuildCascadeLightMatrix(
                         corners, lightDir, lc.shadowMapSize > 0u ? lc.shadowMapSize : 2048u);
 
-                    GDXMathHelpers::StoreFloat4x4(frame.shadowCascadeViewProj[c], cascadeVP);
+                    GDXMathHelpers::StoreMatrix4(frame.shadowCascadeViewProj[c], cascadeVP);
                     frame.shadowCascadeSplits[c] = splits[c + 1];
                 }
 
                 frame.shadowCascadeCount = numCascades;
 
                 // Äußerste Kaskade als Frustum-Culling-Matrix beibehalten
-                GDXMathHelpers::StoreFloat4x4(frame.shadowViewProjMatrix,
-                    GDXMathHelpers::LoadFloat4x4(frame.shadowCascadeViewProj[numCascades - 1]));
+                GDXMathHelpers::StoreMatrix4(frame.shadowViewProjMatrix,
+                    GDXMathHelpers::LoadMatrix4(frame.shadowCascadeViewProj[numCascades - 1]));
 
                 frame.hasShadowPass    = true;
                 frame.shadowCasterMask = lc.shadowLayerMask;

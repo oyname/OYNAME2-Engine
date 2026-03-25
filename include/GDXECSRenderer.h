@@ -152,7 +152,7 @@ public:
 
     struct RendererPersistentFrameState
     {
-        GIDX::Float3 sceneAmbient = { 0.08f, 0.08f, 0.12f };
+        Float3 sceneAmbient = { 0.08f, 0.08f, 0.12f };
         float viewportWidth  = 1280.0f;
         float viewportHeight = 720.0f;
 

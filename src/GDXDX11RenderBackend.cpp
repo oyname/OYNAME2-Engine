@@ -197,7 +197,7 @@ bool GDXDX11RenderBackend::Initialize(ResourceStore<GDXTextureResource, TextureT
     m_executor.defaultBlackTex = m_defaultTextures.black;
 
     // Rasterizer States nach Init() übergeben (CreateRenderStates läuft vorher)
-    m_executor.SetRasterizerStates(m_rasterizerState, m_rasterizerStateNoCull, m_depthStencilState, m_depthStateNoWrite, m_blendState, m_blendStateAlpha);
+    m_executor.SetRasterizerStates(m_rasterizerState, m_rasterizerStateNoCull, m_depthStencilState, m_depthStateNoWrite, m_depthStateNoTest, m_blendState, m_blendStateAlpha);
     return true;
 }
 
@@ -1170,6 +1170,12 @@ bool GDXDX11RenderBackend::CreateRenderStates()
     dsdNoWrite.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
     if (FAILED(m_device->CreateDepthStencilState(&dsdNoWrite, &m_depthStateNoWrite))) return false;
 
+    D3D11_DEPTH_STENCIL_DESC dsdNoTest = {};
+    dsdNoTest.DepthEnable    = FALSE;
+    dsdNoTest.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    dsdNoTest.DepthFunc      = D3D11_COMPARISON_ALWAYS;
+    if (FAILED(m_device->CreateDepthStencilState(&dsdNoTest, &m_depthStateNoTest))) return false;
+
     D3D11_BLEND_DESC bd = {};
     bd.RenderTarget[0].BlendEnable = FALSE;
     bd.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
@@ -1283,6 +1289,7 @@ void GDXDX11RenderBackend::Shutdown(
 
     if (m_blendStateAlpha) { m_blendStateAlpha->Release(); m_blendStateAlpha = nullptr; }
     if (m_blendState) { m_blendState->Release(); m_blendState = nullptr; }
+    if (m_depthStateNoTest)  { m_depthStateNoTest->Release();  m_depthStateNoTest  = nullptr; }
     if (m_depthStateNoWrite) { m_depthStateNoWrite->Release(); m_depthStateNoWrite = nullptr; }
     if (m_depthStencilState) { m_depthStencilState->Release(); m_depthStencilState = nullptr; }
     if (m_rasterizerState) { m_rasterizerState->Release();       m_rasterizerState = nullptr; }

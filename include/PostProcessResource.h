@@ -112,12 +112,21 @@ struct PostProcessExecutionInputs
     TextureHandle sceneDepth         = TextureHandle::Invalid();
     TextureHandle sceneNormals       = TextureHandle::Invalid();
 
+    float         cameraNearPlane    = 0.1f;
+    float         cameraFarPlane     = 1000.0f;
+    uint32_t      cameraIsOrtho      = 0u;
+    uint32_t      depthDebugFlags    = 1u;
+
     void Reset()
     {
         sceneColor         = TextureHandle::Invalid();
         originalSceneColor = TextureHandle::Invalid();
         sceneDepth         = TextureHandle::Invalid();
         sceneNormals       = TextureHandle::Invalid();
+        cameraNearPlane    = 0.1f;
+        cameraFarPlane     = 1000.0f;
+        cameraIsOrtho      = 0u;
+        depthDebugFlags    = 1u;
     }
 };
 

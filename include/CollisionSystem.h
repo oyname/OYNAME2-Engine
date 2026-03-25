@@ -46,7 +46,7 @@ private:
     // Transformiert localShape (Lokalraum) → Weltkoordinaten-Shape.
     static GIDX::CollisionShape TransformShape(
         const GIDX::CollisionShape& local,
-        const GIDX::Float4x4& worldMatrix);
+        const Matrix4& worldMatrix);
 
     std::vector<GIDX::CollisionContact> m_contacts;
 };

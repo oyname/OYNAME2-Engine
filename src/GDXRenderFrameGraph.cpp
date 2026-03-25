@@ -4,11 +4,53 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstring>
 #include <vector>
 
 // ---------------------------------------------------------------------------
 // Hilfsfunktionen
 // ---------------------------------------------------------------------------
+
+namespace
+{
+    struct DepthDebugParams
+    {
+        float nearPlane = 0.1f;
+        float farPlane = 1000.0f;
+        uint32_t isOrtho = 0u;
+        uint32_t flags = 1u;
+    };
+
+    void UpdatePerViewPostProcessConstants(
+        const RFG::ExecuteData& exec,
+        const std::vector<PostProcessHandle>& passOrder,
+        ResourceStore<PostProcessResource, PostProcessTag>& postStore)
+    {
+        const DepthDebugParams params{
+            exec.presentation.postProcess.execInputs.cameraNearPlane,
+            exec.presentation.postProcess.execInputs.cameraFarPlane,
+            exec.presentation.postProcess.execInputs.cameraIsOrtho,
+            exec.presentation.postProcess.execInputs.depthDebugFlags
+        };
+
+        for (const PostProcessHandle handle : passOrder)
+        {
+            PostProcessResource* pass = postStore.Get(handle);
+            if (!pass || !pass->ready || !pass->enabled)
+                continue;
+            if (pass->desc.pixelShaderFile != L"PostProcessDepthDebugPS.hlsl")
+                continue;
+            if (pass->constantBufferBytes < sizeof(DepthDebugParams))
+                continue;
+            if (pass->constantData.size() < sizeof(DepthDebugParams))
+                continue;
+
+            std::memcpy(pass->constantData.data(), &params, sizeof(DepthDebugParams));
+            pass->cpuDirty = true;
+        }
+    }
+}
+
 
 bool GDXRenderFrameGraph::HasDependency(const RFG::Node& node, uint32_t dep)
 {
@@ -214,6 +256,7 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
                 {
                     assert(c.postProcessPassOrder != nullptr);
                     assert(c.postProcessStore != nullptr);
+                    UpdatePerViewPostProcessConstants(*exec, *c.postProcessPassOrder, *c.postProcessStore);
                     const bool ok = c.backend->ExecutePostProcessChain(
                         *c.postProcessPassOrder, *c.postProcessStore, *c.texStore, c.rtStore,
                         exec->presentation.postProcess.execInputs,
@@ -278,6 +321,7 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
                 // null hier ist ein Programmierfehler im ExecContext-Build, kein Laufzeitfall.
                 assert(c.postProcessPassOrder != nullptr);
                 assert(c.postProcessStore     != nullptr);
+                UpdatePerViewPostProcessConstants(*exec, *c.postProcessPassOrder, *c.postProcessStore);
                 const bool ok = c.backend->ExecutePostProcessChain(
                     *c.postProcessPassOrder, *c.postProcessStore, *c.texStore, c.rtStore,
                     exec->presentation.postProcess.execInputs,

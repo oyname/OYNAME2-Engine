@@ -7,11 +7,13 @@
 
 #include "Collision/CollisionIntersect.h"
 #include "Core/GDXMath.h"
+#include "Core/GDXMathOps.h"
 #include <cmath>
 #include <algorithm>
 
 namespace GIDX
 {
+using namespace GDX;
 
 // ===========================================================================
 // Interne Hilfsfunktionen (nur in dieser TU sichtbar)
@@ -316,7 +318,7 @@ bool RaycastPlane(const Ray& ray, const PlaneShape& pl, CollisionHit& outHit) no
     const float denom = Dot3(ray.direction, pl.normal);
 
     // Ray parallel zur Ebene (oder von der anderen Seite).
-    if (std::fabs(denom) < 1.0e-8f)
+    if (std::abs(denom) < 1.0e-8f)
         return false;
 
     const float t = (pl.d - Dot3(ray.origin, pl.normal)) / denom;
@@ -366,7 +368,7 @@ bool RaycastCapsule(const Ray& ray, const CapsuleShape& cap, CollisionHit& outHi
     float tCylinder  = 1.0e30f;
     bool  cylHitValid = false;
 
-    if (std::fabs(A) > 1.0e-12f)
+    if (std::abs(A) > 1.0e-12f)
     {
         const float disc = B * B - A * C;
         if (disc >= 0.0f)

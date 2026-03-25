@@ -19,7 +19,7 @@ struct RenderQueue : public ICommandList
 
     void Submit(MeshHandle mesh, MaterialHandle material, ShaderHandle shader,
         uint32_t submeshIdx, EntityID ownerEntity,
-        const GIDX::Float4x4& worldMatrix,
+        const Matrix4& worldMatrix,
         RenderPass pass, uint32_t shaderSortID, uint32_t pipelineSortID, uint32_t materialSortID,
         float depth = 0.0f,
         bool receiveShadows = true,

@@ -2,15 +2,18 @@
 #include "CollisionBodyComponent.h"
 #include "Components.h"
 #include "Core/GDXMath.h"
+#include "Core/GDXMathOps.h"
 
 #include <cmath>
 #include <algorithm>
+
+using namespace GDX;
 
 // ---------------------------------------------------------------------------
 // Hilfsfunktion: maximale Weltskala aus der Weltmatrix extrahieren.
 // Wird für Radius-Skalierung bei Sphere und Capsule genutzt.
 // ---------------------------------------------------------------------------
-static float MaxWorldScale(const GIDX::Float4x4& m) noexcept
+static float MaxWorldScale(const Matrix4& m) noexcept
 {
     const float sx = std::sqrt(m._11*m._11 + m._12*m._12 + m._13*m._13);
     const float sy = std::sqrt(m._21*m._21 + m._22*m._22 + m._23*m._23);
@@ -23,21 +26,21 @@ static float MaxWorldScale(const GIDX::Float4x4& m) noexcept
 // ---------------------------------------------------------------------------
 GIDX::CollisionShape CollisionSystem::TransformShape(
     const GIDX::CollisionShape& local,
-    const GIDX::Float4x4& worldMatrix)
+    const Matrix4& worldMatrix)
 {
-    using namespace GIDX;
+    
 
     switch (local.type)
     {
-    case CollisionShapeType::Sphere:
+    case GIDX::CollisionShapeType::Sphere:
     {
         // center transformieren, Radius mit maximaler Weltskala skalieren.
         const Float3 worldCenter = TransformPoint(local.sphere.center, worldMatrix);
         const float  worldRadius = local.sphere.radius * MaxWorldScale(worldMatrix);
-        return CollisionShape::MakeSphere(worldCenter, worldRadius);
+        return GIDX::CollisionShape::MakeSphere(worldCenter, worldRadius);
     }
 
-    case CollisionShapeType::AABB:
+    case GIDX::CollisionShapeType::AABB:
     {
         // Alle 8 Ecken der lokalen AABB transformieren, neue AABB aufspannen (konservativ).
         const Float3& lo = local.aabb.min;
@@ -55,20 +58,20 @@ GIDX::CollisionShape CollisionSystem::TransformShape(
             wMin.y = std::min(wMin.y, wp.y); wMax.y = std::max(wMax.y, wp.y);
             wMin.z = std::min(wMin.z, wp.z); wMax.z = std::max(wMax.z, wp.z);
         }
-        return CollisionShape::MakeAABB(wMin, wMax);
+        return GIDX::CollisionShape::MakeAABB(wMin, wMax);
     }
 
-    case CollisionShapeType::Capsule:
+    case GIDX::CollisionShapeType::Capsule:
     {
         // Endpunkte a und b einzeln transformieren.
         // Radius mit maximaler Weltskala skalieren.
         const Float3 wa = TransformPoint(local.capsule.a, worldMatrix);
         const Float3 wb = TransformPoint(local.capsule.b, worldMatrix);
         const float  wr = local.capsule.radius * MaxWorldScale(worldMatrix);
-        return CollisionShape::MakeCapsule(wa, wb, wr);
+        return GIDX::CollisionShape::MakeCapsule(wa, wb, wr);
     }
 
-    case CollisionShapeType::Plane:
+    case GIDX::CollisionShapeType::Plane:
     {
         // Normal als Vektor (nicht Punkt) transformieren und normieren.
         // d aus einem transformierten Punkt auf der Ebene neu berechnen.
@@ -78,7 +81,7 @@ GIDX::CollisionShape CollisionSystem::TransformShape(
         const Float3 localPoint = Scale3(local.plane.normal, local.plane.d);
         const Float3 worldPoint = TransformPoint(localPoint, worldMatrix);
         const float  worldD     = Dot3(worldNormal, worldPoint);
-        return CollisionShape::MakePlane(worldNormal, worldD);
+        return GIDX::CollisionShape::MakePlane(worldNormal, worldD);
     }
 
     default:

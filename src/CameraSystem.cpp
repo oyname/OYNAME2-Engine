@@ -1,5 +1,6 @@
 #include "CameraSystem.h"
 #include "Core/GDXMath.h"
+#include "Core/GDXMathOps.h"
 
 // ---------------------------------------------------------------------------
 // Statische Kern-Hilfsmethode — wird von Update() und GDXECSRenderer genutzt.
@@ -10,33 +11,36 @@ void CameraSystem::BuildFrameData(
     const CameraComponent& cam,
     FrameData& frame)
 {
-    const GIDX::Float3 position = { wt.matrix._41, wt.matrix._42, wt.matrix._43 };
+    const Float3 position = { wt.matrix._41, wt.matrix._42, wt.matrix._43 };
     frame.cameraPos = position;
+    frame.cameraNearPlane = cam.nearPlane;
+    frame.cameraFarPlane = cam.farPlane;
+    frame.cameraProjectionFlags = cam.isOrtho ? 1u : 0u;
     frame.cullMask  = cam.cullMask;
 
-    GIDX::Float4x4 rot = wt.matrix;
+    Matrix4 rot = wt.matrix;
     rot._41 = 0.0f; rot._42 = 0.0f; rot._43 = 0.0f; rot._44 = 1.0f;
 
-    const GIDX::Float3 forward = GIDX::Normalize3(GIDX::TransformVector({ 0.0f, 0.0f, 1.0f }, rot));
-    const GIDX::Float3 up      = GIDX::Normalize3(GIDX::TransformVector({ 0.0f, 1.0f, 0.0f }, rot));
+    const Float3 forward = GDX::Normalize3(GDX::TransformVector({ 0.0f, 0.0f, 1.0f }, rot));
+    const Float3 up      = GDX::Normalize3(GDX::TransformVector({ 0.0f, 1.0f, 0.0f }, rot));
     frame.cameraForward = forward;
 
-    const GIDX::Float3 target = GIDX::Add(position, forward);
-    const GIDX::Float4x4 view = GIDX::LookAtLH(position, target, up);
+    const Float3 target = GDX::Add(position, forward);
+    const Matrix4 view = GDX::LookAtLH(position, target, up);
     frame.viewMatrix = view;
 
-    GIDX::Float4x4 proj;
+    Matrix4 proj;
     if (cam.isOrtho)
     {
-        proj = GIDX::OrthographicLH(cam.orthoWidth, cam.orthoHeight, cam.nearPlane, cam.farPlane);
+        proj = GDX::OrthographicLH(cam.orthoWidth, cam.orthoHeight, cam.nearPlane, cam.farPlane);
     }
     else
     {
-        proj = GIDX::PerspectiveFovLH(GIDX::ToRadians(cam.fovDeg), cam.aspectRatio, cam.nearPlane, cam.farPlane);
+        proj = GDX::PerspectiveFovLH(GDX::ToRadians(cam.fovDeg), cam.aspectRatio, cam.nearPlane, cam.farPlane);
     }
 
     frame.projMatrix     = proj;
-    frame.viewProjMatrix = GIDX::Multiply(view, proj);
+    frame.viewProjMatrix = GDX::Multiply(view, proj);
 }
 
 void CameraSystem::Update(Registry& registry, FrameData& frame) const
@@ -62,10 +66,10 @@ bool CameraSystem::BuildFrameDataForCamera(Registry& registry, EntityID cameraEn
     return true;
 }
 
-float CameraSystem::ComputeNDCDepth(const GIDX::Float4x4& worldMatrix,
-    const GIDX::Float4x4& viewProjMatrix)
+float CameraSystem::ComputeNDCDepth(const Matrix4& worldMatrix,
+    const Matrix4& viewProjMatrix)
 {
-    const GIDX::Float4 clip = GIDX::TransformFloat4(
+    const Float4 clip = GDX::TransformFloat4(
         { worldMatrix._41, worldMatrix._42, worldMatrix._43, 1.0f },
         viewProjMatrix);
 

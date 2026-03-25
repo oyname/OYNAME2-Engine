@@ -83,6 +83,10 @@ namespace
         view.execute.presentation.postProcess.execInputs.sceneColor = sceneRt->exposedTexture;
         view.execute.presentation.postProcess.execInputs.originalSceneColor = sceneRt->exposedTexture;
         view.execute.presentation.postProcess.execInputs.sceneDepth = sceneRt->exposedDepthTexture;
+        view.execute.presentation.postProcess.execInputs.cameraNearPlane = view.prepared.frame.cameraNearPlane;
+        view.execute.presentation.postProcess.execInputs.cameraFarPlane = view.prepared.frame.cameraFarPlane;
+        view.execute.presentation.postProcess.execInputs.cameraIsOrtho = (view.prepared.frame.cameraProjectionFlags & 1u) ? 1u : 0u;
+        view.execute.presentation.postProcess.execInputs.depthDebugFlags = 1u;
         view.execute.presentation.postProcess.outputToBackbuffer = outputToBackbuffer;
         view.execute.presentation.postProcess.outputTarget =
             outputToBackbuffer ? RenderTargetHandle::Invalid()

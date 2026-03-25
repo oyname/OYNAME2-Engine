@@ -6,7 +6,7 @@
 #include "Core/GDXMath.h"
 #include "GDXVertexFlags.h"
 
-using namespace GIDX;
+
 
 // ---------------------------------------------------------------------------
 // SubmeshData — CPU-Geometrie für einen Sub-Mesh-Slot.
@@ -23,16 +23,16 @@ using namespace GIDX;
 // ---------------------------------------------------------------------------
 struct SubmeshData
 {
-    std::vector<GIDX::Float3> positions;
-    std::vector<GIDX::Float3> normals;
-    std::vector<GIDX::Float2> uv0;
-    std::vector<GIDX::Float2> uv1;
-    std::vector<GIDX::Float4> tangents;
-    std::vector<GIDX::Float4> colors;
+    std::vector<Float3> positions;
+    std::vector<Float3> normals;
+    std::vector<Float2> uv0;
+    std::vector<Float2> uv1;
+    std::vector<Float4> tangents;
+    std::vector<Float4> colors;
     std::vector<uint32_t>          indices;
 
-    std::vector<GIDX::UInt4>  boneIndices;
-    std::vector<GIDX::Float4> boneWeights;
+    std::vector<UInt4>  boneIndices;
+    std::vector<Float4> boneWeights;
 
     uint32_t VertexCount() const noexcept
     {

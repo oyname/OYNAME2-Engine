@@ -553,7 +553,7 @@ void GDXECSRenderer::SetDepthDebugView(bool enabled)
         desc.vertexShaderFile    = L"PostProcessFullscreenVS.hlsl";
         desc.pixelShaderFile     = L"PostProcessDepthDebugPS.hlsl";
         desc.debugName           = L"DepthDebug";
-        desc.constantBufferBytes = 0u;
+        desc.constantBufferBytes = 16u;
         desc.enabled             = true;
         desc.inputSlots = {
             { L"SceneDepth", 0u, PostProcessInputSemantic::SceneDepth, true }

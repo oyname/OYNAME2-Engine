@@ -152,6 +152,7 @@ private:
     ID3D11RasterizerState*   m_rasterizerStateNoCull = nullptr;  // CULL_NONE für double-sided / alpha-test
     ID3D11DepthStencilState* m_depthStencilState = nullptr;
     ID3D11DepthStencilState* m_depthStateNoWrite = nullptr;
+    ID3D11DepthStencilState* m_depthStateNoTest  = nullptr;
     ID3D11BlendState*        m_blendState        = nullptr;
     ID3D11BlendState*        m_blendStateAlpha   = nullptr;
 

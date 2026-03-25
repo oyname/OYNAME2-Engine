@@ -164,6 +164,7 @@ private:
     ID3D11RasterizerState*   m_rsNoCull       = nullptr;
     ID3D11DepthStencilState* m_dsReadWrite    = nullptr;
     ID3D11DepthStencilState* m_dsReadOnly     = nullptr;
+    ID3D11DepthStencilState* m_dsNoTest       = nullptr;
     ID3D11BlendState*        m_blendOpaque    = nullptr;
     ID3D11BlendState*        m_blendAlpha     = nullptr;
 
@@ -174,12 +175,14 @@ public:
     // Wird vom Backend nach CreateRenderStates() aufgerufen
     void SetRasterizerStates(ID3D11RasterizerState* cull, ID3D11RasterizerState* noCull,
                              ID3D11DepthStencilState* readWrite, ID3D11DepthStencilState* readOnly,
+                             ID3D11DepthStencilState* noTest,
                              ID3D11BlendState* opaqueBlend, ID3D11BlendState* alphaBlend)
     {
         m_rsCull = cull;
         m_rsNoCull = noCull;
         m_dsReadWrite = readWrite;
         m_dsReadOnly = readOnly;
+        m_dsNoTest = noTest;
         m_blendOpaque = opaqueBlend;
         m_blendAlpha = alphaBlend;
     }

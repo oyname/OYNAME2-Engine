@@ -1,5 +1,6 @@
 #include "GDXDebugCullingRenderer.h"
 #include "Core/GDXMath.h"
+#include "Core/GDXMathOps.h"
 #include "GDXPipelineState.h"
 #include "GDXShaderLayout.h"
 #include "GDXTextureSlots.h"
@@ -17,47 +18,47 @@
 // ---------------------------------------------------------------------------
 namespace
 {
-    GIDX::Float3 LerpPoint(const GIDX::Float3& a, const GIDX::Float3& b, float t)
+    Float3 LerpPoint(const Float3& a, const Float3& b, float t)
     {
         return { a.x+(b.x-a.x)*t, a.y+(b.y-a.y)*t, a.z+(b.z-a.z)*t };
     }
 
-    GIDX::Float4x4 BuildBoxWorldMatrix(const GIDX::Float3& center, const GIDX::Float3& scale)
+    Matrix4 BuildBoxWorldMatrix(const Float3& center, const Float3& scale)
     {
-        GIDX::Float4x4 m = GIDX::Identity4x4();
+        Matrix4 m = Matrix4::Identity();
         m._11 = scale.x; m._22 = scale.y; m._33 = scale.z;
         m._41 = center.x; m._42 = center.y; m._43 = center.z;
         return m;
     }
 
-    bool BuildFrustumCorners(const GIDX::Float4x4& viewProj, GIDX::Float3 outCorners[8])
+    bool BuildFrustumCorners(const Matrix4& viewProj, Float3 outCorners[8])
     {
-        if (GIDX::Determinant(viewProj) == 0.f) return false;
-        const GIDX::Float4x4 inv = GIDX::Inverse(viewProj);
-        const GIDX::Float3 ndc[8] = {
+        if (GDX::Determinant(viewProj) == 0.f) return false;
+        const Matrix4 inv = GDX::Inverse(viewProj);
+        const Float3 ndc[8] = {
             {-1,-1,0},{-1,1,0},{1,1,0},{1,-1,0},
             {-1,-1,1},{-1,1,1},{1,1,1},{1,-1,1},
         };
         for (int i = 0; i < 8; ++i)
         {
-            const GIDX::Float4 p = GIDX::TransformFloat4({ndc[i].x,ndc[i].y,ndc[i].z,1.f}, inv);
-            if (std::fabs(p.w) <= 1e-6f) return false;
+            const Float4 p = GDX::TransformFloat4({ndc[i].x,ndc[i].y,ndc[i].z,1.f}, inv);
+            if (std::abs(p.w) <= 1e-6f) return false;
             const float iw = 1.f/p.w;
             outCorners[i] = { p.x*iw, p.y*iw, p.z*iw };
         }
         return true;
     }
 
-    GIDX::Float4x4 BuildEdgeWorldMatrix(const GIDX::Float3& a, const GIDX::Float3& b, float thickness)
+    Matrix4 BuildEdgeWorldMatrix(const Float3& a, const Float3& b, float thickness)
     {
-        const GIDX::Float3 center  = LerpPoint(a, b, 0.5f);
-        const GIDX::Float3 forward = GIDX::Normalize3(GIDX::Subtract(b,a), {0,0,1});
-        GIDX::Float3 upRef = {0,1,0};
-        if (std::fabs(GIDX::Dot3(forward, upRef)) > 0.98f) upRef = {1,0,0};
-        const GIDX::Float3 right = GIDX::Normalize3(GIDX::Cross(upRef, forward), {1,0,0});
-        const GIDX::Float3 up    = GIDX::Normalize3(GIDX::Cross(forward, right),  {0,1,0});
-        const float len = (std::max)(GIDX::Length3(GIDX::Subtract(b,a)), 0.01f);
-        GIDX::Float4x4 m{};
+        const Float3 center  = LerpPoint(a, b, 0.5f);
+        const Float3 forward = GDX::Normalize3(GDX::Subtract(b,a), {0,0,1});
+        Float3 upRef = {0,1,0};
+        if (std::abs(GDX::Dot3(forward, upRef)) > 0.98f) upRef = {1,0,0};
+        const Float3 right = GDX::Normalize3(GDX::Cross(upRef, forward), {1,0,0});
+        const Float3 up    = GDX::Normalize3(GDX::Cross(forward, right),  {0,1,0});
+        const float len = (std::max)(GDX::Length3(GDX::Subtract(b,a)), 0.01f);
+        Matrix4 m{};
         m._11=right.x*thickness;    m._12=right.y*thickness;    m._13=right.z*thickness;    m._14=0;
         m._21=up.x*thickness;       m._22=up.y*thickness;       m._23=up.z*thickness;       m._24=0;
         m._31=forward.x*(len*.5f);  m._32=forward.y*(len*.5f);  m._33=forward.z*(len*.5f);  m._34=0;
@@ -110,14 +111,14 @@ namespace
     // LineList-Hilfsfunktionen — 1-Pixel-Linien via D3D11_PRIMITIVE_TOPOLOGY_LINELIST.
     // Je 2 aufeinanderfolgende Vertices = ein Segment, kein Index-Buffer nötig.
     // -----------------------------------------------------------------------
-    void PushLine(SubmeshData& mesh, const GIDX::Float3& a, const GIDX::Float3& b)
+    void PushLine(SubmeshData& mesh, const Float3& a, const Float3& b)
     {
         mesh.positions.push_back(a); mesh.normals.push_back({0,1,0}); mesh.uv0.push_back({0,0});
         mesh.positions.push_back(b); mesh.normals.push_back({0,1,0}); mesh.uv0.push_back({0,0});
     }
 
     // 12 Kanten des Frustum-Pyramidenstumpfs.
-    SubmeshData BuildFrustumLineList(const GIDX::Float3 c[8])
+    SubmeshData BuildFrustumLineList(const Float3 c[8])
     {
         SubmeshData mesh;
         // Nahebene
@@ -133,11 +134,11 @@ namespace
     }
 
     // 12 Kanten einer AABB (aus Sphere-Mittelpunkt + Radius approximiert).
-    SubmeshData BuildAABBLineList(const GIDX::Float3& center, float radius)
+    SubmeshData BuildAABBLineList(const Float3& center, float radius)
     {
         const float r = radius;
-        const GIDX::Float3& o = center;
-        const GIDX::Float3 v[8] = {
+        const Float3& o = center;
+        const Float3 v[8] = {
             {o.x-r,o.y-r,o.z-r},{o.x+r,o.y-r,o.z-r},
             {o.x+r,o.y+r,o.z-r},{o.x-r,o.y+r,o.z-r},
             {o.x-r,o.y-r,o.z+r},{o.x+r,o.y-r,o.z+r},
@@ -266,7 +267,7 @@ void GDXDebugCullingRenderer::AppendBounds(
     cmd.submeshIndex = 0u;
     cmd.ownerEntity  = candidate.entity;
     cmd.pass         = RenderPass::Opaque;
-    cmd.worldMatrix  = GIDX::Identity4x4();
+    cmd.worldMatrix  = Matrix4::Identity();
     cmd.materialData = matRes->data;
     cmd.materialData.baseColor.w = 1.f;
 
@@ -301,10 +302,10 @@ void GDXDebugCullingRenderer::AppendFrustum(
 {
     if (!mat.IsValid() || !ctx.matStore || !ctx.shaderStore) return;
 
-    const GIDX::Float4x4& vp = (view.type == RenderViewType::Shadow)
+    const Matrix4& vp = (view.type == RenderViewType::Shadow)
         ? view.frame.shadowViewProjMatrix : view.frame.viewProjMatrix;
 
-    GIDX::Float3 corners[8]{};
+    Float3 corners[8]{};
     if (!BuildFrustumCorners(vp, corners)) return;
 
     const MaterialResource*  matRes    = ctx.matStore->Get(mat);
@@ -325,7 +326,7 @@ void GDXDebugCullingRenderer::AppendFrustum(
     cmd.submeshIndex = 0u;
     cmd.ownerEntity  = NULL_ENTITY;
     cmd.pass         = RenderPass::Opaque;
-    cmd.worldMatrix  = GIDX::Identity4x4();
+    cmd.worldMatrix  = Matrix4::Identity();
     cmd.materialData = matRes->data;
     cmd.materialData.baseColor = { 1.f, 1.f, 1.f, 1.f };
 

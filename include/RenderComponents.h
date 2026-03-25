@@ -50,7 +50,7 @@ struct SkinComponent
 {
     static constexpr uint32_t MaxBones = 64u;
 
-    std::vector<GIDX::Float4x4> finalBoneMatrices;
+    std::vector<Matrix4> finalBoneMatrices;
     bool enabled = true;
 
     SkinComponent() = default;
@@ -86,12 +86,12 @@ struct RenderBoundsComponent
     };
 
     Shape        shape           = Shape::Sphere;
-    GIDX::Float3 localCenter     = { 0.0f, 0.0f, 0.0f };
+    Float3 localCenter     = { 0.0f, 0.0f, 0.0f };
     float        localSphereRadius = 0.5f;
 
-    GIDX::Float3 localAabbMin = { -0.5f, -0.5f, -0.5f };
+    Float3 localAabbMin = { -0.5f, -0.5f, -0.5f };
     float        _pad0 = 0.0f;
-    GIDX::Float3 localAabbMax = {  0.5f,  0.5f,  0.5f };
+    Float3 localAabbMax = {  0.5f,  0.5f,  0.5f };
     float        _pad1 = 0.0f;
 
     bool  valid              = false;
@@ -101,7 +101,7 @@ struct RenderBoundsComponent
 
     RenderBoundsComponent() = default;
 
-    static RenderBoundsComponent MakeSphere(const GIDX::Float3& center, float radius)
+    static RenderBoundsComponent MakeSphere(const Float3& center, float radius)
     {
         RenderBoundsComponent b{};
         b.shape            = Shape::Sphere;
@@ -114,7 +114,7 @@ struct RenderBoundsComponent
     static RenderBoundsComponent MakeFromSubmeshes(const std::vector<SubmeshData>& submeshes)
     {
         bool hasAny = false;
-        GIDX::Float3 bMin{}, bMax{};
+        Float3 bMin{}, bMax{};
 
         for (const auto& submesh : submeshes)
         {
@@ -132,7 +132,7 @@ struct RenderBoundsComponent
 
         if (!hasAny) return {};
 
-        const GIDX::Float3 center = {
+        const Float3 center = {
             (bMin.x + bMax.x) * 0.5f,
             (bMin.y + bMax.y) * 0.5f,
             (bMin.z + bMax.z) * 0.5f,
@@ -210,7 +210,7 @@ enum class LightKind : uint8_t
 struct LightComponent
 {
     LightKind    kind          = LightKind::Directional;
-    GIDX::Float4 diffuseColor  = { 1.0f, 1.0f, 1.0f, 1.0f };
+    Float4 diffuseColor  = { 1.0f, 1.0f, 1.0f, 1.0f };
 
     float radius           = 10.0f;
     float intensity        = 1.0f;

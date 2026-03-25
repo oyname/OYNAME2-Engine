@@ -38,10 +38,10 @@ public:
     // -------------------------------------------------------------------
     // Position + Orientierung
     // -------------------------------------------------------------------
-    void   SetPosition(const GIDX::Float3& pos)         { m_position = pos; }
+    void   SetPosition(const Float3& pos)         { m_position = pos; }
     void   SetYawPitch(float yawDeg, float pitchDeg);
 
-    GIDX::Float3 GetPosition()   const { return m_position; }
+    Float3 GetPosition()   const { return m_position; }
     float         GetYaw()        const { return m_yawDeg;   }
     float         GetPitch()      const { return m_pitchDeg; }
 
@@ -62,8 +62,8 @@ public:
     // -------------------------------------------------------------------
     // Matrizen
     // -------------------------------------------------------------------
-    GIDX::Float4x4 ViewMatrix()              const;
-    GIDX::Float4x4 ProjMatrix(float aspect)  const;
+    Matrix4 ViewMatrix()              const;
+    Matrix4 ProjMatrix(float aspect)  const;
 
     // Überschreibt viewMatrix, projMatrix, viewProjMatrix, cameraPos,
     // cameraForward in outFrame.  Nur aufrufen wenn IsEnabled().
@@ -77,12 +77,12 @@ public:
     float turnSpeedDeg   = 90.0f;  // Grad/s für Tasten-Rotation
 
 private:
-    GIDX::Float3 ForwardVector() const;
-    GIDX::Float3 RightVector()   const;
-    GIDX::Float3 UpVector()      const;
+    Float3 ForwardVector() const;
+    Float3 RightVector()   const;
+    Float3 UpVector()      const;
 
     bool          m_enabled  = false;
-    GIDX::Float3  m_position = { 0.f, 2.f, -5.f };
+    Float3  m_position = { 0.f, 2.f, -5.f };
     float         m_yawDeg   = 0.f;    // Y-Achse
     float         m_pitchDeg = 0.f;    // X-Achse, ±89°
 

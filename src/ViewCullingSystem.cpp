@@ -1,4 +1,5 @@
 #include "ViewCullingSystem.h"
+#include "Core/GDXMathOps.h"
 
 #include "Components.h"
 #include "RenderComponents.h"
@@ -21,7 +22,7 @@ namespace
         return std::sqrt(x * x + y * y + z * z);
     }
 
-    float ComputeMaxWorldScale(const GIDX::Float4x4& m)
+    float ComputeMaxWorldScale(const Matrix4& m)
     {
         const float sx = BasisLength(m._11, m._12, m._13);
         const float sy = BasisLength(m._21, m._22, m._23);
@@ -44,7 +45,7 @@ namespace
         return out;
     }
 
-    FrustumData BuildFrustumFromViewProj(const GIDX::Float4x4& m)
+    FrustumData BuildFrustumFromViewProj(const Matrix4& m)
     {
         FrustumData f{};
         f.planes[0] = NormalizePlane({ { m._14 + m._11, m._24 + m._21, m._34 + m._31 }, m._44 + m._41 });
@@ -57,7 +58,7 @@ namespace
         return f;
     }
 
-    bool SphereInsideFrustum(const FrustumData& frustum, const GIDX::Float3& center, float radius)
+    bool SphereInsideFrustum(const FrustumData& frustum, const Float3& center, float radius)
     {
         if (!frustum.valid)
             return true;
@@ -72,7 +73,7 @@ namespace
     }
 
     bool PassesDistanceCull(const RenderBoundsComponent* bounds,
-                            const GIDX::Float3& center,
+                            const Float3& center,
                             float radius,
                             const FrameData& frame,
                             bool enableDistanceCulling)
@@ -121,7 +122,7 @@ void ViewCullingSystem::BuildVisibleSet(Registry& registry,
     RenderViewData localView = view;
     if (localView.enableFrustumCulling && !localView.frustum.valid)
     {
-        const GIDX::Float4x4& cullMatrix = (localView.type == RenderViewType::Shadow)
+        const Matrix4& cullMatrix = (localView.type == RenderViewType::Shadow)
             ? localView.frame.shadowViewProjMatrix
             : localView.frame.viewProjMatrix;
         localView.frustum = BuildFrustumFromViewProj(cullMatrix);
@@ -199,7 +200,7 @@ void ViewCullingSystem::BuildVisibleSet(Registry& registry,
                     if (bounds->valid)
                     {
                         candidate.hasBounds = true;
-                        candidate.worldBoundsCenter = GIDX::TransformPoint(bounds->localCenter, worlds[i].matrix);
+                        candidate.worldBoundsCenter = GDX::TransformPoint(bounds->localCenter, worlds[i].matrix);
                         candidate.worldBoundsRadius = bounds->localSphereRadius * ComputeMaxWorldScale(worlds[i].matrix);
 
                         if (localView.enableFrustumCulling && !SphereInsideFrustum(localView.frustum, candidate.worldBoundsCenter, candidate.worldBoundsRadius))

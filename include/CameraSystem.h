@@ -29,6 +29,6 @@ public:
 
     // Hilfsmethode: Berechnet Tiefe eines Weltpunkts in NDC (0..1).
     // Wird von RenderGatherSystem für den Sort-Key-Depth-Wert verwendet.
-    static float ComputeNDCDepth(const GIDX::Float4x4& worldMatrix,
-                                  const GIDX::Float4x4& viewProjMatrix);
+    static float ComputeNDCDepth(const Matrix4& worldMatrix,
+                                  const Matrix4& viewProjMatrix);
 };

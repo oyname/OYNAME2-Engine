@@ -2,6 +2,7 @@
 #include "Components.h"
 #include "Core/Debug.h"
 #include "Core/GDXMath.h"
+#include "Core/GDXMathOps.h"
 #include "Core/JobSystem.h"
 #include <vector>
 #include <atomic>
@@ -127,15 +128,15 @@ namespace
     }
 }
 
-GIDX::Float4x4 TransformSystem::ComputeLocalMatrix(const TransformComponent& t)
+Matrix4 TransformSystem::ComputeLocalMatrix(const TransformComponent& t)
 {
     // S * R * T  (row-vector Konvention: v * S * R * T)
-    const GIDX::Float4x4 S = GIDX::Scaling(
+    const Matrix4 S = GDX::Scaling(
         t.localScale.x, t.localScale.y, t.localScale.z);
-    const GIDX::Float4x4 R = GIDX::RotationQuaternion(t.localRotation);
-    const GIDX::Float4x4 T = GIDX::Translation(
+    const Matrix4 R = GDX::RotationQuaternion(t.localRotation);
+    const Matrix4 T = GDX::Translation(
         t.localPosition.x, t.localPosition.y, t.localPosition.z);
-    return GIDX::Multiply(GIDX::Multiply(S, R), T);
+    return GDX::Multiply(GDX::Multiply(S, R), T);
 }
 
 void TransformSystem::UpdateRoot(TransformComponent& t, WorldTransformComponent& wt)
@@ -143,7 +144,7 @@ void TransformSystem::UpdateRoot(TransformComponent& t, WorldTransformComponent&
     wt.matrix = ComputeLocalMatrix(t);
     // Inverse wird für Root-Entities nicht gespeichert
     // (preserviert Originalverhalten: berechnet aber nicht assigned)
-    (void)GIDX::Inverse(wt.matrix);
+    (void)GDX::Inverse(wt.matrix);
 
     t.dirty = false;
     ++t.worldVersion;
@@ -153,9 +154,9 @@ void TransformSystem::UpdateChild(TransformComponent& t,
     WorldTransformComponent& wt,
     const WorldTransformComponent& parentWT)
 {
-    const GIDX::Float4x4 local = ComputeLocalMatrix(t);
-    wt.matrix  = GIDX::Multiply(local, parentWT.matrix);
-    wt.inverse = GIDX::Inverse(wt.matrix);
+    const Matrix4 local = ComputeLocalMatrix(t);
+    wt.matrix  = GDX::Multiply(local, parentWT.matrix);
+    wt.inverse = GDX::Inverse(wt.matrix);
 
     t.dirty = false;
     ++t.worldVersion;
