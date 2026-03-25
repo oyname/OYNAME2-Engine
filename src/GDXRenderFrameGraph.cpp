@@ -77,8 +77,8 @@ MakeShadowExecFn(const RFG::ExecuteData* exec)
     {
         if (c.backend && exec->shadowPass.enabled)
         {
-            c.backend->ExecuteRenderPass(exec->shadowPass.desc, *c.registry,
-                exec->shadowQueue, *c.meshStore, *c.matStore, *c.shaderStore, *c.texStore, c.rtStore);
+            c.backend->ExecuteShadowPass(exec->shadowPass.desc, *c.registry,
+                exec->shadowQueue, *c.meshStore, *c.matStore, *c.shaderStore, *c.texStore);
             s->shadowPassExecuted = true;
         }
     };
@@ -97,10 +97,9 @@ MakeGraphicsExecFn(const RFG::ExecuteData* exec)
             desc.opaqueList = &exec->opaqueQueue;
             desc.alphaList  = &exec->alphaQueue;
 
-            // Use opaqueQueue as the commandList argument for legacy shadow-path
-            // compatibility inside ExecuteRenderPass; the desc queues take precedence.
             c.backend->ExecuteRenderPass(desc, *c.registry,
-                exec->opaqueQueue, *c.meshStore, *c.matStore, *c.shaderStore, *c.texStore, c.rtStore);
+                exec->opaqueQueue, exec->alphaQueue,
+                *c.meshStore, *c.matStore, *c.shaderStore, *c.texStore, *c.rtStore);
             s->graphicsPassExecuted = true;
         }
     };

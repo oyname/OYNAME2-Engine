@@ -31,6 +31,7 @@ namespace RenderViewPrep
         ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore  = nullptr;
         IGDXRenderBackend*                                       backend  = nullptr;
         bool                                                     shadowResourcesAvailable = false;
+        float                                                    mainViewClearColor[4]    = { 0.0f, 0.0f, 0.0f, 1.0f };
     };
 
     // ---------------------------------------------------------------------------

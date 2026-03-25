@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ECS/Registry.h"
+#include "GDXDX11GpuResources.h"
 #include "FrameData.h"
 #include "ICommandList.h"
 #include "RenderCommand.h"
@@ -17,6 +18,7 @@
 #include <cstdint>
 #include <unordered_map>
 
+class GDXDX11GpuRegistry;
 struct ID3D11Device;
 struct ID3D11DeviceContext;
 struct ID3D11Buffer;
@@ -64,11 +66,11 @@ public:
     GDXDX11MeshUploader(ID3D11Device* device, ID3D11DeviceContext* context)
         : m_device(device), m_context(context) {}
 
-    bool Upload(MeshAssetResource& mesh);
+    bool Upload(MeshHandle handle, MeshAssetResource& mesh, GDXDX11GpuRegistry& registry);
     static void Release(MeshAssetResource& mesh);
 
 private:
-    bool UploadSubmesh(SubmeshData& cpu, GpuMeshBuffer& gpu);
+    bool UploadSubmesh(SubmeshData& cpu, DX11MeshGpu& gpu);
 
     ID3D11Device*        m_device  = nullptr;
     ID3D11DeviceContext* m_context = nullptr;
@@ -95,7 +97,8 @@ public:
         ResourceStore<MaterialResource,   MaterialTag>&      matStore,
         ResourceStore<GDXShaderResource,  ShaderTag>&        shaderStore,
         ResourceStore<GDXTextureResource, TextureTag>&       texStore,
-        void* shadowSRV = nullptr);
+        GDXDX11GpuRegistry&                                  gpuRegistry,
+        ID3D11ShaderResourceView*                            shadowSRV = nullptr);
 
     void ExecuteShadowQueue(
         Registry&                                   registry,
@@ -103,7 +106,8 @@ public:
         ResourceStore<MeshAssetResource, MeshTag>&  meshStore,
         ResourceStore<MaterialResource, MaterialTag>& matStore,
         ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-        ResourceStore<GDXTextureResource, TextureTag>& texStore);
+        ResourceStore<GDXTextureResource, TextureTag>& texStore,
+        GDXDX11GpuRegistry&                           gpuRegistry);
 
     uint32_t GetDrawCallCount() const { return m_drawCalls; }
 
@@ -112,18 +116,23 @@ public:
                            ResourceState after,
                            const char* debugReason = nullptr);
     void ResetTrackedResourceStates();
+    void ForgetTextureState(TextureHandle texture);
+    size_t DebugTrackedTextureStateCount() const;
+    size_t DebugPipelineCacheSize() const noexcept;
+    size_t DebugLayoutCacheSize() const noexcept;
 
 private:
     void CreateConstantBuffers();
     void ApplyPipelineState(const RenderCommand& cmd);
     void ApplyPrimitiveTopology(const RenderCommand& cmd);
-    bool BindVertexStreams(const GpuMeshBuffer& gpu, uint32_t vertexFlags);
+    bool BindVertexStreams(const DX11MeshGpu& gpu, uint32_t vertexFlags);
     void BindSkinningPalette(Registry& registry, const RenderCommand& cmd, const GDXShaderResource& shader);
     void BindFrameConstantsForShader(const GDXShaderResource& shader);
     void BindEntityConstantsForShader(const GDXShaderResource& shader);
     void BindTexturesForScope(
         const ResourceBindingSet& bindings,
         ResourceStore<GDXTextureResource, TextureTag>& texStore,
+        GDXDX11GpuRegistry& gpuRegistry,
         TextureHandle defaultWhite,
         TextureHandle defaultNormal,
         TextureHandle defaultORM,
@@ -132,11 +141,13 @@ private:
     void BindConstantBuffersForScope(
         const ResourceBindingSet& bindings,
         const RenderCommand& cmd,
+        GDXDX11GpuRegistry& gpuRegistry,
         ResourceBindingScope scope,
         bool applyReceiveShadowOverride);
     void ApplyScopedBindings(
         const RenderCommand& cmd,
         ResourceStore<GDXTextureResource, TextureTag>& texStore,
+        GDXDX11GpuRegistry& gpuRegistry,
         bool applyReceiveShadowOverride);
     void ResetScopeCaches();
     const GDXShaderLayout& GetCachedShaderLayout(ShaderHandle shaderHandle, const GDXShaderResource& shader);

@@ -6,52 +6,27 @@
 #include <string>
 
 // ---------------------------------------------------------------------------
-// GDXShaderResource — geladenes Shader-Paar (VS + PS) im ResourceStore.
+// GDXShaderResource — CPU-Metadaten eines Shader-Paars im ResourceStore.
 //
-// Kein <d3d11.h> im Header — GPU-Objekte hinter void*.
-//
-// vertexFlags steuert:
-//   1. InputLayout-Bau   (beim Laden via CreateShader)
-//   2. Mesh-Upload       (GDXDX11MeshUploader liest Flags → separate Streams)
-//   3. Draw-Binding      (GDXDX11RenderExecutor bindet nur aktive Slots)
-//
-// Anwender-Workflow (wie OYNAME CreateShader):
-//   ShaderHandle h = renderer.CreateShader(
-//       L"MyVS.hlsl", L"MyPS.hlsl",
-//       GDX_VERTEX_POSITION | GDX_VERTEX_NORMAL | GDX_VERTEX_TEX1);
-//   // InputLayout automatisch gebaut, fertig.
+// Kein GPU-Objekt. Das zugehörige DX11ShaderGpu liegt in
+// GDXDX11GpuRegistry und ist nur dem Backend zugänglich.
 // ---------------------------------------------------------------------------
 struct GDXShaderResource
 {
-    // Vertex-Format-Flags (steuern InputLayout + Upload + Binding)
-    uint32_t vertexFlags = GDX_VERTEX_DEFAULT;
-    GDXShaderLayout layout;
+    uint32_t         vertexFlags       = GDX_VERTEX_DEFAULT;
+    GDXShaderLayout  layout;
+    ShaderPassType   passType          = ShaderPassType::Main;
+    uint32_t         variantFeatures   = SVF_NONE;
+    bool             supportsSkinning  = false;
+    bool             usesVertexColor   = false;
+    bool             ready             = false;
+    std::wstring     debugName;
 
-    // GPU-Handles (backend-agnostisch, hinter void*)
-    void* vertexShader = nullptr;   // ID3D11VertexShader*
-    void* pixelShader  = nullptr;   // ID3D11PixelShader*
-    void* inputLayout  = nullptr;   // ID3D11InputLayout*
+    bool IsValid() const noexcept { return ready; }
 
-    // Debug-Name (RenderDoc, PIX)
-    std::wstring debugName;
-
-    // Varianten-Metadaten (backend-neutral)
-    ShaderPassType passType = ShaderPassType::Main;
-    uint32_t variantFeatures = SVF_NONE;
-    bool supportsSkinning = false;
-    bool usesVertexColor = false;
-
-    bool IsValid() const noexcept
-    {
-        return vertexShader != nullptr
-            && pixelShader  != nullptr
-            && inputLayout  != nullptr;
-    }
-
-    // GPU-Cleanup erfolgt in GDXECSRenderer::Shutdown via ShaderStore.ForEach.
     GDXShaderResource() = default;
-    GDXShaderResource(const GDXShaderResource&) = delete;
+    GDXShaderResource(const GDXShaderResource&)            = delete;
     GDXShaderResource& operator=(const GDXShaderResource&) = delete;
-    GDXShaderResource(GDXShaderResource&&) = default;
-    GDXShaderResource& operator=(GDXShaderResource&&) = default;
+    GDXShaderResource(GDXShaderResource&&)                 = default;
+    GDXShaderResource& operator=(GDXShaderResource&&)      = default;
 };

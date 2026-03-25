@@ -72,7 +72,8 @@ ShaderHandle GDXShaderVariantCache::LoadInternal(
     const GDXShaderLayout layout = customLayout
         ? *customLayout
         : GDXShaderLayouts::BuildMain(vertexFlags, (vertexFlags & GDX_VERTEX_BONE_WEIGHTS) != 0u);
-    return m_backend->CreateShader(*m_shaderStore, vsFile, psFile, vertexFlags, layout, debugName);
+    const ShaderSourceDesc desc = ShaderSourceDesc::FromHlslFiles(vsFile, psFile, vertexFlags, layout, debugName);
+    return m_backend->UploadShader(*m_shaderStore, desc);
 }
 
 ShaderVariantKey GDXShaderVariantCache::BuildKey(
@@ -157,7 +158,8 @@ ShaderHandle GDXShaderVariantCache::CreateVariant(const ShaderVariantKey& rawKey
         : GDXShaderLayouts::BuildMain(vertexFlags, skinned);
 
     if (!m_backend || !m_shaderStore) return ShaderHandle::Invalid();
-    ShaderHandle handle = m_backend->CreateShader(*m_shaderStore, vsFile, psFile, vertexFlags, layout, debugName);
+    const ShaderSourceDesc desc = ShaderSourceDesc::FromHlslFiles(vsFile, psFile, vertexFlags, layout, debugName);
+    ShaderHandle handle = m_backend->UploadShader(*m_shaderStore, desc);
     if (!handle.IsValid()) return ShaderHandle::Invalid();
 
     if (auto* res = m_shaderStore->Get(handle))

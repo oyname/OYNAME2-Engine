@@ -76,8 +76,8 @@ namespace
             cb.semantic   = src.slot;
             cb.vsRegister = src.vsRegister;
             cb.psRegister = src.psRegister;
-            cb.buffer     = (src.slot == GDXShaderConstantBufferSlot::Material) ? mat.gpuConstantBuffer : nullptr;
-            cb.enabled    = (src.slot != GDXShaderConstantBufferSlot::Material) || (mat.gpuConstantBuffer != nullptr);
+            cb.materialHandle = MaterialHandle::Invalid();
+            cb.enabled = (src.slot != GDXShaderConstantBufferSlot::Material);
             cb.scope      = (src.slot == GDXShaderConstantBufferSlot::Frame)
                           ? ResourceBindingScope::Pass
                           : ((src.slot == GDXShaderConstantBufferSlot::Material)

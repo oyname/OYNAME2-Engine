@@ -1,7 +1,7 @@
 #include "GDXDX11TileLightCuller.h"
 #include "Core/Debug.h"
 #include "Core/GDXMath.h"
-#include "Core/GDXMathHelpers.h"
+#include "GDXMathHelpers.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -190,8 +190,19 @@ bool GDXDX11TileLightCuller::EnsureSize(ID3D11Device* device, uint32_t w, uint32
     const uint32_t tcx = (w  + GDX_TILE_SIZE - 1u) / GDX_TILE_SIZE;
     const uint32_t tcy = (h  + GDX_TILE_SIZE - 1u) / GDX_TILE_SIZE;
 
-    if (tcx == m_tileCountX && tcy == m_tileCountY)
-        return true;  // no change
+        m_viewportW = w;
+    m_viewportH = h;
+    m_activeTileCountX = tcx;
+    m_activeTileCountY = tcy;
+
+    if (tcx <= m_capacityTileCountX && tcy <= m_capacityTileCountY)
+        return true;  // existing capacity is sufficient
+
+    //static uint64_t s_tileResizeCount = 0;
+    //Debug::LogWarning(GDX_SRC_LOC, "TileCuller realloc #", ++s_tileResizeCount,
+    //                  " oldCapacity=", m_capacityTileCountX, "x", m_capacityTileCountY,
+    //                  " newCapacity=", tcx, "x", tcy,
+    //                  " viewport=", w, "x", h);
 
     ReleaseTileBuffers();
     return CreateTileBuffers(device, tcx, tcy);
@@ -224,8 +235,8 @@ bool GDXDX11TileLightCuller::CreateTileBuffers(
         !m_gridUAV      || !m_gridSRV      || !m_counterUAV)
         return false;
 
-    m_tileCountX = tcx;
-    m_tileCountY = tcy;
+    m_capacityTileCountX = tcx;
+    m_capacityTileCountY = tcy;
     return true;
 }
 
@@ -235,7 +246,12 @@ void GDXDX11TileLightCuller::ReleaseTileBuffers()
     sr(m_counterUAV);  sr(m_counterBuf);
     sr(m_gridSRV);     sr(m_gridUAV);    sr(m_gridBuf);
     sr(m_indexListSRV); sr(m_indexListUAV); sr(m_indexListBuf);
-    m_tileCountX = m_tileCountY = 0u;
+    m_capacityTileCountX = 0u;
+    m_capacityTileCountY = 0u;
+    m_activeTileCountX = 0u;
+    m_activeTileCountY = 0u;
+    m_viewportW = 0u;
+    m_viewportH = 0u;
 }
 
 // ---------------------------------------------------------------------------
@@ -281,7 +297,7 @@ void GDXDX11TileLightCuller::Dispatch(
     const FrameData& frame,
     uint32_t viewportW, uint32_t viewportH)
 {
-    if (!ctx || !m_cs || !m_tileCountX) return;
+    if (!ctx || !m_cs || !m_activeTileCountX || !m_activeTileCountY) return;
 
     // --- Reset counter ---
     const uint32_t zero = 0u;
@@ -302,7 +318,7 @@ void GDXDX11TileLightCuller::Dispatch(
     cb.viewportW   = static_cast<float>(viewportW);
     cb.viewportH   = static_cast<float>(viewportH);
     cb.lightCount  = (std::min)(frame.lightCount, GDX_MAX_LIGHTS);
-    cb.tileCountX  = m_tileCountX;
+    cb.tileCountX  = m_activeTileCountX;
     UploadDynamicCB(ctx, m_csCB, cb);
 
     // --- Bind resources ---
@@ -320,7 +336,7 @@ void GDXDX11TileLightCuller::Dispatch(
     ctx->CSSetUnorderedAccessViews(0, 3, uavs, initCounts);
 
     // --- Dispatch one group per tile ---
-    ctx->Dispatch(m_tileCountX, m_tileCountY, 1u);
+    ctx->Dispatch(m_activeTileCountX, m_activeTileCountY, 1u);
 
     // --- Unbind CS resources ---
     ctx->CSSetShader(nullptr, nullptr, 0);
@@ -362,7 +378,7 @@ void GDXDX11TileLightCuller::UploadPSInfoCB(
     info.sceneAmbient[1] = frame.sceneAmbient.y;
     info.sceneAmbient[2] = frame.sceneAmbient.z;
     info.lightCount  = (std::min)(frame.lightCount, GDX_MAX_LIGHTS);
-    info.tileCountX  = m_tileCountX;
-    info.tileCountY  = m_tileCountY;
+    info.tileCountX  = m_activeTileCountX;
+    info.tileCountY  = m_activeTileCountY;
     UploadDynamicCB(ctx, m_psInfoCB, info);
 }

@@ -154,6 +154,7 @@ namespace Engine
         // -- Renderer + Engine -----------------------------------------------
         auto renderer = std::make_unique<GDXECSRenderer>(std::move(renderBackend));
         renderer->SetClearColor(clearR, clearG, clearB);
+        renderer->SetDebugSmokeTestMode(GDXDebugSmokeTestMode::None);
         _::rendererRaw = renderer.get();
 
         _::engineOwned = std::make_unique<GIDXEngine>(

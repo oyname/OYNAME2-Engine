@@ -73,18 +73,15 @@ void GDXOpenGLRenderBackend::Shutdown(ResourceStore<MaterialResource, MaterialTa
     m_context.reset();
 }
 
-ShaderHandle GDXOpenGLRenderBackend::CreateShader(ResourceStore<GDXShaderResource, ShaderTag>&,
-                                                  const std::wstring&,
-                                                  const std::wstring&,
-                                                  uint32_t,
-                                                  const GDXShaderLayout&,
-                                                  const std::wstring&)
+ShaderHandle GDXOpenGLRenderBackend::UploadShader(
+    ResourceStore<GDXShaderResource, ShaderTag>& /*shaderStore*/,
+    const ShaderSourceDesc& /*desc*/)
 {
-    Debug::Log("GDXOpenGLRenderBackend: CreateShader noch nicht implementiert");
+    Debug::Log("GDXOpenGLRenderBackend: UploadShader nicht implementiert");
     return ShaderHandle::Invalid();
 }
 
-TextureHandle GDXOpenGLRenderBackend::CreateTexture(ResourceStore<GDXTextureResource, TextureTag>&,
+TextureHandle GDXOpenGLRenderBackend::UploadTexture(ResourceStore<GDXTextureResource, TextureTag>&,
                                                     const std::wstring&,
                                                     bool,
                                                     TextureHandle fallbackOnFailure)
@@ -93,7 +90,7 @@ TextureHandle GDXOpenGLRenderBackend::CreateTexture(ResourceStore<GDXTextureReso
     return fallbackOnFailure;
 }
 
-TextureHandle GDXOpenGLRenderBackend::CreateTextureFromImage(ResourceStore<GDXTextureResource, TextureTag>&,
+TextureHandle GDXOpenGLRenderBackend::UploadTextureFromImage(ResourceStore<GDXTextureResource, TextureTag>&,
                                                              const ImageBuffer&,
                                                              bool,
                                                              const std::wstring&,
@@ -103,13 +100,13 @@ TextureHandle GDXOpenGLRenderBackend::CreateTextureFromImage(ResourceStore<GDXTe
     return fallbackOnFailure;
 }
 
-bool GDXOpenGLRenderBackend::UploadMesh(MeshAssetResource&)
+bool GDXOpenGLRenderBackend::UploadMesh(MeshHandle, MeshAssetResource&)
 {
     Debug::Log("GDXOpenGLRenderBackend: UploadMesh noch nicht implementiert");
     return false;
 }
 
-bool GDXOpenGLRenderBackend::CreateMaterialGpu(MaterialResource&)
+bool GDXOpenGLRenderBackend::UploadMaterial(MaterialHandle, MaterialResource&)
 {
     return true;
 }
@@ -130,22 +127,23 @@ void GDXOpenGLRenderBackend::UpdateFrameConstants(const FrameData&)
 {
 }
 
-void* GDXOpenGLRenderBackend::ExecuteRenderPass(const BackendRenderPassDesc& passDesc,
+void GDXOpenGLRenderBackend::ExecuteRenderPass(const BackendRenderPassDesc& passDesc,
                                                 Registry&,
+                                                const ICommandList&,
                                                 const ICommandList&,
                                                 ResourceStore<MeshAssetResource, MeshTag>&,
                                                 ResourceStore<MaterialResource, MaterialTag>&,
                                                 ResourceStore<GDXShaderResource, ShaderTag>&,
                                                 ResourceStore<GDXTextureResource, TextureTag>&,
-                                                ResourceStore<GDXRenderTargetResource, RenderTargetTag>*)
+                                                ResourceStore<GDXRenderTargetResource, RenderTargetTag>&)
 {
     if (passDesc.kind == BackendRenderPassDesc::Kind::Shadow)
-        return nullptr;
+        return;
 
     if (!passDesc.target.useBackbuffer)
         Debug::Log("GDXOpenGLRenderBackend: RTT-Offscreen-Pass noch nicht implementiert");
 
-    return nullptr;
+    return;
 }
 
 void GDXOpenGLRenderBackend::SetShadowMapSize(uint32_t)

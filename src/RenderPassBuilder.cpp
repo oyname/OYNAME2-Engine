@@ -1,6 +1,7 @@
 #include "RenderPassBuilder.h"
 #include "IGDXRenderBackend.h"
 #include "BackendRenderPassDesc.h"
+#include "Core/Debug.h"
 #include "RenderGatherSystem.h"
 
 namespace RenderPassBuilder
@@ -33,6 +34,82 @@ namespace
         return ppCtx.mainSceneTarget;
     }
 
+    bool IsRequiredSlotAvailable(
+        const PostProcessInputSlot& slot,
+        const GDXRenderTargetResource& sceneRt)
+    {
+        switch (slot.semantic)
+        {
+        case PostProcessInputSemantic::SceneColor:
+        case PostProcessInputSemantic::OriginalSceneColor:
+            return sceneRt.exposedTexture.IsValid();
+
+        case PostProcessInputSemantic::SceneDepth:
+            return sceneRt.exposedDepthTexture.IsValid();
+
+        case PostProcessInputSemantic::SceneNormals:
+            return false;
+
+        case PostProcessInputSemantic::Custom:
+            return slot.customTexture.IsValid();
+
+        default:
+            return false;
+        }
+    }
+
+    bool PassCanExecuteForSceneTarget(
+        const PostProcessResource& pass,
+        const GDXRenderTargetResource& sceneRt)
+    {
+        const std::vector<PostProcessInputSlot> resolvedInputs =
+            pass.inputs.empty()
+                ? BuildDefaultPostProcessInputs(pass.desc.inputSlots)
+                : pass.inputs;
+
+        for (const PostProcessInputSlot& slot : resolvedInputs)
+        {
+            if (!slot.required)
+                continue;
+
+            if (!IsRequiredSlotAvailable(slot, sceneRt))
+                return false;
+        }
+
+        return true;
+    }
+
+    bool HasExecutablePostProcessPassForView(
+        const PostProcContext& ppCtx,
+        const GDXRenderTargetResource& sceneRt)
+    {
+        if (!ppCtx.postProcessStore || !ppCtx.passOrder)
+            return false;
+
+        bool hadActivePass = false;
+
+        for (const PostProcessHandle h : *ppCtx.passOrder)
+        {
+            const PostProcessResource* pass = ppCtx.postProcessStore->Get(h);
+            if (!pass || !pass->ready || !pass->enabled)
+                continue;
+
+            hadActivePass = true;
+
+            if (PassCanExecuteForSceneTarget(*pass, sceneRt))
+                return true;
+        }
+
+        if (hadActivePass)
+        {
+            Debug::LogWarning(
+                GDX_SRC_LOC,
+                L"PrepareViewPostProcess: Kein aktiver PostProcess-Pass ist fuer diesen View ausfuehrbar. Fallback auf direkten Graphics-Pass.");
+        }
+
+        return false;
+    }
+
     bool PrepareViewPostProcess(
         RFG::ViewPassData& view,
         const PostProcContext& ppCtx,
@@ -40,6 +117,17 @@ namespace
     {
         if (!ppCtx.backend || !ppCtx.rtStore || !ppCtx.texStore)
             return false;
+
+        // Diagnoseschalter: Main-View direkt ins Backbuffer rendern, um den
+        // Presentation-/PostProcess-Pfad als Fehlerquelle auszuschliessen.
+        if (outputToBackbuffer)
+        {
+            //Debug::Log(
+            //    GDX_SRC_LOC,
+            //    L"PrepareViewPostProcess: Main-View-PostProcess testweise deaktiviert. Direkter Graphics-Pass ins Backbuffer.");
+            return false;
+        }
+
         if (!HasActivePostProcessPass(ppCtx))
             return false;
 
@@ -78,11 +166,15 @@ namespace
         if (!sceneRt || !sceneRt->exposedTexture.IsValid())
             return false;
 
+        if (!HasExecutablePostProcessPassForView(ppCtx, *sceneRt))
+            return false;
+
         view.execute.presentation.postProcess.enabled = true;
         view.execute.presentation.postProcess.sceneTexture = sceneRt->exposedTexture;
         view.execute.presentation.postProcess.execInputs.sceneColor = sceneRt->exposedTexture;
         view.execute.presentation.postProcess.execInputs.originalSceneColor = sceneRt->exposedTexture;
         view.execute.presentation.postProcess.execInputs.sceneDepth = sceneRt->exposedDepthTexture;
+        view.execute.presentation.postProcess.execInputs.sceneNormals = TextureHandle::Invalid();
         view.execute.presentation.postProcess.execInputs.cameraNearPlane = view.prepared.frame.cameraNearPlane;
         view.execute.presentation.postProcess.execInputs.cameraFarPlane = view.prepared.frame.cameraFarPlane;
         view.execute.presentation.postProcess.execInputs.cameraIsOrtho = (view.prepared.frame.cameraProjectionFlags & 1u) ? 1u : 0u;

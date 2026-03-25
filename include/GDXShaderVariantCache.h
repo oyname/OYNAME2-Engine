@@ -22,6 +22,7 @@
 #include "RenderCommand.h"
 
 #include <unordered_map>
+#include <cstddef>
 #include <string>
 
 class IGDXRenderBackend;
@@ -52,6 +53,7 @@ public:
 
     ShaderHandle DefaultShader() const { return m_defaultShader; }
     ShaderHandle ShadowShader()  const { return m_shadowShader;  }
+    size_t DebugVariantCount() const noexcept { return m_cache.size(); }
 
     // Leert den Varianten-Cache und nullt Backend/Store-Zeiger.
     // Muss vor backend->Shutdown() aufgerufen werden — danach sind

@@ -70,7 +70,11 @@ void PrepareMainView(
     outView.prepared.gatherOptions.visibilityLayerMask       = outView.prepared.frame.cullMask;
     outView.prepared.gatherOptions.shadowCasterLayerMask     = outView.prepared.frame.shadowCasterMask;
 
-    outView.prepared.clearDesc        = {};
+    outView.prepared.clearDesc              = {};
+    outView.prepared.clearDesc.clearColor[0] = ctx.mainViewClearColor[0];
+    outView.prepared.clearDesc.clearColor[1] = ctx.mainViewClearColor[1];
+    outView.prepared.clearDesc.clearColor[2] = ctx.mainViewClearColor[2];
+    outView.prepared.clearDesc.clearColor[3] = ctx.mainViewClearColor[3];
     outView.prepared.graphicsTargetDesc = RenderPassTargetDesc::Backbuffer(
         outView.prepared.frame.viewportWidth,
         outView.prepared.frame.viewportHeight);

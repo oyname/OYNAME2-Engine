@@ -1,4 +1,5 @@
 #include "GDXECSRenderer.h"
+#include "GDXDX11RenderBackend.h"
 #include "CameraSystem.h"
 #include "GDXRenderTargetResource.h"
 #include "Core/Debug.h"
@@ -12,6 +13,7 @@
 
 #include <sstream>
 #include <algorithm>
+#include <unordered_set>
 
 namespace
 {
@@ -25,6 +27,64 @@ namespace
         SR_MAIN_VIEW     = 1ull << 5,
         SR_RTT_VIEWS     = 1ull << 6,
     };
+
+    void CleanupStaleRttPostProcessTargets(
+        Registry& registry,
+        IGDXRenderBackend* backend,
+        ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore,
+        ResourceStore<GDXTextureResource, TextureTag>& texStore,
+        std::unordered_map<RenderTargetHandle, RenderTargetHandle>& rttPostProcessTargets)
+    {
+        if (!backend)
+        {
+            rttPostProcessTargets.clear();
+            return;
+        }
+
+        std::unordered_set<RenderTargetHandle> activeSourceTargets;
+        registry.View<RenderTargetCameraComponent>(
+            [&activeSourceTargets](EntityID, RenderTargetCameraComponent& rtCam)
+            {
+                if (rtCam.enabled && rtCam.target.IsValid())
+                    activeSourceTargets.insert(rtCam.target);
+            });
+
+        for (auto it = rttPostProcessTargets.begin(); it != rttPostProcessTargets.end(); )
+        {
+            const RenderTargetHandle sourceTarget = it->first;
+            RenderTargetHandle& postProcessTarget = it->second;
+
+            GDXRenderTargetResource* sourceRt = sourceTarget.IsValid() ? rtStore.Get(sourceTarget) : nullptr;
+            GDXRenderTargetResource* ppRt = postProcessTarget.IsValid() ? rtStore.Get(postProcessTarget) : nullptr;
+
+            const bool sourceStillExists = (sourceRt != nullptr);
+            const bool sourceStillActive = activeSourceTargets.find(sourceTarget) != activeSourceTargets.end();
+            const bool ppStillExists = (ppRt != nullptr);
+
+            if (!sourceStillExists || !sourceStillActive)
+            {
+                if (postProcessTarget.IsValid() && ppStillExists)
+                    backend->DestroyRenderTarget(postProcessTarget, rtStore, texStore);
+                it = rttPostProcessTargets.erase(it);
+                continue;
+            }
+
+            if (postProcessTarget.IsValid() && !ppStillExists)
+            {
+                postProcessTarget = RenderTargetHandle::Invalid();
+                ++it;
+                continue;
+            }
+
+            if (sourceRt && ppRt && (sourceRt->width != ppRt->width || sourceRt->height != ppRt->height))
+            {
+                backend->DestroyRenderTarget(postProcessTarget, rtStore, texStore);
+                postProcessTarget = RenderTargetHandle::Invalid();
+            }
+
+            ++it;
+        }
+    }
 } // anonymous namespace
 
 // ---------------------------------------------------------------------------
@@ -38,6 +98,10 @@ RenderViewPrep::Context GDXECSRenderer::MakeViewPrepContext() const
     ctx.rtStore                  = const_cast<ResourceStore<GDXRenderTargetResource, RenderTargetTag>*>(&m_rtStore);
     ctx.backend                  = m_backend.get();
     ctx.shadowResourcesAvailable = m_shadowResourcesAvailable;
+    ctx.mainViewClearColor[0]    = m_clearColor[0];
+    ctx.mainViewClearColor[1]    = m_clearColor[1];
+    ctx.mainViewClearColor[2]    = m_clearColor[2];
+    ctx.mainViewClearColor[3]    = m_clearColor[3];
     return ctx;
 }
 
@@ -181,6 +245,7 @@ bool GDXECSRenderer::Initialize()
     m_backend->LoadIBL(nullptr);
 
     m_shadowResourcesAvailable = m_backend->HasShadowResources();
+    m_backend->SetDebugSmokeTestMode(m_debugSmokeTestMode);
     m_initialized = true;
     return true;
 }
@@ -238,21 +303,21 @@ TextureHandle GDXECSRenderer::LoadTexture(const std::wstring& filePath, bool isS
     });
     if (existing.IsValid()) return existing;
     if (!m_backend) return m_defaultWhiteTex;
-    return m_backend->CreateTexture(m_texStore, filePath, isSRGB, m_defaultWhiteTex);
+    return m_backend->UploadTexture(m_texStore, filePath, isSRGB, m_defaultWhiteTex);
 }
 
 TextureHandle GDXECSRenderer::CreateTexture(
     const ImageBuffer& image, const std::wstring& debugName, bool isSRGB)
 {
     if (!m_backend || !image.IsValid()) return m_defaultWhiteTex;
-    return m_backend->CreateTextureFromImage(m_texStore, image, isSRGB, debugName, m_defaultWhiteTex);
+    return m_backend->UploadTextureFromImage(m_texStore, image, isSRGB, debugName, m_defaultWhiteTex);
 }
 
 MeshHandle GDXECSRenderer::UploadMesh(MeshAssetResource mesh)
 {
     MeshHandle h = m_meshStore.Add(std::move(mesh));
     if (auto* r = m_meshStore.Get(h); r && m_backend)
-        m_backend->UploadMesh(*r);
+        m_backend->UploadMesh(h, *r);
     return h;
 }
 
@@ -271,7 +336,7 @@ MaterialHandle GDXECSRenderer::CreateMaterial(MaterialResource mat)
     if (auto* r = m_matStore.Get(h))
     {
         r->sortID = h.Index();
-        if (m_backend) m_backend->CreateMaterialGpu(*r);
+        if (m_backend) m_backend->UploadMaterial(h, *r);
     }
     return h;
 }
@@ -638,6 +703,13 @@ bool GDXECSRenderer::SupportsTextureFormat(GDXTextureFormat format) const
     return m_backend ? m_backend->SupportsTextureFormat(format) : false;
 }
 
+void GDXECSRenderer::SetDebugSmokeTestMode(GDXDebugSmokeTestMode mode)
+{
+    m_debugSmokeTestMode = mode;
+    if (m_backend)
+        m_backend->SetDebugSmokeTestMode(mode);
+}
+
 void GDXECSRenderer::SetClearColor(float r, float g, float b, float a)
 {
     m_clearColor[0] = r; m_clearColor[1] = g;
@@ -712,6 +784,13 @@ void GDXECSRenderer::UpdatePreparedMainViewFrameTransient(RFG::ViewPassData& pre
 
 void GDXECSRenderer::BeginFrame()
 {
+    CleanupStaleRttPostProcessTargets(
+        m_registry,
+        m_backend.get(),
+        m_rtStore,
+        m_texStore,
+        m_rttPostProcessTargets);
+
     m_framePhase = RenderFramePhase::UpdateWrite;
     m_currentFrameIndex = (m_currentFrameIndex + 1u) % GDXMaxFramesInFlight;
     m_persistentFrameState.ApplyTo(m_frameData);
@@ -719,6 +798,24 @@ void GDXECSRenderer::BeginFrame()
     m_frameTransients[m_currentFrameIndex].BeginFrame();
     m_stats = {};
     if (m_backend) m_backend->BeginFrame(m_clearColor);
+
+    //if ((m_frameNumber % 120u) == 0u)
+    //{
+    //    const GDXDX11RenderBackend* dx11 = dynamic_cast<const GDXDX11RenderBackend*>(m_backend.get());
+    //    Debug::Log(GDX_SRC_LOC, "FrameSummary frame=", m_frameNumber,
+    //               " meshAlive=", m_meshStore.AliveCount(),
+    //               " matAlive=", m_matStore.AliveCount(),
+    //               " shaderAlive=", m_shaderStore.AliveCount(),
+    //               " texAlive=", m_texStore.AliveCount(),
+    //               " rtAlive=", m_rtStore.AliveCount(),
+    //               " postAlive=", m_postProcessStore.AliveCount(),
+    //               " shaderVariants=", m_shaderCache.DebugVariantCount(),
+    //               " trackedRttTargets=", m_rttPostProcessTargets.size(),
+    //               " backendRttPairs=", dx11 ? dx11->DebugRttSurfacePairCount() : 0u,
+    //               " trackedTexStates=", dx11 ? dx11->DebugTrackedTextureStateCount() : 0u,
+    //               " pipelineCache=", dx11 ? dx11->DebugPipelineCacheSize() : 0u,
+    //               " layoutCache=", dx11 ? dx11->DebugLayoutCacheSize() : 0u);
+    //}
 }
 
 void GDXECSRenderer::Tick(float dt)

@@ -71,7 +71,6 @@ public:
     MaterialTextureLayerArray textureLayers{};
 
     uint32_t sortID = 0u;
-    void* gpuConstantBuffer = nullptr;
     bool  cpuDirty          = true;
     MaterialShadowCullMode shadowCullMode = MaterialShadowCullMode::Auto;
 

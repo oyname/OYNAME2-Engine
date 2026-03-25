@@ -3,7 +3,7 @@
 #include "GDXTileLightCuller.h"
 #include "Core/Debug.h"
 #include "Core/GDXMath.h"
-#include "Core/GDXMathHelpers.h"
+#include "GDXMathHelpers.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>

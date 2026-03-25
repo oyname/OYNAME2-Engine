@@ -1,34 +1,25 @@
 #pragma once
-
 #include "Handle.h"
 #include "GDXTextureResource.h"
 #include <cstdint>
 #include <string>
 
 // ---------------------------------------------------------------------------
-// GDXRenderTargetResource — backend-neutrales Render-Target-Resource im Store.
+// GDXRenderTargetResource — CPU-Metadaten eines Render Targets.
 //
-// Besitzt nur opaque native Pointer. Die konkrete API (DX11/OpenGL/Vulkan/DX12)
-// lebt ausschließlich im Backend. Die Engine arbeitet nur mit Handle + Größen
-// + freigegebener Shader-Read-Textur.
+// Kein GPU-Objekt. Das zugehörige DX11RenderTargetGpu liegt in
+// GDXDX11GpuRegistry und ist nur dem Backend zugänglich.
 // ---------------------------------------------------------------------------
 struct GDXRenderTargetResource
 {
-    void* colorTexture = nullptr;   // API-spezifische Farbtextur
-    void* rtv = nullptr;            // RenderTarget-View / FBO / ImageView
-    void* srv = nullptr;            // Shader-Read-View / Texture-Handle
-    void* depthTexture = nullptr;   // API-spezifische Depth-Textur
-    void* dsv = nullptr;            // DepthStencil-View / Depth-Attachment
-    void* depthSrv = nullptr;       // Shader-Read-View der Depth-Textur (optional)
-
-    uint32_t width = 0u;
-    uint32_t height = 0u;
-    bool ready = false;
+    uint32_t         width    = 0u;
+    uint32_t         height   = 0u;
+    bool             ready    = false;
     GDXTextureFormat colorFormat = GDXTextureFormat::RGBA8_UNORM;
 
-    // Farbausgabe des RenderTargets als normale Engine-Textur nutzbar.
-    TextureHandle exposedTexture = TextureHandle::Invalid();
-    // Samplebare Depth-Ausgabe des RenderTargets als Engine-Textur nutzbar.
+    // Farbausgabe als normale Engine-Textur nutzbar.
+    TextureHandle exposedTexture      = TextureHandle::Invalid();
+    // Samplebare Depth-Ausgabe als Engine-Textur nutzbar.
     TextureHandle exposedDepthTexture = TextureHandle::Invalid();
 
     std::wstring debugName;
@@ -36,8 +27,8 @@ struct GDXRenderTargetResource
     GDXRenderTargetResource() = default;
     ~GDXRenderTargetResource() = default;
 
-    GDXRenderTargetResource(const GDXRenderTargetResource&) = delete;
+    GDXRenderTargetResource(const GDXRenderTargetResource&)            = delete;
     GDXRenderTargetResource& operator=(const GDXRenderTargetResource&) = delete;
-    GDXRenderTargetResource(GDXRenderTargetResource&&) = default;
-    GDXRenderTargetResource& operator=(GDXRenderTargetResource&&) = default;
+    GDXRenderTargetResource(GDXRenderTargetResource&&)                 = default;
+    GDXRenderTargetResource& operator=(GDXRenderTargetResource&&)      = default;
 };

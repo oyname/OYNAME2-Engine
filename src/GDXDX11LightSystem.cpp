@@ -9,7 +9,7 @@
 #include <d3d11.h>
 #include "Core/GDXMath.h"
 #include "Core/GDXMathOps.h"
-#include "Core/GDXMathHelpers.h"
+#include "GDXMathHelpers.h"
 #include <cstring>
 #include <cmath>
 #include <algorithm>
@@ -287,5 +287,6 @@ void GDXDX11LightSystem::UploadBuffer(ID3D11DeviceContext* ctx, const FrameData&
     }
 
     ctx->VSSetConstantBuffers(3, 1, &m_lightBuffer);
-    ctx->PSSetConstantBuffers(3, 1, &m_lightBuffer);
+    // PixelShader.hlsl nutzt b3 fuer TileInfo und b4 fuer Legacy-Licht-Fallback.
+    ctx->PSSetConstantBuffers(4, 1, &m_lightBuffer);
 }

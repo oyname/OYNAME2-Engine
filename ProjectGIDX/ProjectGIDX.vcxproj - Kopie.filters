@@ -1,19 +1,22 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="ThirdParty">
-      <UniqueIdentifier>{4132ef45-9b48-487e-91c6-6c80e2b19e23}</UniqueIdentifier>
+    <Filter Include="util">
+      <UniqueIdentifier>{90464515-0a60-4d47-8e5a-60969e5f1c35}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Shaders">
+    <Filter Include="shader">
       <UniqueIdentifier>{98622a1e-26c8-433e-9b06-dddf3d28eb43}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Shaders\PostProcess">
+    <Filter Include="third_party">
+      <UniqueIdentifier>{4132ef45-9b48-487e-91c6-6c80e2b19e23}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="shader\PostProcessShader">
       <UniqueIdentifier>{8dcd229d-bffd-4508-acda-257bd61b8dee}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Shaders\Custom">
+    <Filter Include="shader\Custom Shader">
       <UniqueIdentifier>{bb6ec6ce-9e9d-4b02-a979-cdda33d3ad28}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Samples">
+    <Filter Include="samples">
       <UniqueIdentifier>{34d0ab18-2504-498c-b7b9-ed2359e841ba}</UniqueIdentifier>
     </Filter>
     <Filter Include="Core">
@@ -88,169 +91,100 @@
     <Filter Include="Math\Geometry">
       <UniqueIdentifier>{46c08fa3-8afb-4be1-bfb5-03682d3b294a}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Platform">
-      <UniqueIdentifier>{9a5a0d73-1f34-4bb3-a111-4f5da7fe1001}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Platform\Input">
-      <UniqueIdentifier>{9a5a0d73-1f34-4bb3-a111-4f5da7fe1002}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Platform\Window">
-      <UniqueIdentifier>{9a5a0d73-1f34-4bb3-a111-4f5da7fe1003}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Platform\Win32">
-      <UniqueIdentifier>{9a5a0d73-1f34-4bb3-a111-4f5da7fe1004}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Scene">
-      <UniqueIdentifier>{7c0f3f63-20f0-4a8e-96f1-3cdb5c341001}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Scene\Camera">
-      <UniqueIdentifier>{7c0f3f63-20f0-4a8e-96f1-3cdb5c341002}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Scene\Collision">
-      <UniqueIdentifier>{7c0f3f63-20f0-4a8e-96f1-3cdb5c341003}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="RHI">
-      <UniqueIdentifier>{4f3bc0ad-bc4e-4a67-9b7d-11af37aa1001}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="RHI\Common">
-      <UniqueIdentifier>{4f3bc0ad-bc4e-4a67-9b7d-11af37aa1002}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="RHI\DX11">
-      <UniqueIdentifier>{4f3bc0ad-bc4e-4a67-9b7d-11af37aa1003}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="RHI\DX12">
-      <UniqueIdentifier>{4f3bc0ad-bc4e-4a67-9b7d-11af37aa1004}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="RHI\OpenGL">
-      <UniqueIdentifier>{4f3bc0ad-bc4e-4a67-9b7d-11af37aa1005}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Renderer">
-      <UniqueIdentifier>{58dfe2ac-8f3e-4fe1-b6ac-25a3cf201001}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Renderer\Core">
-      <UniqueIdentifier>{58dfe2ac-8f3e-4fe1-b6ac-25a3cf201002}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Renderer\Frame">
-      <UniqueIdentifier>{58dfe2ac-8f3e-4fe1-b6ac-25a3cf201003}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Renderer\Views">
-      <UniqueIdentifier>{58dfe2ac-8f3e-4fe1-b6ac-25a3cf201004}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Renderer\Culling">
-      <UniqueIdentifier>{58dfe2ac-8f3e-4fe1-b6ac-25a3cf201005}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Renderer\Passes">
-      <UniqueIdentifier>{58dfe2ac-8f3e-4fe1-b6ac-25a3cf201006}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Renderer\Lighting">
-      <UniqueIdentifier>{58dfe2ac-8f3e-4fe1-b6ac-25a3cf201007}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Renderer\Debug">
-      <UniqueIdentifier>{58dfe2ac-8f3e-4fe1-b6ac-25a3cf201008}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Renderer\Shaders">
-      <UniqueIdentifier>{58dfe2ac-8f3e-4fe1-b6ac-25a3cf201009}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Tools">
-      <UniqueIdentifier>{d4a2e4f9-e26a-4be1-b0e4-0f2ed4111001}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Tools\IBL">
-      <UniqueIdentifier>{d4a2e4f9-e26a-4be1-b0e4-0f2ed4111002}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\ViewCullingSystem.cpp">
-      <Filter>Renderer\Culling</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXIBLBaker.cpp">
-      <Filter>Tools\IBL</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\CollisionIntersect.cpp">
-      <Filter>Scene\Collision</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\CollisionSystem.cpp">
-      <Filter>Scene\Collision</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\CollisionWorld.cpp">
-      <Filter>Scene\Collision</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\DebugCamera.cpp">
-      <Filter>Scene\Camera</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\samples\50_Point_Lights.cpp">
-      <Filter>Samples</Filter>
+      <Filter>samples</Filter>
     </ClCompile>
     <ClCompile Include="..\src\CullGatherSystem.cpp">
-      <Filter>Renderer\Culling</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXDebugCullingRenderer.cpp">
-      <Filter>Renderer\Debug</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXECSRenderer.cpp">
-      <Filter>Renderer\Core</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXRenderFrameGraph.cpp">
-      <Filter>Renderer\Frame</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXSamplerCache.cpp">
-      <Filter>RHI\DX11</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXShaderVariantCache.cpp">
-      <Filter>Renderer\Shaders</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXShadowMap.cpp">
-      <Filter>Renderer\Lighting</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXTileLightCuller.cpp">
-      <Filter>Renderer\Lighting</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXWin32Platform.cpp">
-      <Filter>Platform\Win32</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\RenderPassBuilder.cpp">
-      <Filter>Renderer\Passes</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\RenderViewPrep.cpp">
-      <Filter>Renderer\Views</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXDX11LightSystem.cpp">
-      <Filter>Renderer\Lighting</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXDX11RenderBackend.cpp">
-      <Filter>RHI\DX11</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXDX11RenderExecutor.cpp">
-      <Filter>RHI\DX11</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXDX11ShaderCompiler.cpp">
-      <Filter>RHI\DX11</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXDX11TileLightCuller.cpp">
-      <Filter>Renderer\Lighting</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXDX12RenderBackend.cpp">
-      <Filter>RHI\DX12</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXOpenGLRenderBackend.cpp">
-      <Filter>RHI\OpenGL</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXWin32DX11ContextFactory.cpp">
-      <Filter>Platform\Win32</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXWin32OpenGLContextFactory.cpp">
-      <Filter>Platform\Win32</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXWin32Window.cpp">
-      <Filter>Platform\Window</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXInput.cpp">
-      <Filter>Platform\Input</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\CameraSystem.cpp">
-      <Filter>Scene\Camera</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\RenderGatherSystem.cpp">
-      <Filter>Renderer\Culling</Filter>
+      <Filter>util</Filter>
     </ClCompile>
     <ClCompile Include="..\src\JobSystem.cpp">
       <Filter>Core\Jobs</Filter>
@@ -273,190 +207,190 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\third_party\stb_image.h">
-      <Filter>ThirdParty</Filter>
+      <Filter>third_party</Filter>
     </ClInclude>
     <ClInclude Include="..\include\MeshProcessor.h">
-      <Filter>Assets\Mesh</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXVertexFlags.h">
-      <Filter>RHI\Common</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXVertexFormat.h">
-      <Filter>RHI\Common</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\ViewCullingSystem.h">
-      <Filter>Renderer\Culling</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXIBLBaker.h">
-      <Filter>Tools\IBL</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\Collision\CollisionBody.h">
-      <Filter>Scene\Collision</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\Collision\CollisionIntersect.h">
-      <Filter>Scene\Collision</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\Collision\CollisionShapes.h">
-      <Filter>Scene\Collision</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\Collision\CollisionTypes.h">
-      <Filter>Scene\Collision</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\Collision\CollisionWorld.h">
-      <Filter>Scene\Collision</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\DebugCamera.h">
-      <Filter>Scene\Camera</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\CollisionSystem.h">
-      <Filter>Scene\Collision</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\CullGatherSystem.h">
-      <Filter>Renderer\Culling</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\FrameDispatch.h">
-      <Filter>Renderer\Frame</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXDebugCullingRenderer.h">
-      <Filter>Renderer\Debug</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXECSRenderer.h">
-      <Filter>Renderer\Core</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXPipelineState.h">
-      <Filter>RHI\Common</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXRenderFrameGraph.h">
-      <Filter>Renderer\Frame</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXResourceBinding.h">
-      <Filter>RHI\Common</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXShaderLayout.h">
-      <Filter>RHI\Common</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXShaderVariantCache.h">
-      <Filter>Renderer\Shaders</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXShadowMap.h">
-      <Filter>Renderer\Lighting</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXTextureSlots.h">
-      <Filter>RHI\Common</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXTileLightCuller.h">
-      <Filter>Renderer\Lighting</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\IGDXLightSystem.h">
-      <Filter>Renderer\Lighting</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\RenderFramePipeline.h">
-      <Filter>Renderer\Frame</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\RenderPassBuilder.h">
-      <Filter>Renderer\Passes</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\RenderViewData.h">
-      <Filter>Renderer\Views</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\RenderViewPrep.h">
-      <Filter>Renderer\Views</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\ShaderVariant.h">
-      <Filter>Renderer\Shaders</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXDX11LightSystem.h">
-      <Filter>Renderer\Lighting</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXDX11RenderBackend.h">
-      <Filter>RHI\DX11</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXDX11RenderExecutor.h">
-      <Filter>RHI\DX11</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXDX11ShaderCompiler.h">
-      <Filter>RHI\DX11</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXDX11TileLightCuller.h">
-      <Filter>Renderer\Lighting</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXDX12RenderBackend.h">
-      <Filter>RHI\DX12</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXOpenGLIncludes.h">
-      <Filter>RHI\OpenGL</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXOpenGLRenderBackend.h">
-      <Filter>RHI\OpenGL</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXWin32DX11ContextFactory.h">
-      <Filter>Platform\Win32</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXWin32OpenGLContextFactory.h">
-      <Filter>Platform\Win32</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXWin32Platform.h">
-      <Filter>Platform\Win32</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXWin32Window.h">
-      <Filter>Platform\Window</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\IGDXDXGIContext.h">
-      <Filter>Platform\Win32</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\IGDXOpenGLContext.h">
-      <Filter>Platform\Win32</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXInput.h">
-      <Filter>Platform\Input</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXWin32NativeHandles.h">
-      <Filter>Platform\Win32</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\IGDXPlatform.h">
-      <Filter>Platform\Win32</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\IGDXWin32NativeAccess.h">
-      <Filter>Platform\Win32</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\IGDXWindow.h">
-      <Filter>Platform\Window</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\FrameTransientResources.h">
-      <Filter>Renderer\Frame</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\ICommandList.h">
-      <Filter>RHI\Common</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\IGDXRenderBackend.h">
-      <Filter>RHI\Common</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\IGDXRenderer.h">
-      <Filter>Renderer\Core</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\RenderCommand.h">
-      <Filter>RHI\Common</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\RenderPassClearDesc.h">
-      <Filter>RHI\Common</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\RenderPassTargetDesc.h">
-      <Filter>RHI\Common</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\RenderQueue.h">
-      <Filter>Renderer\Core</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\WindowDesc.h">
-      <Filter>Platform\Window</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\CameraSystem.h">
-      <Filter>Scene\Camera</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\RenderGatherSystem.h">
-      <Filter>Renderer\Culling</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\BackendRenderPassDesc.h">
-      <Filter>RHI\Common</Filter>
+      <Filter>util</Filter>
     </ClInclude>
     <ClInclude Include="..\include\Handle.h">
       <Filter>Core\Base</Filter>
@@ -551,76 +485,76 @@
     <ClInclude Include="..\include\Core\GDXMath.h">
       <Filter>Math\Types</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\Core\GDXMathHelpers.h">
+      <Filter>Math\Helpers</Filter>
+    </ClInclude>
     <ClInclude Include="..\include\Core\GDXMathOps.h">
       <Filter>Math\Algorithms</Filter>
     </ClInclude>
     <ClInclude Include="..\include\MeshBoundsUtil.h">
       <Filter>Math\Geometry</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\GDXMathHelpers.h">
-      <Filter>Math\Helpers</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Text Include="..\shader\PostProcessBloomBlurPS.hlsl">
-      <Filter>Shaders\PostProcess</Filter>
+      <Filter>shader\PostProcessShader</Filter>
     </Text>
     <Text Include="..\shader\PostProcessBloomBrightPS.hlsl">
-      <Filter>Shaders\PostProcess</Filter>
+      <Filter>shader\PostProcessShader</Filter>
     </Text>
     <Text Include="..\shader\PostProcessBloomCompositePS.hlsl">
-      <Filter>Shaders\PostProcess</Filter>
+      <Filter>shader\PostProcessShader</Filter>
     </Text>
     <Text Include="..\shader\PostProcessFullscreenVS.hlsl">
-      <Filter>Shaders\PostProcess</Filter>
+      <Filter>shader\PostProcessShader</Filter>
     </Text>
     <Text Include="..\shader\PostProcessTintPS.hlsl">
-      <Filter>Shaders\PostProcess</Filter>
+      <Filter>shader\PostProcessShader</Filter>
     </Text>
     <Text Include="..\shader\ShadowPixelShader.hlsl">
-      <Filter>Shaders</Filter>
+      <Filter>shader</Filter>
     </Text>
     <Text Include="..\shader\ShadowPixelShader_AlphaTest.hlsl">
-      <Filter>Shaders</Filter>
+      <Filter>shader</Filter>
     </Text>
     <Text Include="..\shader\ShadowVertexShader.hlsl">
-      <Filter>Shaders</Filter>
+      <Filter>shader</Filter>
     </Text>
     <Text Include="..\shader\ShadowVertexShader_AlphaTest.hlsl">
-      <Filter>Shaders</Filter>
+      <Filter>shader</Filter>
     </Text>
     <Text Include="..\shader\ShadowVertexShader_Skinned.hlsl">
-      <Filter>Shaders</Filter>
+      <Filter>shader</Filter>
     </Text>
     <Text Include="..\shader\ShadowVertexShader_SkinnedAlphaTest.hlsl">
-      <Filter>Shaders</Filter>
+      <Filter>shader</Filter>
     </Text>
     <Text Include="..\shader\VertexShader.hlsl">
-      <Filter>Shaders</Filter>
+      <Filter>shader</Filter>
     </Text>
     <Text Include="..\shader\VertexShader_Skinned.hlsl">
-      <Filter>Shaders</Filter>
+      <Filter>shader</Filter>
     </Text>
     <Text Include="..\shader\VertexShader_SkinnedVertexColor.hlsl">
-      <Filter>Shaders</Filter>
+      <Filter>shader</Filter>
     </Text>
     <Text Include="..\shader\VertexShader_VertexColor.hlsl">
-      <Filter>Shaders</Filter>
+      <Filter>shader</Filter>
     </Text>
     <Text Include="..\shader\VertexShaderNeon.hlsl">
-      <Filter>Shaders\Custom</Filter>
+      <Filter>shader\Custom Shader</Filter>
     </Text>
     <Text Include="..\shader\PixelShaderNeon.hlsl">
-      <Filter>Shaders\Custom</Filter>
+      <Filter>shader\Custom Shader</Filter>
     </Text>
     <Text Include="..\shader\PixelShader_VertexColor.hlsl">
-      <Filter>Shaders</Filter>
+      <Filter>shader</Filter>
     </Text>
     <Text Include="..\shader\PixelShader.hlsl">
-      <Filter>Shaders</Filter>
+      <Filter>shader</Filter>
     </Text>
     <Text Include="..\shader\PostProcessFXAAPS.hlsl">
-      <Filter>Shaders</Filter>
+      <Filter>shader</Filter>
     </Text>
   </ItemGroup>
 </Project>

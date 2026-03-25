@@ -157,6 +157,7 @@
     <ClCompile Include="..\src\ViewCullingSystem.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\include\BackendRenderPassDesc.h" />
     <ClInclude Include="..\include\BasicMeshGenerator.h" />
     <ClInclude Include="..\include\CameraSystem.h" />
     <ClInclude Include="..\include\CollisionSystem.h" />
@@ -168,7 +169,6 @@
     <ClInclude Include="..\include\ComponentPool.h" />
     <ClInclude Include="..\include\Components.h" />
     <ClInclude Include="..\include\Core\GDXMath.h" />
-    <ClInclude Include="..\include\Core\GDXMathHelpers.h" />
     <ClInclude Include="..\include\Core\GDXMathOps.h" />
     <ClInclude Include="..\include\CullGatherSystem.h" />
     <ClInclude Include="..\include\Debug.h" />
@@ -188,6 +188,7 @@
     <ClInclude Include="..\include\GDXDX12RenderBackend.h" />
     <ClInclude Include="..\include\GDXECSRenderer.h" />
     <ClInclude Include="..\include\GDXIBLBaker.h" />
+    <ClInclude Include="..\include\GDXMathHelpers.h" />
     <ClInclude Include="..\include\GDXRenderFrameGraph.h" />
     <ClInclude Include="..\include\GDXShaderVariantCache.h" />
     <ClInclude Include="..\include\GDXTileLightCuller.h" />
@@ -229,6 +230,7 @@
     <ClInclude Include="..\include\JobSystem.h" />
     <ClInclude Include="..\include\MaterialResource.h" />
     <ClInclude Include="..\include\MeshAssetResource.h" />
+    <ClInclude Include="..\include\MeshBoundsUtil.h" />
     <ClInclude Include="..\include\MeshProcessor.h" />
     <ClInclude Include="..\include\MeshUtilities.h" />
     <ClInclude Include="..\include\PostProcessResource.h" />

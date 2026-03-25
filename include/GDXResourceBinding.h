@@ -29,12 +29,14 @@ struct ShaderResourceBindingDesc
 
 struct ConstantBufferBindingDesc
 {
-    GDXShaderConstantBufferSlot semantic = GDXShaderConstantBufferSlot::Entity;
-    uint8_t vsRegister = 255u;
-    uint8_t psRegister = 255u;
-    void* buffer = nullptr;
-    bool enabled = false;
-    ResourceBindingScope scope = ResourceBindingScope::Draw;
+    GDXShaderConstantBufferSlot semantic   = GDXShaderConstantBufferSlot::Entity;
+    uint8_t                     vsRegister = 255u;
+    uint8_t                     psRegister = 255u;
+    // Material-CB wird vom Backend über materialHandle aufgelöst.
+    // Für alle anderen Slots (Entity, Frame, Skin) hält das Backend die CBs intern.
+    MaterialHandle              materialHandle = MaterialHandle::Invalid();
+    bool                        enabled    = false;
+    ResourceBindingScope        scope      = ResourceBindingScope::Draw;
 };
 
 struct ResourceBindingSet

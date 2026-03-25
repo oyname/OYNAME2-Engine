@@ -32,7 +32,7 @@ namespace
         return false;
     }
 
-    ResourceBindingSet BuildResourceBindingSet(const MaterialResource& mat, const GDXShaderResource& shader)
+    ResourceBindingSet BuildResourceBindingSet(const MaterialResource& mat, MaterialHandle matHandle, const GDXShaderResource& shader)
     {
         ResourceBindingSet set;
 
@@ -43,8 +43,8 @@ namespace
             cb.semantic = src.slot;
             cb.vsRegister = src.vsRegister;
             cb.psRegister = src.psRegister;
-            cb.buffer = (src.slot == GDXShaderConstantBufferSlot::Material) ? mat.gpuConstantBuffer : nullptr;
-            cb.enabled = (src.slot != GDXShaderConstantBufferSlot::Material) || (mat.gpuConstantBuffer != nullptr);
+            cb.materialHandle = (src.slot == GDXShaderConstantBufferSlot::Material) ? matHandle : MaterialHandle::Invalid();
+            cb.enabled = (src.slot != GDXShaderConstantBufferSlot::Material) || matHandle.IsValid();
             cb.scope = (src.slot == GDXShaderConstantBufferSlot::Frame) ? ResourceBindingScope::Pass :
                        ((src.slot == GDXShaderConstantBufferSlot::Material) ? ResourceBindingScope::Material : ResourceBindingScope::Draw);
             set.AddConstantBufferBinding(cb);
@@ -195,7 +195,7 @@ namespace
             cache.submeshIndex = renderable.submeshIndex;
             cache.pass = pass;
             cache.pipelineState = BuildPipelineStateDesc(pass, *mat);
-            cache.bindings = BuildResourceBindingSet(*mat, *shaderRes);
+            cache.bindings = BuildResourceBindingSet(*mat, renderable.material, *shaderRes);
             cache.materialData = mat->data;
             cache.transparent = outTransparent;
             cache.materialSortID = mat->sortID;
@@ -284,7 +284,7 @@ namespace
             cache.submeshIndex = renderable.submeshIndex;
             cache.pass = RenderPass::Shadow;
             cache.pipelineState = BuildPipelineStateDesc(RenderPass::Shadow, *mat);
-            cache.bindings = BuildResourceBindingSet(*mat, *shaderRes);
+            cache.bindings = BuildResourceBindingSet(*mat, renderable.material, *shaderRes);
             cache.materialData = mat->data;
             cache.transparent = false;
             cache.materialSortID = mat->sortID;

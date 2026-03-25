@@ -1,4 +1,5 @@
 #include "GDXDX11RenderBackend.h"
+#include "GDXDX11GpuResources.h"
 #include "GDXIBLBaker.h"
 #include "GDXRenderTargetResource.h"
 #include "GDXVertexFlags.h"
@@ -43,9 +44,86 @@ namespace
     }
 }
 
+
+namespace
+{
+    void LogDx11MainPassState(ID3D11DeviceContext* ctx,
+                              ID3D11RenderTargetView* expectedRTV,
+                              ID3D11DepthStencilView* expectedDSV,
+                              ID3D11RasterizerState* expectedRS,
+                              ID3D11DepthStencilState* expectedDS,
+                              ID3D11BlendState* expectedBlend,
+                              const char* stageTag)
+    {
+        if (!ctx || !stageTag)
+            return;
+
+        ID3D11BlendState* blend = nullptr;
+        FLOAT blendFactor[4] = {};
+        UINT sampleMask = 0u;
+        ctx->OMGetBlendState(&blend, blendFactor, &sampleMask);
+
+        ID3D11DepthStencilState* depth = nullptr;
+        UINT stencilRef = 0u;
+        ctx->OMGetDepthStencilState(&depth, &stencilRef);
+
+        ID3D11RasterizerState* raster = nullptr;
+        ctx->RSGetState(&raster);
+
+        ID3D11RenderTargetView* boundRTV = nullptr;
+        ID3D11DepthStencilView* boundDSV = nullptr;
+        ctx->OMGetRenderTargets(1, &boundRTV, &boundDSV);
+
+        UINT scissorCount = 0u;
+        ctx->RSGetScissorRects(&scissorCount, nullptr);
+
+        //static uint32_t s_logs = 0u;
+        //if (s_logs < 16u)
+        //{
+        //    Debug::Log(GDX_SRC_LOC,
+        //               "DX11 main-state ", stageTag,
+        //               " rtvMatch=", (boundRTV == expectedRTV) ? 1u : 0u,
+        //               " dsvMatch=", (boundDSV == expectedDSV) ? 1u : 0u,
+        //               " rsMatch=", (raster == expectedRS) ? 1u : 0u,
+        //               " dsMatch=", (depth == expectedDS) ? 1u : 0u,
+        //               " blendMatch=", (blend == expectedBlend) ? 1u : 0u,
+        //               " scissorRectCount=", scissorCount,
+        //               " sampleMask=", sampleMask,
+        //               " blendPtr=", static_cast<const void*>(blend),
+        //               " rtvPtr=", static_cast<const void*>(boundRTV),
+        //               " dsvPtr=", static_cast<const void*>(boundDSV));
+        //    ++s_logs;
+        //}
+
+        if (boundRTV) boundRTV->Release();
+        if (boundDSV) boundDSV->Release();
+        if (raster) raster->Release();
+        if (depth) depth->Release();
+        if (blend) blend->Release();
+    }
+}
+
 bool GDXTextureLoader_LoadFromFile(ID3D11Device*, ID3D11DeviceContext*,
-    const wchar_t*, GDXTextureResource&, bool isSRGB);
-bool GDXTextureLoader_Create1x1(ID3D11Device*, uint8_t, uint8_t, uint8_t, uint8_t, GDXTextureResource&);
+    const wchar_t*, DX11TextureGpu&, GDXTextureResource&, bool isSRGB);
+bool GDXTextureLoader_Create1x1(ID3D11Device*, uint8_t, uint8_t, uint8_t, uint8_t, DX11TextureGpu&, GDXTextureResource&);
+bool GDXTextureLoader_CreateFromImage(ID3D11Device*, ID3D11DeviceContext*,
+    const ImageBuffer&, DX11TextureGpu&, GDXTextureResource&, bool isSRGB, const wchar_t* debugName);
+
+struct DebugSmokeVsConstants
+{
+    Matrix4 mvp;
+};
+
+struct DebugSmokeVertexPos
+{
+    float x, y, z;
+};
+
+struct DebugSmokeVertexPosColor
+{
+    float x, y, z;
+    float r, g, b, a;
+};
 
 namespace
 {
@@ -62,6 +140,7 @@ namespace
         bool hasShadowPass,
         bool iblValid, ID3D11ShaderResourceView* iblIrr, ID3D11ShaderResourceView* iblEnv, ID3D11ShaderResourceView* iblLut,
         GDXDX11TileLightCuller& tileCuller,
+        GDXDX11GpuRegistry& gpuRegistry,
         Registry& registry,
         const ICommandList& opaqueQueue,
         const ICommandList& transparentQueue,
@@ -73,7 +152,7 @@ namespace
         if (!ctx) return;
 
         const float bf[4] = { 0,0,0,0 };
-        void* shadowSrv = (hasShadowPass && shadowMap.IsReady()) ? shadowMap.GetSRV() : nullptr;
+        ID3D11ShaderResourceView* shadowSrv = (hasShadowPass && shadowMap.IsReady()) ? static_cast<ID3D11ShaderResourceView*>(shadowMap.GetSRV()) : nullptr;
 
         ctx->RSSetState(rasterizerState);
         ctx->OMSetDepthStencilState(depthStencilState, 0u);
@@ -92,12 +171,12 @@ namespace
             tileCuller.BindForPS(ctx);
 
         if (!opaqueQueue.Empty())
-            executor.ExecuteQueue(registry, opaqueQueue, meshStore, matStore, shaderStore, texStore, shadowSrv);
+            executor.ExecuteQueue(registry, opaqueQueue, meshStore, matStore, shaderStore, texStore, gpuRegistry, shadowSrv);
 
         ctx->OMSetDepthStencilState(depthStateNoWrite, 0u);
         ctx->OMSetBlendState(blendStateAlpha, bf, 0xFFFFFFFF);
         if (!transparentQueue.Empty())
-            executor.ExecuteQueue(registry, transparentQueue, meshStore, matStore, shaderStore, texStore, shadowSrv);
+            executor.ExecuteQueue(registry, transparentQueue, meshStore, matStore, shaderStore, texStore, gpuRegistry, shadowSrv);
 
         ctx->OMSetDepthStencilState(depthStencilState, 0u);
         ctx->OMSetBlendState(blendState, bf, 0xFFFFFFFF);
@@ -106,6 +185,27 @@ namespace
             tileCuller.UnbindFromPS(ctx);
     }
 
+
+    template <typename TVertex>
+    ID3D11Buffer* CreateStaticVertexBuffer(ID3D11Device* device, const TVertex* data, UINT byteWidth)
+    {
+        if (!device || !data || byteWidth == 0)
+            return nullptr;
+
+        D3D11_BUFFER_DESC desc = {};
+        desc.ByteWidth = byteWidth;
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+
+        D3D11_SUBRESOURCE_DATA init = {};
+        init.pSysMem = data;
+
+        ID3D11Buffer* buffer = nullptr;
+        if (FAILED(device->CreateBuffer(&desc, &init, &buffer)))
+            return nullptr;
+
+        return buffer;
+    }
     HRESULT BuildInputLayout(ID3D11Device* device, uint32_t flags,
         ID3DBlob* vsBlob, ID3D11InputLayout** out)
     {
@@ -228,23 +328,32 @@ void GDXDX11RenderBackend::Resize(int w, int h)
 {
     m_backbufferWidth = w;
     m_backbufferHeight = h;
-    ReleasePostProcessSurface(m_postProcessPing);
-    ReleasePostProcessSurface(m_postProcessPong);
+    ReleaseAllPostProcessSurfacePairs();
     if (m_context) m_context->Resize(w, h);
 }
 
-ShaderHandle GDXDX11RenderBackend::CreateShader(
+ShaderHandle GDXDX11RenderBackend::UploadShader(
     ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-    const std::wstring& vsFile,
-    const std::wstring& psFile,
-    uint32_t vertexFlags,
-    const GDXShaderLayout& shaderLayout,
-    const std::wstring& debugName)
+    const ShaderSourceDesc& desc)
 {
     if (!m_device) return ShaderHandle::Invalid();
+    if (desc.sourceType != ShaderSourceType::HlslFilePath)
+    {
+        Debug::LogWarning(GDX_SRC_LOC, L"DX11 UploadShader: aktuell nur HlslFilePath unterstuetzt");
+        return ShaderHandle::Invalid();
+    }
+
+    const std::wstring vsFile = desc.VertexFilePath();
+    const std::wstring psFile = desc.PixelFilePath();
+    const uint32_t vertexFlags = desc.vertexFlags;
+    const GDXShaderLayout& shaderLayout = desc.layout;
+    const std::wstring debugName = desc.debugName.empty() ? (vsFile + L" / " + psFile) : desc.debugName;
+
+    if (vsFile.empty() || psFile.empty())
+        return ShaderHandle::Invalid();
 
     ID3DBlob* vsBlob = nullptr;
-    if (!GDXDX11CompileShaderFromFile(vsFile, "main", "vs_5_0", &vsBlob))
+    if (!GDXDX11CompileShaderFromFile(vsFile.c_str(), "main", "vs_5_0", &vsBlob))
         return ShaderHandle::Invalid();
 
     ID3D11VertexShader* vs = nullptr;
@@ -264,10 +373,10 @@ ShaderHandle GDXDX11RenderBackend::CreateShader(
     vsBlob->Release();
 
     ID3DBlob* psBlob = nullptr;
-    if (!GDXDX11CompileShaderFromFile(psFile, "main", "ps_5_0", &psBlob))
+    if (!GDXDX11CompileShaderFromFile(psFile.c_str(), "main", "ps_5_0", &psBlob))
     {
         vs->Release();
-        inputLayout->Release();
+        if (inputLayout) inputLayout->Release();
         return ShaderHandle::Invalid();
     }
 
@@ -276,92 +385,103 @@ ShaderHandle GDXDX11RenderBackend::CreateShader(
     {
         psBlob->Release();
         vs->Release();
-        inputLayout->Release();
+        if (inputLayout) inputLayout->Release();
         return ShaderHandle::Invalid();
     }
     psBlob->Release();
 
     GDXShaderResource res;
     res.vertexFlags = vertexFlags;
-    res.layout = shaderLayout;
-    res.vertexShader = vs;
-    res.pixelShader = ps;
-    res.inputLayout = inputLayout;
-    res.debugName = debugName;
-    return shaderStore.Add(std::move(res));
+    res.layout      = shaderLayout;
+    res.ready       = true;
+    res.debugName   = debugName;
+    const ShaderHandle handle = shaderStore.Add(std::move(res));
+    if (handle.IsValid())
+    {
+        DX11ShaderGpu gpu{};
+        gpu.vertexShader = vs;
+        gpu.pixelShader = ps;
+        gpu.inputLayout = inputLayout;
+        m_gpuRegistry.SetShader(handle, gpu);
+        //static uint64_t s_shaderUploadCount = 0;
+        //Debug::Log(GDX_SRC_LOC,
+        //           "Shader upload #", ++s_shaderUploadCount,
+        //           " handle=", handle.value,
+        //           " name=", debugName.c_str(),
+        //           " shaderAlive=", shaderStore.AliveCount(),
+        //           " pipelineCache=", m_executor.DebugPipelineCacheSize(),
+        //           " layoutCache=", m_executor.DebugLayoutCacheSize());
+        return handle;
+    }
+
+    if (ps) ps->Release();
+    if (inputLayout) inputLayout->Release();
+    if (vs) vs->Release();
+    return ShaderHandle::Invalid();
 }
 
-TextureHandle GDXDX11RenderBackend::CreateTexture(
+TextureHandle GDXDX11RenderBackend::UploadTexture(
     ResourceStore<GDXTextureResource, TextureTag>& texStore,
     const std::wstring& filePath,
     bool isSRGB,
     TextureHandle fallbackOnFailure)
 {
     GDXTextureResource res;
-    if (!GDXTextureLoader_LoadFromFile(m_device, m_ctx, filePath.c_str(), res, isSRGB))
+    DX11TextureGpu gpu{};
+    if (!GDXTextureLoader_LoadFromFile(m_device, m_ctx, filePath.c_str(), gpu, res, isSRGB))
     {
         Debug::LogError(GDX_SRC_LOC, L"LoadTexture fehlgeschlagen: ", filePath.c_str());
         return fallbackOnFailure;
     }
-    return texStore.Add(std::move(res));
+    const TextureHandle handle = texStore.Add(std::move(res));
+    if (handle.IsValid()) m_gpuRegistry.SetTexture(handle, gpu);
+    return handle;
 }
 
-TextureHandle GDXDX11RenderBackend::CreateTextureFromImage(
+TextureHandle GDXDX11RenderBackend::UploadTextureFromImage(
     ResourceStore<GDXTextureResource, TextureTag>& texStore,
     const ImageBuffer& image,
     bool isSRGB,
     const std::wstring& debugName,
     TextureHandle fallbackOnFailure)
 {
-    if (!m_device || !image.IsValid() || !image.Data())
+    if (!m_device || !m_ctx || !image.IsValid() || !image.Data())
         return fallbackOnFailure;
 
     GDXTextureResource res;
-    D3D11_TEXTURE2D_DESC td = {};
-    td.Width = image.Width();
-    td.Height = image.Height();
-    td.MipLevels = 1;
-    td.ArraySize = 1;
-    td.Format = isSRGB ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
-    td.SampleDesc.Count = 1;
-    td.Usage = D3D11_USAGE_DEFAULT;
-    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-
-    D3D11_SUBRESOURCE_DATA init = {};
-    init.pSysMem = image.Data();
-    init.SysMemPitch = image.Width() * 4u;
-
-    ID3D11Texture2D* tex = nullptr;
-    if (FAILED(m_device->CreateTexture2D(&td, &init, &tex)))
+    DX11TextureGpu gpu{};
+    if (!GDXTextureLoader_CreateFromImage(m_device, m_ctx, image, gpu, res, isSRGB, debugName.c_str()))
         return fallbackOnFailure;
 
-    D3D11_SHADER_RESOURCE_VIEW_DESC sd = {};
-    sd.Format = td.Format;
-    sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-    sd.Texture2D.MipLevels = 1;
-
-    ID3D11ShaderResourceView* srv = nullptr;
-    const HRESULT hr = m_device->CreateShaderResourceView(tex, &sd, &srv);
-    tex->Release();
-    if (FAILED(hr))
-        return fallbackOnFailure;
-
-    res.srv = srv;
-    res.width = image.Width();
-    res.height = image.Height();
-    res.ready = true;
-    res.isSRGB = isSRGB;
-    res.semantic = GDXTextureSemantic::Procedural;
-    res.debugName = debugName;
-    return texStore.Add(std::move(res));
+    const TextureHandle handle = texStore.Add(std::move(res));
+    if (handle.IsValid()) m_gpuRegistry.SetTexture(handle, gpu);
+    return handle;
 }
 
-bool GDXDX11RenderBackend::UploadMesh(MeshAssetResource& mesh)
+bool GDXDX11RenderBackend::UploadMesh(MeshHandle handle, MeshAssetResource& mesh)
 {
-    return m_meshUploader ? m_meshUploader->Upload(mesh) : false;
+    const bool ok = m_meshUploader ? m_meshUploader->Upload(handle, mesh, m_gpuRegistry) : false;
+    if (ok)
+    {
+        static uint64_t s_meshUploadCount = 0;
+        size_t totalVertices = 0;
+        size_t totalIndices = 0;
+        for (const auto& sm : mesh.submeshes)
+        {
+            totalVertices += sm.positions.size();
+            totalIndices += sm.indices.size();
+        }
+        //Debug::Log(GDX_SRC_LOC,
+        //           "Mesh upload #", ++s_meshUploadCount,
+        //           " handle=", handle.value,
+        //           " submeshes=", mesh.submeshes.size(),
+        //           " totalVertices=", totalVertices,
+        //           " totalIndices=", totalIndices);
+    }
+    return ok;
 }
 
-bool GDXDX11RenderBackend::CreateMaterialGpu(MaterialResource& mat)
+bool GDXDX11RenderBackend::UploadMaterial(MaterialHandle handle, MaterialResource& mat)
 {
     if (!m_device) return false;
 
@@ -377,8 +497,16 @@ bool GDXDX11RenderBackend::CreateMaterialGpu(MaterialResource& mat)
     ID3D11Buffer* buf = nullptr;
     if (FAILED(m_device->CreateBuffer(&desc, &init, &buf))) return false;
 
-    mat.gpuConstantBuffer = buf;
+    DX11MaterialGpu gpu;
+    gpu.constantBuffer = buf;
+    m_gpuRegistry.SetMaterial(handle, gpu);
     mat.cpuDirty = false;
+    static uint64_t s_materialUploadCount = 0;
+    const TextureHandle albedoTex   = mat.GetTexture(MaterialTextureSlot::Albedo);
+    const TextureHandle normalTex   = mat.GetTexture(MaterialTextureSlot::Normal);
+    const TextureHandle ormTex      = mat.GetTexture(MaterialTextureSlot::ORM);
+    const TextureHandle emissiveTex = mat.GetTexture(MaterialTextureSlot::Emissive);
+
     return true;
 }
 
@@ -415,153 +543,111 @@ void GDXDX11RenderBackend::UpdateFrameConstants(const FrameData& frame)
     m_executor.UpdateCascadeConstants(frame);
 }
 
-void* GDXDX11RenderBackend::ExecuteRenderPass(
+void GDXDX11RenderBackend::ExecuteRenderPass(
     const BackendRenderPassDesc& passDesc,
     Registry& registry,
-    const ICommandList& commandList,
-    ResourceStore<MeshAssetResource, MeshTag>& meshStore,
-    ResourceStore<MaterialResource, MaterialTag>& matStore,
-    ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-    ResourceStore<GDXTextureResource, TextureTag>& texStore,
-    ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore)
+    const ICommandList& opaqueList,
+    const ICommandList& alphaList,
+    ResourceStore<MeshAssetResource,       MeshTag>&        meshStore,
+    ResourceStore<MaterialResource,        MaterialTag>&     matStore,
+    ResourceStore<GDXShaderResource,       ShaderTag>&       shaderStore,
+    ResourceStore<GDXTextureResource,      TextureTag>&      texStore,
+    ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore)
 {
     if (!m_ctx)
-        return nullptr;
+        return;
 
-    if (passDesc.kind == BackendRenderPassDesc::Kind::Shadow)
-    {
-        if (!m_shadowMap.IsReady())
-        {
-            m_hasShadowPass = false;
-            return nullptr;
-        }
-
-        if (commandList.Empty())
-        {
-            m_hasShadowPass = false;
-            return nullptr;
-        }
-
-        const FrameData* frame = passDesc.frame;
-        if (!frame)
-            return nullptr;
-
-        // CSM: pro Kaskade FrameConstants mit der Kaskaden-Matrix überschreiben,
-        // dann Shadow-Queue rendern. FrameConstants werden danach wiederhergestellt.
-        const uint32_t numCascades = (frame->shadowCascadeCount > 0u)
-            ? frame->shadowCascadeCount : 1u;
-
-        for (uint32_t cascade = 0u; cascade < numCascades; ++cascade)
-        {
-            FrameData cascadeFrame = *frame;
-            if (frame->shadowCascadeCount > 0u)
-                cascadeFrame.shadowViewProjMatrix = frame->shadowCascadeViewProj[cascade];
-
-            m_executor.UpdateFrameConstants(cascadeFrame);
-            m_executor.UpdateCascadeConstants(*frame);
-
-            m_hasShadowPass = true;
-            m_shadowMap.BeginPass(m_ctx, cascade);
-            m_executor.ExecuteShadowQueue(registry, commandList, meshStore, matStore, shaderStore, texStore);
-            m_shadowMap.EndPass(m_ctx);
-        }
-
-        // FrameConstants auf Original-Werte zurücksetzen
-        m_executor.UpdateFrameConstants(*frame);
-        m_executor.UpdateCascadeConstants(*frame);
-
-        if (m_context)
-        {
-            auto* rtv = static_cast<ID3D11RenderTargetView*>(m_context->GetRenderTarget());
-            auto* dsv = static_cast<ID3D11DepthStencilView*>(m_context->GetDepthStencil());
-            m_ctx->OMSetRenderTargets(1, &rtv, dsv);
-        }
-
-        D3D11_VIEWPORT vp = {};
-        vp.Width = frame->viewportWidth;
-        vp.Height = frame->viewportHeight;
-        vp.MaxDepth = 1.0f;
-        m_ctx->RSSetViewports(1, &vp);
-        m_ctx->RSSetState(m_rasterizerState);
-        m_samplerCache.BindAll(m_ctx);
-        return nullptr;
-    }
-
-    // --- Graphics pass ---
-    // The planning layer pre-splits opaque and alpha queues.
-    // Use passDesc queues when available; fall back to commandList for legacy callers.
-    const ICommandList* opaqueList = passDesc.opaqueList ? passDesc.opaqueList : &commandList;
-    const ICommandList* alphaList  = passDesc.alphaList;
-
-    // Upload light cbuffer now — this is the first point where GPU resources
-    // are available and the FrameData is fully frozen for this view.
     if (passDesc.frame)
         UploadLightConstants(*passDesc.frame);
 
+    const ICommandList& opaqueRef = passDesc.opaqueList ? *passDesc.opaqueList : opaqueList;
+    const ICommandList& alphaRef  = passDesc.alphaList  ? *passDesc.alphaList  : alphaList;
+
     auto executeGraphics = [&](ID3D11RenderTargetView* rtv,
-        ID3D11DepthStencilView* dsv,
-        float viewportWidth,
-        float viewportHeight) -> void*
-        {
-            m_ctx->OMSetRenderTargets(1, &rtv, dsv);
+                               ID3D11DepthStencilView* dsv,
+                               float viewportWidth,
+                               float viewportHeight)
+    {
+        ID3D11ShaderResourceView* nullSrvs[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
+        m_ctx->PSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, nullSrvs);
 
-            D3D11_VIEWPORT vp = {};
-            vp.Width = viewportWidth;
-            vp.Height = viewportHeight;
-            vp.MinDepth = 0.0f;
-            vp.MaxDepth = 1.0f;
-            m_ctx->RSSetViewports(1, &vp);
+        m_ctx->OMSetRenderTargets(1, &rtv, dsv);
 
-            // Pass the pre-split queues directly — no re-split inside ExecuteMainPassCommon.
-            // alphaList may be nullptr if there are no transparent draws this frame.
-            static const RenderQueue kEmptyQueue{};
-            const ICommandList& opaqueRef = *opaqueList;
-            const ICommandList& alphaRef  = alphaList ? *alphaList : static_cast<const ICommandList&>(kEmptyQueue);
+        D3D11_VIEWPORT vp = {};
+        vp.Width = viewportWidth;
+        vp.Height = viewportHeight;
+        vp.MinDepth = 0.0f;
+        vp.MaxDepth = 1.0f;
+        m_ctx->RSSetViewports(1, &vp);
+        m_ctx->RSSetState(m_rasterizerState);
+        m_ctx->OMSetDepthStencilState(m_depthStencilState, 0u);
+        const float bf[4] = { 0,0,0,0 };
+        m_ctx->OMSetBlendState(m_blendState, bf, 0xFFFFFFFFu);
 
-            ExecuteMainPassCommon(
-                m_ctx,
-                m_rasterizerState,
-                m_depthStencilState,
-                m_depthStateNoWrite,
-                m_blendState,
-                m_blendStateAlpha,
-                m_samplerCache,
-                m_executor,
-                m_shadowMap,
-                m_hasShadowPass,
-                m_iblValid, m_iblIrradiance, m_iblPrefiltered, m_iblBrdfLut,
-                m_tileCuller,
-                registry,
-                opaqueRef,
-                alphaRef,
-                meshStore,
-                matStore,
-                shaderStore,
-                texStore);
+        LogDx11MainPassState(m_ctx, rtv, dsv, m_rasterizerState, m_depthStencilState, m_blendState, "before-main");
 
-            return nullptr;
-        };
+        //static uint32_t s_mainPassBindLogs = 0u;
+        //if (s_mainPassBindLogs < 8u)
+        //{
+        //    Debug::Log(GDX_SRC_LOC,
+        //               "ExecuteRenderPass main-target diag #", (s_mainPassBindLogs + 1u),
+        //               " useBackbuffer=", passDesc.target.useBackbuffer ? 1u : 0u,
+        //               " rtv=", static_cast<const void*>(rtv),
+        //               " dsv=", static_cast<const void*>(dsv),
+        //               " viewport=", viewportWidth, "x", viewportHeight,
+        //               " opaqueCount=", opaqueRef.GetCommands().size(),
+        //               " alphaCount=", alphaRef.GetCommands().size());
+        //    ++s_mainPassBindLogs;
+        //}
 
-    if (passDesc.target.useBackbuffer || !passDesc.target.renderTarget.IsValid() || !rtStore)
+        if (ExecuteDebugSmokePass(passDesc.frame, rtv, dsv, viewportWidth, viewportHeight))
+            return;
+
+        ExecuteMainPassCommon(
+            m_ctx,
+            m_rasterizerState,
+            m_depthStencilState,
+            m_depthStateNoWrite,
+            m_blendState,
+            m_blendStateAlpha,
+            m_samplerCache,
+            m_executor,
+            m_shadowMap,
+            m_hasShadowPass,
+            m_iblValid, m_iblIrradiance, m_iblPrefiltered, m_iblBrdfLut,
+            m_tileCuller,
+            m_gpuRegistry,
+            registry,
+            opaqueRef,
+            alphaRef,
+            meshStore,
+            matStore,
+            shaderStore,
+            texStore);
+
+        LogDx11MainPassState(m_ctx, rtv, dsv, m_rasterizerState, m_depthStencilState, m_blendState, "after-main");
+    };
+
+    if (passDesc.target.useBackbuffer || !passDesc.target.renderTarget.IsValid())
     {
         if (!m_context)
-            return nullptr;
-
+            return;
         auto* rtv = static_cast<ID3D11RenderTargetView*>(m_context->GetRenderTarget());
         auto* dsv = static_cast<ID3D11DepthStencilView*>(m_context->GetDepthStencil());
-        return executeGraphics(rtv, dsv, passDesc.target.viewportWidth, passDesc.target.viewportHeight);
+        executeGraphics(rtv, dsv, passDesc.target.viewportWidth, passDesc.target.viewportHeight);
+        return;
     }
 
-    GDXRenderTargetResource* rt = rtStore->Get(passDesc.target.renderTarget);
-    if (!rt || !rt->ready || !rt->rtv || !rt->dsv)
-        return nullptr;
+    GDXRenderTargetResource* rt = rtStore.Get(passDesc.target.renderTarget);
+    DX11RenderTargetGpu* rtGpu = m_gpuRegistry.GetRenderTarget(passDesc.target.renderTarget);
+    if (!rt || !rt->ready || !rtGpu || !rtGpu->rtv || !rtGpu->dsv)
+        return;
 
-    auto* rtv = static_cast<ID3D11RenderTargetView*>(rt->rtv);
-    auto* dsv = static_cast<ID3D11DepthStencilView*>(rt->dsv);
+    auto* rtv = rtGpu->rtv;
+    auto* dsv = rtGpu->dsv;
 
     ID3D11ShaderResourceView* nullSrvs[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
     m_ctx->PSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, nullSrvs);
-    m_ctx->OMSetRenderTargets(1, &rtv, dsv);
 
     if (rt->exposedTexture.IsValid())
         m_executor.TransitionTexture(rt->exposedTexture, ResourceState::ShaderRead, ResourceState::RenderTarget, "ExecuteRenderPass offscreen begin");
@@ -590,16 +676,72 @@ void* GDXDX11RenderBackend::ExecuteRenderPass(
         m_ctx->OMSetRenderTargets(1, &backbufferRTV, backbufferDSV);
 
         D3D11_VIEWPORT vp = {};
-        vp.TopLeftX = 0.0f;
-        vp.TopLeftY = 0.0f;
         vp.Width = static_cast<float>(m_backbufferWidth);
         vp.Height = static_cast<float>(m_backbufferHeight);
         vp.MinDepth = 0.0f;
         vp.MaxDepth = 1.0f;
         m_ctx->RSSetViewports(1, &vp);
     }
+}
 
-    return nullptr;
+void GDXDX11RenderBackend::ExecuteShadowPass(
+    const BackendRenderPassDesc& passDesc,
+    Registry& registry,
+    const ICommandList& commandList,
+    ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+    ResourceStore<MaterialResource, MaterialTag>& matStore,
+    ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+    ResourceStore<GDXTextureResource, TextureTag>& texStore)
+{
+    if (!m_ctx || !m_shadowMap.IsReady())
+    {
+        m_hasShadowPass = false;
+        return;
+    }
+
+    if (commandList.Empty())
+    {
+        m_hasShadowPass = false;
+        return;
+    }
+
+    const FrameData* frame = passDesc.frame;
+    if (!frame)
+        return;
+
+    const uint32_t numCascades = (frame->shadowCascadeCount > 0u) ? frame->shadowCascadeCount : 1u;
+    for (uint32_t cascade = 0u; cascade < numCascades; ++cascade)
+    {
+        FrameData cascadeFrame = *frame;
+        if (frame->shadowCascadeCount > 0u)
+            cascadeFrame.shadowViewProjMatrix = frame->shadowCascadeViewProj[cascade];
+
+        m_executor.UpdateFrameConstants(cascadeFrame);
+        m_executor.UpdateCascadeConstants(*frame);
+
+        m_hasShadowPass = true;
+        m_shadowMap.BeginPass(m_ctx, cascade);
+        m_executor.ExecuteShadowQueue(registry, commandList, meshStore, matStore, shaderStore, texStore, m_gpuRegistry);
+        m_shadowMap.EndPass(m_ctx);
+    }
+
+    m_executor.UpdateFrameConstants(*frame);
+    m_executor.UpdateCascadeConstants(*frame);
+
+    if (m_context)
+    {
+        auto* rtv = static_cast<ID3D11RenderTargetView*>(m_context->GetRenderTarget());
+        auto* dsv = static_cast<ID3D11DepthStencilView*>(m_context->GetDepthStencil());
+        m_ctx->OMSetRenderTargets(1, &rtv, dsv);
+    }
+
+    D3D11_VIEWPORT vp = {};
+    vp.Width = frame->viewportWidth;
+    vp.Height = frame->viewportHeight;
+    vp.MaxDepth = 1.0f;
+    m_ctx->RSSetViewports(1, &vp);
+    m_ctx->RSSetState(m_rasterizerState);
+    m_samplerCache.BindAll(m_ctx);
 }
 
 // ---------------------------------------------------------------------------
@@ -719,6 +861,232 @@ void GDXDX11RenderBackend::LoadIBL(const wchar_t* hdrPath)
         Debug::LogError(GDX_SRC_LOC, L"GDXDX11RenderBackend::LoadIBL: SRV-Upload fehlgeschlagen");
 }
 
+
+
+bool GDXDX11RenderBackend::EnsureDebugSmokeResources()
+{
+    if (!m_device)
+        return false;
+
+    auto compileVs = [&](const wchar_t* file, ID3D11VertexShader** outVs, ID3DBlob** outBlob) -> bool
+    {
+        if (*outVs)
+            return true;
+        ID3DBlob* blob = nullptr;
+        if (!GDXDX11CompileShaderFromFile(file, "main", "vs_5_0", &blob))
+            return false;
+        ID3D11VertexShader* vs = nullptr;
+        const HRESULT hr = m_device->CreateVertexShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &vs);
+        if (FAILED(hr) || !vs)
+        {
+            blob->Release();
+            return false;
+        }
+        *outVs = vs;
+        if (outBlob)
+            *outBlob = blob;
+        else
+            blob->Release();
+        return true;
+    };
+
+    auto compilePs = [&](const wchar_t* file, ID3D11PixelShader** outPs) -> bool
+    {
+        if (*outPs)
+            return true;
+        ID3DBlob* blob = nullptr;
+        if (!GDXDX11CompileShaderFromFile(file, "main", "ps_5_0", &blob))
+            return false;
+        ID3D11PixelShader* ps = nullptr;
+        const HRESULT hr = m_device->CreatePixelShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &ps);
+        blob->Release();
+        if (FAILED(hr) || !ps)
+            return false;
+        *outPs = ps;
+        return true;
+    };
+
+    if (!compileVs(L"VertexShader_FullscreenTriangle.hlsl", &m_debugFullscreenVS, nullptr))
+        return false;
+    if (!compilePs(L"PixelShader_UnlitSolid.hlsl", &m_debugSolidPS))
+        return false;
+    if (!compilePs(L"PixelShader_VertexColorUnlit.hlsl", &m_debugVertexColorPS))
+        return false;
+
+    if (!m_debugPositionOnlyVS || !m_debugPosInputLayout)
+    {
+        ID3DBlob* blob = nullptr;
+        if (!compileVs(L"VertexShader_PositionOnly.hlsl", &m_debugPositionOnlyVS, &blob))
+            return false;
+        if (!m_debugPosInputLayout)
+        {
+            D3D11_INPUT_ELEMENT_DESC elems[] =
+            {
+                { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 }
+            };
+            const HRESULT hr = m_device->CreateInputLayout(elems, 1, blob->GetBufferPointer(), blob->GetBufferSize(), &m_debugPosInputLayout);
+            blob->Release();
+            if (FAILED(hr) || !m_debugPosInputLayout)
+                return false;
+        }
+        else
+        {
+            blob->Release();
+        }
+    }
+
+    if (!m_debugVertexColorVS || !m_debugPosColorInputLayout)
+    {
+        ID3DBlob* blob = nullptr;
+        if (!compileVs(L"VertexShader_VertexColorUnlit.hlsl", &m_debugVertexColorVS, &blob))
+            return false;
+        if (!m_debugPosColorInputLayout)
+        {
+            D3D11_INPUT_ELEMENT_DESC elems[] =
+            {
+                { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
+                { "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 }
+            };
+            const HRESULT hr = m_device->CreateInputLayout(elems, 2, blob->GetBufferPointer(), blob->GetBufferSize(), &m_debugPosColorInputLayout);
+            blob->Release();
+            if (FAILED(hr) || !m_debugPosColorInputLayout)
+                return false;
+        }
+        else
+        {
+            blob->Release();
+        }
+    }
+
+    if (!m_debugSmokeCB)
+    {
+        D3D11_BUFFER_DESC desc = {};
+        desc.ByteWidth = sizeof(DebugSmokeVsConstants);
+        desc.Usage = D3D11_USAGE_DYNAMIC;
+        desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        if (FAILED(m_device->CreateBuffer(&desc, nullptr, &m_debugSmokeCB)) || !m_debugSmokeCB)
+            return false;
+    }
+
+    if (!m_debugPosTriangleVB)
+    {
+        const DebugSmokeVertexPos verts[3] =
+        {
+            { -0.75f, -0.75f, 0.0f },
+            {  0.00f,  0.75f, 0.0f },
+            {  0.75f, -0.75f, 0.0f },
+        };
+        m_debugPosTriangleVB = CreateStaticVertexBuffer(m_device, verts, sizeof(verts));
+        if (!m_debugPosTriangleVB)
+            return false;
+    }
+
+    if (!m_debugPosColorTriangleVB)
+    {
+        const DebugSmokeVertexPosColor verts[3] =
+        {
+            { -0.75f, -0.75f, 0.0f, 1.0f, 0.1f, 0.1f, 1.0f },
+            {  0.00f,  0.75f, 0.0f, 0.1f, 1.0f, 0.1f, 1.0f },
+            {  0.75f, -0.75f, 0.0f, 0.1f, 0.3f, 1.0f, 1.0f },
+        };
+        m_debugPosColorTriangleVB = CreateStaticVertexBuffer(m_device, verts, sizeof(verts));
+        if (!m_debugPosColorTriangleVB)
+            return false;
+    }
+
+    return true;
+}
+
+bool GDXDX11RenderBackend::DrawDebugFullscreenTriangle(ID3D11RenderTargetView* rtv, float viewportWidth, float viewportHeight)
+{
+    if (!m_ctx || !rtv || !EnsureDebugSmokeResources())
+        return false;
+
+    const float blendFactor[4] = { 0, 0, 0, 0 };
+    D3D11_VIEWPORT vp = {};
+    vp.Width = viewportWidth;
+    vp.Height = viewportHeight;
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+
+    m_ctx->OMSetRenderTargets(1, &rtv, nullptr);
+    m_ctx->RSSetViewports(1, &vp);
+    m_ctx->RSSetState(m_rasterizerStateNoCull);
+    m_ctx->OMSetDepthStencilState(m_depthStateNoTest, 0u);
+    m_ctx->OMSetBlendState(m_blendState, blendFactor, 0xFFFFFFFFu);
+    m_ctx->IASetInputLayout(nullptr);
+    m_ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_ctx->VSSetShader(m_debugFullscreenVS, nullptr, 0);
+    m_ctx->PSSetShader(m_debugSolidPS, nullptr, 0);
+    ID3D11Buffer* nullCb = nullptr;
+    m_ctx->VSSetConstantBuffers(0, 1, &nullCb);
+    m_ctx->PSSetConstantBuffers(0, 1, &nullCb);
+    m_ctx->Draw(3, 0);
+    Debug::Log(GDX_SRC_LOC, "SmokeTest A: fullscreen triangle executed");
+    return true;
+}
+
+bool GDXDX11RenderBackend::DrawDebugPositionTriangle(const FrameData* frame, ID3D11RenderTargetView* rtv, ID3D11DepthStencilView* dsv, float viewportWidth, float viewportHeight, bool withVertexColor)
+{
+    if (!m_ctx || !rtv || !frame || !EnsureDebugSmokeResources())
+        return false;
+
+    DebugSmokeVsConstants data{};
+    data.mvp = frame->viewProjMatrix;
+
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (FAILED(m_ctx->Map(m_debugSmokeCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+        return false;
+    std::memcpy(mapped.pData, &data, sizeof(data));
+    m_ctx->Unmap(m_debugSmokeCB, 0);
+
+    const float blendFactor[4] = { 0, 0, 0, 0 };
+    D3D11_VIEWPORT vp = {};
+    vp.Width = viewportWidth;
+    vp.Height = viewportHeight;
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+
+    ID3D11Buffer* vb = withVertexColor ? m_debugPosColorTriangleVB : m_debugPosTriangleVB;
+    const UINT stride = withVertexColor ? sizeof(DebugSmokeVertexPosColor) : sizeof(DebugSmokeVertexPos);
+    const UINT offset = 0u;
+
+    m_ctx->OMSetRenderTargets(1, &rtv, dsv);
+    m_ctx->RSSetViewports(1, &vp);
+    m_ctx->RSSetState(m_rasterizerStateNoCull);
+    m_ctx->OMSetDepthStencilState(m_depthStateNoTest, 0u);
+    m_ctx->OMSetBlendState(m_blendState, blendFactor, 0xFFFFFFFFu);
+    m_ctx->IASetInputLayout(withVertexColor ? m_debugPosColorInputLayout : m_debugPosInputLayout);
+    m_ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_ctx->IASetVertexBuffers(0, 1, &vb, &stride, &offset);
+    m_ctx->VSSetShader(withVertexColor ? m_debugVertexColorVS : m_debugPositionOnlyVS, nullptr, 0);
+    m_ctx->PSSetShader(withVertexColor ? m_debugVertexColorPS : m_debugSolidPS, nullptr, 0);
+    m_ctx->VSSetConstantBuffers(0, 1, &m_debugSmokeCB);
+    ID3D11Buffer* nullCb = nullptr;
+    m_ctx->PSSetConstantBuffers(0, 1, &nullCb);
+    m_ctx->Draw(3, 0);
+    Debug::Log(GDX_SRC_LOC, withVertexColor ? "SmokeTest C: position+color triangle executed" : "SmokeTest B: position-only triangle executed");
+    return true;
+}
+
+bool GDXDX11RenderBackend::ExecuteDebugSmokePass(const FrameData* frame, ID3D11RenderTargetView* rtv, ID3D11DepthStencilView* dsv, float viewportWidth, float viewportHeight)
+{
+    switch (m_smokeTestMode)
+    {
+    case GDXDebugSmokeTestMode::None:
+        return false;
+    case GDXDebugSmokeTestMode::FullscreenTriangle:
+        return DrawDebugFullscreenTriangle(rtv, viewportWidth, viewportHeight);
+    case GDXDebugSmokeTestMode::PositionOnlyTriangle:
+        return DrawDebugPositionTriangle(frame, rtv, dsv, viewportWidth, viewportHeight, false);
+    case GDXDebugSmokeTestMode::PositionColorTriangle:
+        return DrawDebugPositionTriangle(frame, rtv, dsv, viewportWidth, viewportHeight, true);
+    default:
+        return false;
+    }
+}
+
 uint32_t GDXDX11RenderBackend::GetDrawCallCount() const
 {
     return m_executor.GetDrawCallCount();
@@ -744,7 +1112,7 @@ const IGDXRenderBackend::DefaultTextureSet& GDXDX11RenderBackend::GetDefaultText
     return m_defaultTextures;
 }
 
-void GDXDX11RenderBackend::ReleasePostProcessSurface(Dx11PostProcessSurface& surface)
+void GDXDX11RenderBackend::ReleasePostProcessSurface(DX11PostProcessSurfaceGpu& surface)
 {
     if (surface.srv) { static_cast<ID3D11ShaderResourceView*>(surface.srv)->Release(); surface.srv = nullptr; }
     if (surface.rtv) { static_cast<ID3D11RenderTargetView*>(surface.rtv)->Release(); surface.rtv = nullptr; }
@@ -754,7 +1122,29 @@ void GDXDX11RenderBackend::ReleasePostProcessSurface(Dx11PostProcessSurface& sur
     surface.format = GDXTextureFormat::Unknown;
 }
 
-bool GDXDX11RenderBackend::EnsurePostProcessSurface(Dx11PostProcessSurface& surface, uint32_t width, uint32_t height, GDXTextureFormat format, const wchar_t* debugName)
+void GDXDX11RenderBackend::ReleasePostProcessSurfacePair(DX11PostProcessSurfacePair& pair)
+{
+    ReleasePostProcessSurface(pair.ping);
+    ReleasePostProcessSurface(pair.pong);
+}
+
+void GDXDX11RenderBackend::ReleaseAllPostProcessSurfacePairs()
+{
+    ReleasePostProcessSurfacePair(m_mainPostProcessSurfaces);
+    for (auto& entry : m_rttPostProcessSurfaces)
+        ReleasePostProcessSurfacePair(entry.second);
+    m_rttPostProcessSurfaces.clear();
+}
+
+GDXDX11RenderBackend::DX11PostProcessSurfacePair& GDXDX11RenderBackend::GetPostProcessSurfacePair(RenderTargetHandle outputTarget, bool outputToBackbuffer)
+{
+    if (outputToBackbuffer || !outputTarget.IsValid())
+        return m_mainPostProcessSurfaces;
+
+    return m_rttPostProcessSurfaces[outputTarget];
+}
+
+bool GDXDX11RenderBackend::EnsurePostProcessSurface(DX11PostProcessSurfaceGpu& surface, uint32_t width, uint32_t height, GDXTextureFormat format, const wchar_t* debugName)
 {
     if (!m_device || width == 0u || height == 0u) return false;
     if (surface.texture && surface.width == width && surface.height == height && surface.format == format)
@@ -796,6 +1186,7 @@ bool GDXDX11RenderBackend::EnsurePostProcessSurface(Dx11PostProcessSurface& surf
     surface.srv = srv;
     surface.width = width;
     surface.height = height;
+    surface.format = format;
     (void)debugName;
     return true;
 }
@@ -835,7 +1226,7 @@ PostProcessHandle GDXDX11RenderBackend::CreatePostProcessPass(ResourceStore<Post
     // Slot-Datenmodell aufbauen: falls desc.inputSlots leer → Default-Mapping (t0=SceneColor, t1=OriginalSceneColor).
     pass.inputs = BuildDefaultPostProcessInputs(desc.inputSlots);
 
-    Dx11PostProcessRuntime runtime{};
+    DX11PostProcessGpu runtime{};
     runtime.vertexShader = vs;
     runtime.pixelShader = ps;
 
@@ -869,7 +1260,7 @@ PostProcessHandle GDXDX11RenderBackend::CreatePostProcessPass(ResourceStore<Post
         if (runtime.vertexShader) runtime.vertexShader->Release();
         return PostProcessHandle::Invalid();
     }
-    m_postProcessRuntime.emplace(handle, runtime);
+    m_gpuRegistry.SetPostProcess(handle, runtime);
     return handle;
 }
 
@@ -899,14 +1290,7 @@ void GDXDX11RenderBackend::DestroyPostProcessPasses(ResourceStore<PostProcessRes
     // Phase 2: GPU-Ressourcen freigeben, Store-Einträge releasen.
     for (const PostProcessHandle handle : handles)
     {
-        auto it = m_postProcessRuntime.find(handle);
-        if (it != m_postProcessRuntime.end())
-        {
-            if (it->second.constantBuffer) { it->second.constantBuffer->Release(); it->second.constantBuffer = nullptr; }
-            if (it->second.pixelShader) { it->second.pixelShader->Release();    it->second.pixelShader = nullptr; }
-            if (it->second.vertexShader) { it->second.vertexShader->Release();   it->second.vertexShader = nullptr; }
-            m_postProcessRuntime.erase(it);
-        }
+        m_gpuRegistry.ReleasePostProcess(handle);
         // Store-Eintrag freigeben — kein ready=false-Zombie bleibt zurück.
         postStore.Release(handle);
     }
@@ -937,16 +1321,21 @@ bool GDXDX11RenderBackend::ExecutePostProcessChain(const std::vector<PostProcess
 
     // --- SceneColor-Textur als Basis für Ping-Pong ---
     const auto* sceneRes = texStore.Get(execInputs.sceneColor);
-    if (!sceneRes || !sceneRes->srv) return false;
+    DX11TextureGpu* sceneColorGpu = m_gpuRegistry.GetTexture(execInputs.sceneColor);
+    if (!sceneRes || !sceneColorGpu || !sceneColorGpu->srv) return false;
 
     const uint32_t width  = (std::max)(1u, static_cast<uint32_t>(viewportWidth));
     const uint32_t height = (std::max)(1u, static_cast<uint32_t>(viewportHeight));
 
+    DX11PostProcessSurfacePair& surfacePair = GetPostProcessSurfacePair(outputTarget, outputToBackbuffer);
+
     if (active.size() > 1u)
     {
         const GDXTextureFormat intermediateFormat = MakeLinearPostProcessFormat(sceneRes->format);
-        if (!EnsurePostProcessSurface(m_postProcessPing, width, height, intermediateFormat, L"PostProcessPing")) return false;
-        if (!EnsurePostProcessSurface(m_postProcessPong, width, height, intermediateFormat, L"PostProcessPong")) return false;
+        const wchar_t* pingName = outputToBackbuffer ? L"PostProcessPing_Main" : L"PostProcessPing_RTT";
+        const wchar_t* pongName = outputToBackbuffer ? L"PostProcessPong_Main" : L"PostProcessPong_RTT";
+        if (!EnsurePostProcessSurface(surfacePair.ping, width, height, intermediateFormat, pingName)) return false;
+        if (!EnsurePostProcessSurface(surfacePair.pong, width, height, intermediateFormat, pongName)) return false;
     }
 
     ID3D11RenderTargetView* backbufferRTV = nullptr;
@@ -957,33 +1346,37 @@ bool GDXDX11RenderBackend::ExecutePostProcessChain(const std::vector<PostProcess
     else
     {
         if (!rtStore || !outputTarget.IsValid()) return false;
-        const GDXRenderTargetResource* outputRt = rtStore->Get(outputTarget);
-        if (!outputRt || !outputRt->ready || !outputRt->rtv) return false;
-        backbufferRTV = static_cast<ID3D11RenderTargetView*>(outputRt->rtv);
+        DX11RenderTargetGpu* outputGpu = m_gpuRegistry.GetRenderTarget(outputTarget);
+        if (!outputGpu || !outputGpu->rtv) return false;
+        backbufferRTV = outputGpu->rtv;
     }
     // inputSrv: wird pro Pass auf das letzte Ergebnis umgebogen (Ping-Pong SceneColor)
-    ID3D11ShaderResourceView* inputSrv         = static_cast<ID3D11ShaderResourceView*>(sceneRes->srv);
-    // originalSceneSrv: bleibt für alle Passes stabil (OriginalSceneColor-Slot)
-    ID3D11ShaderResourceView* originalSceneSrv = static_cast<ID3D11ShaderResourceView*>(sceneRes->srv);
+    ID3D11ShaderResourceView* inputSrv = sceneColorGpu->srv;
+    // originalSceneSrv: bleibt über alle Passes stabil. Fallback = sceneColor.
+    ID3D11ShaderResourceView* originalSceneSrv = sceneColorGpu->srv;
+    if (execInputs.originalSceneColor.IsValid())
+    {
+        if (DX11TextureGpu* originalGpu = m_gpuRegistry.GetTexture(execInputs.originalSceneColor))
+            if (originalGpu->srv)
+                originalSceneSrv = originalGpu->srv;
+    }
 
-    // Optionaler Depth-SRV — im aktuellen Bestand noch kein echtes Depth-RT vorhanden;
-    // wird befüllt sobald execInputs.sceneDepth gesetzt ist.
     ID3D11ShaderResourceView* depthSrv   = nullptr;
     ID3D11ShaderResourceView* normalsSrv = nullptr;
     if (execInputs.sceneDepth.IsValid())
     {
-        if (const auto* depthRes = texStore.Get(execInputs.sceneDepth))
-            depthSrv = static_cast<ID3D11ShaderResourceView*>(depthRes->srv);
+        if (DX11TextureGpu* depthGpu = m_gpuRegistry.GetTexture(execInputs.sceneDepth))
+            depthSrv = depthGpu->srv;
     }
     if (execInputs.sceneNormals.IsValid())
     {
-        if (const auto* normRes = texStore.Get(execInputs.sceneNormals))
-            normalsSrv = static_cast<ID3D11ShaderResourceView*>(normRes->srv);
+        if (DX11TextureGpu* normalsGpu = m_gpuRegistry.GetTexture(execInputs.sceneNormals))
+            normalsSrv = normalsGpu->srv;
     }
 
     ID3D11RenderTargetView* tempTargets[2] = {
-        static_cast<ID3D11RenderTargetView*>(m_postProcessPing.rtv),
-        static_cast<ID3D11RenderTargetView*>(m_postProcessPong.rtv)
+        static_cast<ID3D11RenderTargetView*>(surfacePair.ping.rtv),
+        static_cast<ID3D11RenderTargetView*>(surfacePair.pong.rtv)
     };
     const float clearColor[4] = { 0,0,0,0 };
 
@@ -1006,13 +1399,15 @@ bool GDXDX11RenderBackend::ExecutePostProcessChain(const std::vector<PostProcess
     // Wir nutzen maximal so viele wie der Pass mit dem meisten Slots braucht.
     constexpr uint32_t kMaxBindSlots = 16u;
 
+    bool executedAtLeastOnePass = false;
+
     for (size_t i = 0; i < active.size(); ++i)
     {
         PostProcessResource* pass = postStore.Get(active[i]);
         if (!pass) continue;
-        auto runtimeIt = m_postProcessRuntime.find(active[i]);
-        if (runtimeIt == m_postProcessRuntime.end()) continue;
-        Dx11PostProcessRuntime& runtime = runtimeIt->second;
+        DX11PostProcessGpu* runtimePtr = m_gpuRegistry.GetPostProcess(active[i]);
+        if (!runtimePtr) continue;
+        DX11PostProcessGpu& runtime = *runtimePtr;
 
         // --- Constant Buffer Upload ---
         if (runtime.constantBuffer && pass->cpuDirty)
@@ -1067,7 +1462,8 @@ bool GDXDX11RenderBackend::ExecutePostProcessChain(const std::vector<PostProcess
                     if (slot.customTexture.IsValid())
                     {
                         if (const auto* customRes = texStore.Get(slot.customTexture))
-                            srv = static_cast<ID3D11ShaderResourceView*>(customRes->srv);
+                            if (DX11TextureGpu* cGpu = m_gpuRegistry.GetTexture(slot.customTexture))
+                                srv = cGpu->srv;
                     }
                     break;
                 default: break;
@@ -1117,6 +1513,7 @@ bool GDXDX11RenderBackend::ExecutePostProcessChain(const std::vector<PostProcess
         }
 
         m_ctx->Draw(3, 0);
+        executedAtLeastOnePass = true;
 
         // SRVs lösen (alle gebundenen Slots nullen)
         ID3D11ShaderResourceView* nullSrvs[kMaxBindSlots] = {};
@@ -1125,9 +1522,9 @@ bool GDXDX11RenderBackend::ExecutePostProcessChain(const std::vector<PostProcess
         // --- Ping-Pong: inputSrv auf das gerade geschriebene Intermediate umbiegen ---
         if (!isLast)
         {
-            const Dx11PostProcessSurface& src =
-                (i % 2u == 0u) ? m_postProcessPing : m_postProcessPong;
-            inputSrv = static_cast<ID3D11ShaderResourceView*>(src.srv);
+            const DX11PostProcessSurfaceGpu& src =
+                (i % 2u == 0u) ? surfacePair.ping : surfacePair.pong;
+            inputSrv = src.srv;
         }
     }
 
@@ -1139,7 +1536,7 @@ bool GDXDX11RenderBackend::ExecutePostProcessChain(const std::vector<PostProcess
     m_ctx->PSSetConstantBuffers(0, 1, &nullCb);
     m_ctx->VSSetShader(nullptr, nullptr, 0);
     m_ctx->PSSetShader(nullptr, nullptr, 0);
-    return true;
+    return executedAtLeastOnePass;
 }
 
 bool GDXDX11RenderBackend::CreateRenderStates()
@@ -1207,10 +1604,12 @@ bool GDXDX11RenderBackend::InitDefaultTextures(ResourceStore<GDXTextureResource,
         TextureHandle& handle, const wchar_t* name) -> bool
         {
             GDXTextureResource res;
+            DX11TextureGpu gpu{};
             res.debugName = name;
             res.format = GDXTextureFormat::RGBA8_UNORM;
-            if (!GDXTextureLoader_Create1x1(m_device, r, g, b, a, res)) return false;
+            if (!GDXTextureLoader_Create1x1(m_device, r, g, b, a, gpu, res)) return false;
             handle = texStore.Add(std::move(res));
+            if (handle.IsValid()) m_gpuRegistry.SetTexture(handle, gpu);
             return handle.IsValid();
         };
 
@@ -1225,78 +1624,53 @@ void GDXDX11RenderBackend::Shutdown(
     ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
     ResourceStore<GDXTextureResource, TextureTag>& texStore)
 {
-    // Defensiver Runtime-Sweep: gibt alle PostProcess-GPU-Ressourcen frei, die
-    // DestroyPostProcessPasses() noch nicht erfasst hat (z.B. bei vorzeitigem Shutdown).
-    for (auto& [handle, runtime] : m_postProcessRuntime)
-    {
-        if (runtime.constantBuffer) { runtime.constantBuffer->Release(); runtime.constantBuffer = nullptr; }
-        if (runtime.pixelShader) { runtime.pixelShader->Release();    runtime.pixelShader = nullptr; }
-        if (runtime.vertexShader) { runtime.vertexShader->Release();   runtime.vertexShader = nullptr; }
-    }
-    m_postProcessRuntime.clear();
+    // PostProcess resources released via m_gpuRegistry.ReleaseAll()
 
-    if (m_iblIrradiance) { m_iblIrradiance->Release();  m_iblIrradiance = nullptr; }
+    if (m_iblIrradiance)  { m_iblIrradiance->Release();  m_iblIrradiance = nullptr; }
     if (m_iblPrefiltered) { m_iblPrefiltered->Release(); m_iblPrefiltered = nullptr; }
-    if (m_iblBrdfLut) { m_iblBrdfLut->Release();     m_iblBrdfLut = nullptr; }
+    if (m_iblBrdfLut)     { m_iblBrdfLut->Release();     m_iblBrdfLut = nullptr; }
+    if (m_tileLightCullCS){ m_tileLightCullCS->Release(); m_tileLightCullCS = nullptr; }
+
+    if (m_debugPosColorInputLayout) { m_debugPosColorInputLayout->Release(); m_debugPosColorInputLayout = nullptr; }
+    if (m_debugPosInputLayout) { m_debugPosInputLayout->Release(); m_debugPosInputLayout = nullptr; }
+    if (m_debugPosColorTriangleVB) { m_debugPosColorTriangleVB->Release(); m_debugPosColorTriangleVB = nullptr; }
+    if (m_debugPosTriangleVB) { m_debugPosTriangleVB->Release(); m_debugPosTriangleVB = nullptr; }
+    if (m_debugSmokeCB) { m_debugSmokeCB->Release(); m_debugSmokeCB = nullptr; }
+    if (m_debugVertexColorPS) { m_debugVertexColorPS->Release(); m_debugVertexColorPS = nullptr; }
+    if (m_debugVertexColorVS) { m_debugVertexColorVS->Release(); m_debugVertexColorVS = nullptr; }
+    if (m_debugPositionOnlyVS) { m_debugPositionOnlyVS->Release(); m_debugPositionOnlyVS = nullptr; }
+    if (m_debugSolidPS) { m_debugSolidPS->Release(); m_debugSolidPS = nullptr; }
+    if (m_debugFullscreenVS) { m_debugFullscreenVS->Release(); m_debugFullscreenVS = nullptr; }
+
     m_executor.Shutdown();
     m_lightSystem.Shutdown();
+    m_gpuRegistry.ReleaseAll();
 
     {
-        std::vector<MaterialHandle> matHandles;
-        matStore.ForEach([&matHandles](MaterialHandle h, MaterialResource& mat)
-            {
-                if (mat.gpuConstantBuffer)
-                {
-                    static_cast<ID3D11Buffer*>(mat.gpuConstantBuffer)->Release();
-                    mat.gpuConstantBuffer = nullptr;
-                }
-                matHandles.push_back(h);
-            });
-        for (const MaterialHandle h : matHandles)
-            matStore.Release(h);
+        std::vector<MaterialHandle> handles;
+        // Material GPU resources released via m_gpuRegistry.ReleaseAll()
+        for (MaterialHandle h : handles) matStore.Release(h);
     }
-
     {
-        std::vector<ShaderHandle> shaderHandles;
-        shaderStore.ForEach([&shaderHandles](ShaderHandle h, GDXShaderResource& sh)
-            {
-                if (sh.vertexShader) { static_cast<ID3D11VertexShader*>(sh.vertexShader)->Release(); sh.vertexShader = nullptr; }
-                if (sh.pixelShader) { static_cast<ID3D11PixelShader*>(sh.pixelShader)->Release();  sh.pixelShader = nullptr; }
-                if (sh.inputLayout) { static_cast<ID3D11InputLayout*>(sh.inputLayout)->Release();  sh.inputLayout = nullptr; }
-                shaderHandles.push_back(h);
-            });
-        for (const ShaderHandle h : shaderHandles)
-            shaderStore.Release(h);
+        std::vector<ShaderHandle> handles;
+        // Shader GPU resources released via m_gpuRegistry.ReleaseAll()
+        for (ShaderHandle h : handles) shaderStore.Release(h);
     }
-
     {
-        // RT-Texturen sind durch DestroyRenderTarget() bereits aus texStore entfernt.
-        // Hier verbleiben nur reguläre Texturen (von Datei/ImageBuffer geladen) —
-        // jede besitzt ihren SRV vollständig.
-        std::vector<TextureHandle> texHandles;
-        texStore.ForEach([&texHandles](TextureHandle h, GDXTextureResource& tex)
-            {
-                if (tex.srv)
-                {
-                    static_cast<ID3D11ShaderResourceView*>(tex.srv)->Release();
-                    tex.srv = nullptr;
-                }
-                texHandles.push_back(h);
-            });
-        for (const TextureHandle h : texHandles)
-            texStore.Release(h);
+        std::vector<TextureHandle> handles;
+        // Texture GPU resources released via m_gpuRegistry.ReleaseAll()
+        for (TextureHandle h : handles) texStore.Release(h);
     }
 
-    if (m_blendStateAlpha) { m_blendStateAlpha->Release(); m_blendStateAlpha = nullptr; }
-    if (m_blendState) { m_blendState->Release(); m_blendState = nullptr; }
-    if (m_depthStateNoTest)  { m_depthStateNoTest->Release();  m_depthStateNoTest  = nullptr; }
-    if (m_depthStateNoWrite) { m_depthStateNoWrite->Release(); m_depthStateNoWrite = nullptr; }
-    if (m_depthStencilState) { m_depthStencilState->Release(); m_depthStencilState = nullptr; }
-    if (m_rasterizerState) { m_rasterizerState->Release();       m_rasterizerState = nullptr; }
-    if (m_rasterizerStateNoCull) { m_rasterizerStateNoCull->Release(); m_rasterizerStateNoCull = nullptr; }
+    if (m_blendStateAlpha)      { m_blendStateAlpha->Release();      m_blendStateAlpha = nullptr; }
+    if (m_blendState)           { m_blendState->Release();           m_blendState = nullptr; }
+    if (m_depthStateNoTest)     { m_depthStateNoTest->Release();     m_depthStateNoTest = nullptr; }
+    if (m_depthStateNoWrite)    { m_depthStateNoWrite->Release();    m_depthStateNoWrite = nullptr; }
+    if (m_depthStencilState)    { m_depthStencilState->Release();    m_depthStencilState = nullptr; }
+    if (m_rasterizerState)      { m_rasterizerState->Release();      m_rasterizerState = nullptr; }
+    if (m_rasterizerStateNoCull){ m_rasterizerStateNoCull->Release();m_rasterizerStateNoCull = nullptr; }
 
-    ReleasePostProcessSurface(m_postProcessPing);
-    ReleasePostProcessSurface(m_postProcessPong);
+    ReleaseAllPostProcessSurfacePairs();
     m_shadowMap.Release();
     m_samplerCache.Shutdown();
     m_meshUploader.reset();
@@ -1386,39 +1760,43 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
 
     // --- SRVs als Engine-Texturen registrieren ---
     GDXTextureResource texRes;
-    texRes.srv = srv;
-    texRes.width = width;
-    texRes.height = height;
-    texRes.ready = true;
-    texRes.isSRGB = (colorFormat == GDXTextureFormat::RGBA8_UNORM_SRGB);
-    texRes.format = colorFormat;
+    texRes.width    = width;
+    texRes.height   = height;
+    texRes.ready    = true;
+    texRes.isSRGB   = (colorFormat == GDXTextureFormat::RGBA8_UNORM_SRGB);
+    texRes.format   = colorFormat;
     texRes.semantic = GDXTextureSemantic::RenderTarget;
     texRes.debugName = debugName + L"_Tex";
     TextureHandle exposedTex = texStore.Add(std::move(texRes));
     if (exposedTex.IsValid())
+    {
+        srv->AddRef();
+        DX11TextureGpu texGpu{};
+        texGpu.srv = srv;
+        m_gpuRegistry.SetTexture(exposedTex, texGpu);
         m_executor.TransitionTexture(exposedTex, ResourceState::Unknown, ResourceState::ShaderRead, "CreateRenderTarget initial state");
+    }
 
     GDXTextureResource depthTexRes;
-    depthTexRes.srv = depthSrv;
-    depthTexRes.width = width;
-    depthTexRes.height = height;
-    depthTexRes.ready = true;
-    depthTexRes.isSRGB = false;
-    depthTexRes.format = GDXTextureFormat::Unknown;
+    depthTexRes.width    = width;
+    depthTexRes.height   = height;
+    depthTexRes.ready    = true;
+    depthTexRes.isSRGB   = false;
+    depthTexRes.format   = GDXTextureFormat::Unknown;
     depthTexRes.semantic = GDXTextureSemantic::Depth;
     depthTexRes.debugName = debugName + L"_Depth";
     TextureHandle exposedDepthTex = texStore.Add(std::move(depthTexRes));
     if (exposedDepthTex.IsValid())
+    {
+        depthSrv->AddRef();
+        DX11TextureGpu depthGpu{};
+        depthGpu.srv = depthSrv;
+        m_gpuRegistry.SetTexture(exposedDepthTex, depthGpu);
         m_executor.TransitionTexture(exposedDepthTex, ResourceState::Unknown, ResourceState::ShaderRead, "CreateRenderTarget depth initial state");
+    }
 
     // --- RenderTargetResource anlegen ---
     GDXRenderTargetResource rt;
-    rt.colorTexture = colorTex;
-    rt.rtv = rtv;
-    rt.srv = srv;
-    rt.depthTexture = depthTex;
-    rt.dsv = dsv;
-    rt.depthSrv = depthSrv;
     rt.width = width;
     rt.height = height;
     rt.ready = true;
@@ -1427,7 +1805,31 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
     rt.exposedDepthTexture = exposedDepthTex;
     rt.debugName = debugName;
 
-    return rtStore.Add(std::move(rt));
+    const RenderTargetHandle handle = rtStore.Add(std::move(rt));
+    if (handle.IsValid())
+    {
+        DX11RenderTargetGpu rtGpu{};
+        rtGpu.colorTexture = colorTex;
+        rtGpu.rtv = rtv;
+        rtGpu.srv = srv;
+        rtGpu.depthTexture = depthTex;
+        rtGpu.dsv = dsv;
+        rtGpu.depthSrv = depthSrv;
+        m_gpuRegistry.SetRenderTarget(handle, rtGpu);
+
+        //static uint64_t s_rtCreateCount = 0;
+        //Debug::Log(GDX_SRC_LOC, "RT create #", ++s_rtCreateCount,
+        //           " handle=", handle.value,
+        //           " name=", debugName.c_str(),
+        //           " size=", width, "x", height,
+        //           " fmt=", static_cast<uint32_t>(colorFormat),
+        //           " colorTex=", exposedTex.value,
+        //           " depthTex=", exposedDepthTex.value,
+        //           " rtAlive=", rtStore.AliveCount(),
+        //           " texAlive=", texStore.AliveCount(),
+        //           " trackedTexStates=", m_executor.DebugTrackedTextureStateCount());
+    }
+    return handle;
 }
 
 // ---------------------------------------------------------------------------
@@ -1440,47 +1842,44 @@ void GDXDX11RenderBackend::DestroyRenderTarget(
     ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore,
     ResourceStore<GDXTextureResource, TextureTag>& texStore)
 {
-    if (!handle.IsValid()) return;
+    if (auto it = m_rttPostProcessSurfaces.find(handle); it != m_rttPostProcessSurfaces.end())
+    {
+        ReleasePostProcessSurfacePair(it->second);
+        m_rttPostProcessSurfaces.erase(it);
+    }
+
+    m_gpuRegistry.ReleaseRenderTarget(handle);
 
     GDXRenderTargetResource* rt = rtStore.Get(handle);
-    if (!rt) return;
-    if (!rt->ready) return; // bereits zerstört — doppelter Aufruf ist ein Programmfehler
-
-    // exposedTexture: SRV-Zeiger in rt->srv und texRes->srv zeigen auf dasselbe
-    // COM-Objekt. Wir releasen genau einmal hier, nulcen beide Seiten, dann
-    // releasen den texStore-Slot. Shutdown().texStore.ForEach() sieht den Slot
-    // nicht mehr (alive=false) — kein Double-Release.
-    if (rt->exposedTexture.IsValid())
+    if (rt)
     {
-        GDXTextureResource* texRes = texStore.Get(rt->exposedTexture);
-        if (texRes && texRes->srv)
+        static uint64_t s_rtDestroyCount = 0;
+        Debug::LogWarning(GDX_SRC_LOC, "RT destroy #", ++s_rtDestroyCount,
+                          " handle=", handle.value,
+                          " colorTex=", rt->exposedTexture.value,
+                          " depthTex=", rt->exposedDepthTexture.value,
+                          " rtAliveBefore=", rtStore.AliveCount(),
+                          " texAliveBefore=", texStore.AliveCount(),
+                          " trackedTexStatesBefore=", m_executor.DebugTrackedTextureStateCount());
+
+        if (rt->exposedTexture.IsValid())
         {
-            static_cast<ID3D11ShaderResourceView*>(texRes->srv)->Release();
-            texRes->srv = nullptr;
+            m_executor.ForgetTextureState(rt->exposedTexture);
+            m_gpuRegistry.ReleaseTexture(rt->exposedTexture);
+            texStore.Remove(rt->exposedTexture);
         }
-        texStore.Release(rt->exposedTexture);
-        rt->exposedTexture = TextureHandle::Invalid();
-    }
-    rt->srv = nullptr; // COM-Release oben via texStore-Eintrag erfolgt
-
-    if (rt->exposedDepthTexture.IsValid())
-    {
-        GDXTextureResource* depthTexRes = texStore.Get(rt->exposedDepthTexture);
-        if (depthTexRes && depthTexRes->srv)
+        if (rt->exposedDepthTexture.IsValid())
         {
-            static_cast<ID3D11ShaderResourceView*>(depthTexRes->srv)->Release();
-            depthTexRes->srv = nullptr;
+            m_executor.ForgetTextureState(rt->exposedDepthTexture);
+            m_gpuRegistry.ReleaseTexture(rt->exposedDepthTexture);
+            texStore.Remove(rt->exposedDepthTexture);
         }
-        texStore.Release(rt->exposedDepthTexture);
-        rt->exposedDepthTexture = TextureHandle::Invalid();
     }
-    rt->depthSrv = nullptr; // COM-Release oben via texStore-Eintrag erfolgt
+    rtStore.Remove(handle);
 
-    if (rt->dsv) { static_cast<ID3D11DepthStencilView*>(rt->dsv)->Release();   rt->dsv = nullptr; }
-    if (rt->depthTexture) { static_cast<ID3D11Texture2D*>(rt->depthTexture)->Release(); rt->depthTexture = nullptr; }
-    if (rt->rtv) { static_cast<ID3D11RenderTargetView*>(rt->rtv)->Release();   rt->rtv = nullptr; }
-    if (rt->colorTexture) { static_cast<ID3D11Texture2D*>(rt->colorTexture)->Release(); rt->colorTexture = nullptr; }
-
-    rt->ready = false;
-    rtStore.Release(handle);
+    Debug::LogWarning(GDX_SRC_LOC, "RT destroy done handle=", handle.value,
+                      " rtAliveNow=", rtStore.AliveCount(),
+                      " texAliveNow=", texStore.AliveCount(),
+                      " rttSurfacePairs=", m_rttPostProcessSurfaces.size(),
+                      " trackedTexStatesNow=", m_executor.DebugTrackedTextureStateCount());
 }

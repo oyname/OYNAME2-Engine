@@ -135,6 +135,11 @@ public:
         return true;
     }
 
+    bool Remove(HandleType h)
+    {
+        return Release(h);
+    }
+
     // -----------------------------------------------------------------------
     // Iteration — alle lebenden Slots durchlaufen.
     // func(HandleType, T&) wird für jeden lebenden Slot aufgerufen.

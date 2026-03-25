@@ -75,12 +75,12 @@ namespace GDXVertexFormat
             e.requiredFlags = requiredFlags;
         };
 
-        if (flags & GDX_VERTEX_POSITION)     add(GDXVertexSemantic::Position,    0, 3, 4, GDX_VERTEX_POSITION);
-        if (flags & GDX_VERTEX_NORMAL)       add(GDXVertexSemantic::Normal,      0, 3, 4, GDX_VERTEX_NORMAL);
-        if (flags & GDX_VERTEX_COLOR)        add(GDXVertexSemantic::Color,       0, 4, 4, GDX_VERTEX_COLOR);
-        if (flags & GDX_VERTEX_TEX1)         add(GDXVertexSemantic::TexCoord0,   0, 2, 4, GDX_VERTEX_TEX1);
-        if (flags & GDX_VERTEX_TEX1)         add(GDXVertexSemantic::TexCoord1,   1, 2, 4, GDX_VERTEX_TEX1);
-        if (flags & GDX_VERTEX_TANGENT)      add(GDXVertexSemantic::Tangent,     0, 4, 4, GDX_VERTEX_TANGENT);
+        if (flags & GDX_VERTEX_POSITION)     add(GDXVertexSemantic::Position, 0, 3, 4, GDX_VERTEX_POSITION);
+        if (flags & GDX_VERTEX_NORMAL)       add(GDXVertexSemantic::Normal, 0, 3, 4, GDX_VERTEX_NORMAL);
+        if (flags & GDX_VERTEX_COLOR)        add(GDXVertexSemantic::Color, 0, 4, 4, GDX_VERTEX_COLOR);
+        if (flags & GDX_VERTEX_TEX1)         add(GDXVertexSemantic::TexCoord0, 0, 2, 4, GDX_VERTEX_TEX1);
+        if (flags & GDX_VERTEX_TEX2)         add(GDXVertexSemantic::TexCoord1, 1, 2, 4, GDX_VERTEX_TEX2);
+        if (flags & GDX_VERTEX_TANGENT)      add(GDXVertexSemantic::Tangent, 0, 4, 4, GDX_VERTEX_TANGENT);
         if (flags & GDX_VERTEX_BONE_INDICES) add(GDXVertexSemantic::BoneIndices, 0, 4, 4, GDX_VERTEX_BONE_INDICES);
         if (flags & GDX_VERTEX_BONE_WEIGHTS) add(GDXVertexSemantic::BoneWeights, 0, 4, 4, GDX_VERTEX_BONE_WEIGHTS);
         return desc;

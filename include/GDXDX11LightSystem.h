@@ -20,8 +20,8 @@ struct ID3D11Buffer;
 //   - Shadow-Licht (erstes Directional mit castShadows=true) wird
 //     automatisch erkannt und shadowViewProjMatrix berechnet
 //
-// cbuffer-Slot: b3 (VS+PS)
-// Kein Konflikt mit b0 (Entity), b1 (Frame), b2 (Material).
+// cbuffer-Slot: VS=b3, PS=b4.
+// PS b3 ist fuer TileInfo reserviert; der Legacy-Licht-Fallback liegt deshalb auf PS b4.
 // ---------------------------------------------------------------------------
 class GDXDX11LightSystem final
 {

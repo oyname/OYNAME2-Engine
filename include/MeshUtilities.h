@@ -94,12 +94,12 @@ namespace MeshUtilities
 
         for (const auto& p : s.positions)
         {
-            minV.x = std::min(minV.x, p.x);
-            minV.y = std::min(minV.y, p.y);
-            minV.z = std::min(minV.z, p.z);
-            maxV.x = std::max(maxV.x, p.x);
-            maxV.y = std::max(maxV.y, p.y);
-            maxV.z = std::max(maxV.z, p.z);
+            minV.x = (std::min)(minV.x, p.x);
+            minV.y = (std::min)(minV.y, p.y);
+            minV.z = (std::min)(minV.z, p.z);
+            maxV.x = (std::max)(maxV.x, p.x);
+            maxV.y = (std::max)(maxV.y, p.y);
+            maxV.z = (std::max)(maxV.z, p.z);
         }
 
         b.min = minV;
@@ -113,7 +113,7 @@ namespace MeshUtilities
             const float dx = p.x - b.center.x;
             const float dy = p.y - b.center.y;
             const float dz = p.z - b.center.z;
-            maxRadiusSq = std::max(maxRadiusSq, dx * dx + dy * dy + dz * dz);
+            maxRadiusSq = (std::max)(maxRadiusSq, dx * dx + dy * dy + dz * dz);
         }
         b.radius = std::sqrt(maxRadiusSq);
         b.valid = true;

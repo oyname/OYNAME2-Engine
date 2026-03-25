@@ -1,6 +1,7 @@
 #pragma once
 
 #include "IGDXRenderBackend.h"
+#include "GDXDX11GpuResources.h"
 #include "GDXIBLBaker.h"
 #include "IGDXDXGIContext.h"
 #include "GDXDX11RenderExecutor.h"
@@ -39,39 +40,51 @@ public:
                   ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
                   ResourceStore<GDXTextureResource, TextureTag>& texStore) override;
 
-    ShaderHandle CreateShader(ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-                              const std::wstring& vsFile,
-                              const std::wstring& psFile,
-                              uint32_t vertexFlags,
-                              const GDXShaderLayout& layout,
-                              const std::wstring& debugName) override;
+    
 
-    TextureHandle CreateTexture(ResourceStore<GDXTextureResource, TextureTag>& texStore,
-                                const std::wstring& filePath,
-                                bool isSRGB,
-                                TextureHandle fallbackOnFailure) override;
+    ShaderHandle UploadShader(
+        ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+        const ShaderSourceDesc& desc) override;
 
-    TextureHandle CreateTextureFromImage(ResourceStore<GDXTextureResource, TextureTag>& texStore,
-                                         const ImageBuffer& image,
-                                         bool isSRGB,
-                                         const std::wstring& debugName,
-                                         TextureHandle fallbackOnFailure) override;
+    TextureHandle UploadTexture(
+        ResourceStore<GDXTextureResource, TextureTag>& texStore,
+        const std::wstring& filePath,
+        bool isSRGB,
+        TextureHandle fallbackOnFailure) override;
 
-    bool UploadMesh(MeshAssetResource& mesh) override;
-    bool CreateMaterialGpu(MaterialResource& mat) override;
+    TextureHandle UploadTextureFromImage(
+        ResourceStore<GDXTextureResource, TextureTag>& texStore,
+        const ImageBuffer& image,
+        bool isSRGB,
+        const std::wstring& debugName,
+        TextureHandle fallbackOnFailure) override;
+
+    bool UploadMesh(MeshHandle handle, MeshAssetResource& mesh) override;
+    bool UploadMaterial(MaterialHandle handle, MaterialResource& mat) override;
 
     void ExtractLightData(Registry& registry, FrameData& frame) override;
     void UploadLightConstants(const FrameData& frame) override;
     void UpdateFrameConstants(const FrameData& frame) override;
 
-    void* ExecuteRenderPass(const BackendRenderPassDesc& passDesc,
-                            Registry& registry,
-                            const ICommandList& commandList,
-                            ResourceStore<MeshAssetResource, MeshTag>& meshStore,
-                            ResourceStore<MaterialResource, MaterialTag>& matStore,
-                            ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-                            ResourceStore<GDXTextureResource, TextureTag>& texStore,
-                            ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore = nullptr) override;
+    void ExecuteRenderPass(
+        const BackendRenderPassDesc& passDesc,
+        Registry& registry,
+        const ICommandList& opaqueList,
+        const ICommandList& alphaList,
+        ResourceStore<MeshAssetResource,       MeshTag>&        meshStore,
+        ResourceStore<MaterialResource,        MaterialTag>&     matStore,
+        ResourceStore<GDXShaderResource,       ShaderTag>&       shaderStore,
+        ResourceStore<GDXTextureResource,      TextureTag>&      texStore,
+        ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore) override;
+
+    void ExecuteShadowPass(
+        const BackendRenderPassDesc& passDesc,
+        Registry& registry,
+        const ICommandList& commandList,
+        ResourceStore<MeshAssetResource,  MeshTag>&      meshStore,
+        ResourceStore<MaterialResource,   MaterialTag>&  matStore,
+        ResourceStore<GDXShaderResource,  ShaderTag>&    shaderStore,
+        ResourceStore<GDXTextureResource, TextureTag>&   texStore) override;
 
 
     PostProcessHandle CreatePostProcessPass(ResourceStore<PostProcessResource, PostProcessTag>& postStore,
@@ -93,6 +106,11 @@ public:
     bool SupportsTextureFormat(GDXTextureFormat format) const override;
     const DefaultTextureSet& GetDefaultTextures() const override;
 
+    size_t DebugRttSurfacePairCount() const { return m_rttPostProcessSurfaces.size(); }
+    size_t DebugTrackedTextureStateCount() const { return m_executor.DebugTrackedTextureStateCount(); }
+    size_t DebugPipelineCacheSize() const noexcept { return m_executor.DebugPipelineCacheSize(); }
+    size_t DebugLayoutCacheSize() const noexcept { return m_executor.DebugLayoutCacheSize(); }
+
     // Render-Target-Erstellung (Offscreen RTT)
     RenderTargetHandle CreateRenderTarget(
         ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore,
@@ -107,31 +125,31 @@ public:
         ResourceStore<GDXTextureResource,      TextureTag>&      texStore) override;
 
     void SetShadowMapSize(uint32_t size) override { m_shadowMapSize = size; }
+    void SetDebugSmokeTestMode(GDXDebugSmokeTestMode mode) override { m_smokeTestMode = mode; }
     void LoadIBL(const wchar_t* hdrPath) override;
 
 private:
 
-    struct Dx11PostProcessRuntime
-    {
-        ID3D11VertexShader* vertexShader = nullptr;
-        ID3D11PixelShader* pixelShader = nullptr;
-        ID3D11Buffer* constantBuffer = nullptr;
-    };
-
-    struct Dx11PostProcessSurface
-    {
-        void* texture = nullptr;
-        void* rtv = nullptr;
-        void* srv = nullptr;
-        uint32_t width = 0u;
-        uint32_t height = 0u;
-        GDXTextureFormat format = GDXTextureFormat::Unknown;
-    };
-
     bool CreateRenderStates();
-    void ReleasePostProcessSurface(Dx11PostProcessSurface& surface);
-    bool EnsurePostProcessSurface(Dx11PostProcessSurface& surface, uint32_t width, uint32_t height, GDXTextureFormat format, const wchar_t* debugName);
+    struct DX11PostProcessSurfacePair
+    {
+        DX11PostProcessSurfaceGpu ping;
+        DX11PostProcessSurfaceGpu pong;
+    };
+
+    void ReleasePostProcessSurface(DX11PostProcessSurfaceGpu& surface);
+    void ReleasePostProcessSurfacePair(DX11PostProcessSurfacePair& pair);
+    void ReleaseAllPostProcessSurfacePairs();
+    DX11PostProcessSurfacePair& GetPostProcessSurfacePair(RenderTargetHandle outputTarget, bool outputToBackbuffer);
+    bool EnsurePostProcessSurface(DX11PostProcessSurfaceGpu& surface, uint32_t width, uint32_t height, GDXTextureFormat format, const wchar_t* debugName);
     bool InitDefaultTextures(ResourceStore<GDXTextureResource, TextureTag>& texStore);
+
+    bool EnsureDebugSmokeResources();
+    bool ExecuteDebugSmokePass(const FrameData* frame, ID3D11RenderTargetView* rtv, ID3D11DepthStencilView* dsv, float viewportWidth, float viewportHeight);
+    bool DrawDebugFullscreenTriangle(ID3D11RenderTargetView* rtv, float viewportWidth, float viewportHeight);
+    bool DrawDebugPositionTriangle(const FrameData* frame, ID3D11RenderTargetView* rtv, ID3D11DepthStencilView* dsv, float viewportWidth, float viewportHeight, bool withVertexColor);
+
+    GDXDebugSmokeTestMode m_smokeTestMode = GDXDebugSmokeTestMode::None;
 
     std::unique_ptr<IGDXDXGIContext> m_context;
     ID3D11Device*        m_device = nullptr;
@@ -146,7 +164,8 @@ private:
     ID3D11ComputeShader* m_tileLightCullCS = nullptr;
     uint32_t        m_shadowMapSize = 2048u;
 
-    DefaultTextureSet m_defaultTextures;
+    DefaultTextureSet     m_defaultTextures;
+    GDXDX11GpuRegistry    m_gpuRegistry;
 
     ID3D11RasterizerState*   m_rasterizerState       = nullptr;
     ID3D11RasterizerState*   m_rasterizerStateNoCull = nullptr;  // CULL_NONE für double-sided / alpha-test
@@ -155,6 +174,17 @@ private:
     ID3D11DepthStencilState* m_depthStateNoTest  = nullptr;
     ID3D11BlendState*        m_blendState        = nullptr;
     ID3D11BlendState*        m_blendStateAlpha   = nullptr;
+
+    ID3D11VertexShader* m_debugFullscreenVS   = nullptr;
+    ID3D11VertexShader* m_debugPositionOnlyVS = nullptr;
+    ID3D11VertexShader* m_debugVertexColorVS  = nullptr;
+    ID3D11PixelShader*  m_debugSolidPS        = nullptr;
+    ID3D11PixelShader*  m_debugVertexColorPS  = nullptr;
+    ID3D11InputLayout*  m_debugPosInputLayout = nullptr;
+    ID3D11InputLayout*  m_debugPosColorInputLayout = nullptr;
+    ID3D11Buffer*       m_debugSmokeCB        = nullptr;
+    ID3D11Buffer*       m_debugPosTriangleVB  = nullptr;
+    ID3D11Buffer*       m_debugPosColorTriangleVB = nullptr;
 
     // IBL-SRVs — werden von LoadIBL() aus GDXIBLData hochgeladen
     ID3D11ShaderResourceView* m_iblIrradiance  = nullptr;  // t17
@@ -165,7 +195,6 @@ private:
     int m_backbufferWidth  = 1;
     int m_backbufferHeight = 1;
 
-    Dx11PostProcessSurface m_postProcessPing;
-    Dx11PostProcessSurface m_postProcessPong;
-    std::unordered_map<PostProcessHandle, Dx11PostProcessRuntime> m_postProcessRuntime;
+    DX11PostProcessSurfacePair m_mainPostProcessSurfaces;
+    std::unordered_map<RenderTargetHandle, DX11PostProcessSurfacePair> m_rttPostProcessSurfaces;
 };

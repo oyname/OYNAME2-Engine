@@ -65,6 +65,7 @@ using ShaderHandle   = Handle<struct ShaderTag>;
 using TextureHandle  = Handle<struct TextureTag>;
 using RenderTargetHandle = Handle<struct RenderTargetTag>;
 using PostProcessHandle = Handle<struct PostProcessTag>;
+using GpuBufferHandle    = Handle<struct GpuBufferTag>;
 
 // Hash-Support für unordered_map.
 #include <functional>

@@ -65,10 +65,15 @@ namespace GDX
     bool DecomposeTRS(const Matrix4& m, Float3& outPos, Float4& outRot, Float3& outScale);
 }
 
+// ---------------------------------------------------------------------------
+// GIDX-Namespace-Alias — damit GDX::* auch als GIDX::* erreichbar ist.
+// Float3/Float4/Matrix4 sind global; hier in GIDX eingebunden damit
+// GIDX::Float3 etc. in App-Code kompiliert.
+// ---------------------------------------------------------------------------
 namespace GIDX
 {
-    using namespace GDX;   // alle GDX::* Funktionen
-    using ::Float2;        // globale Typen
+    using namespace GDX;
+    using ::Float2;
     using ::Float3;
     using ::Float4;
     using ::UInt4;

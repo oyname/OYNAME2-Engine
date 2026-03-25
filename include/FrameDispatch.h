@@ -1,5 +1,4 @@
 #pragma once
-
 // ---------------------------------------------------------------------------
 // FrameDispatch — per-Frame-Dispatch-Daten mit Heap-Lifetime
 //
@@ -18,10 +17,6 @@
 // Kein Wissen über GDXECSRenderer, DX11 oder sonstige Engine-Internals.
 // Nur Context-Structs und Funktions-Callbacks.
 // ---------------------------------------------------------------------------
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <windows.h>
-#include <d3d11.h>
 
 
 #include "RenderViewPrep.h"

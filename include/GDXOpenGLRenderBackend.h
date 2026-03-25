@@ -19,39 +19,44 @@ public:
                   ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
                   ResourceStore<GDXTextureResource, TextureTag>& texStore) override;
 
-    ShaderHandle CreateShader(ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-                              const std::wstring& vsFile,
-                              const std::wstring& psFile,
-                              uint32_t vertexFlags,
-                              const GDXShaderLayout& layout,
-                              const std::wstring& debugName) override;
+    ShaderHandle UploadShader(ResourceStore<GDXShaderResource, ShaderTag>& s, const ShaderSourceDesc& desc) override;
 
-    TextureHandle CreateTexture(ResourceStore<GDXTextureResource, TextureTag>& texStore,
+    TextureHandle UploadTexture(ResourceStore<GDXTextureResource, TextureTag>& texStore,
                                 const std::wstring& filePath,
                                 bool isSRGB,
                                 TextureHandle fallbackOnFailure) override;
 
-    TextureHandle CreateTextureFromImage(ResourceStore<GDXTextureResource, TextureTag>& texStore,
+    TextureHandle UploadTextureFromImage(ResourceStore<GDXTextureResource, TextureTag>& texStore,
                                          const ImageBuffer& image,
                                          bool isSRGB,
                                          const std::wstring& debugName,
                                          TextureHandle fallbackOnFailure) override;
 
-    bool UploadMesh(MeshAssetResource& mesh) override;
-    bool CreateMaterialGpu(MaterialResource& mat) override;
+    bool UploadMesh(MeshHandle handle, MeshAssetResource& mesh) override;
+    bool UploadMaterial(MaterialHandle handle, MaterialResource& mat) override;
 
     void ExtractLightData(Registry& registry, FrameData& frame) override;
     void UploadLightConstants(const FrameData& frame) override;
     void UpdateFrameConstants(const FrameData& frame) override;
 
-    void* ExecuteRenderPass(const BackendRenderPassDesc& passDesc,
+    void ExecuteShadowPass(
+        const BackendRenderPassDesc& passDesc,
+        Registry& registry,
+        const ICommandList& commandList,
+        ResourceStore<MeshAssetResource,  MeshTag>&      meshStore,
+        ResourceStore<MaterialResource,   MaterialTag>&  matStore,
+        ResourceStore<GDXShaderResource,  ShaderTag>&    shaderStore,
+        ResourceStore<GDXTextureResource, TextureTag>&   texStore) override {}
+
+    void ExecuteRenderPass(const BackendRenderPassDesc& passDesc,
                             Registry& registry,
-                            const ICommandList& commandList,
+                            const ICommandList& opaqueList,
+                            const ICommandList& alphaList,
                             ResourceStore<MeshAssetResource, MeshTag>& meshStore,
                             ResourceStore<MaterialResource, MaterialTag>& matStore,
                             ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
                             ResourceStore<GDXTextureResource, TextureTag>& texStore,
-                            ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore = nullptr) override;
+                            ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore) override;
 
     void SetShadowMapSize(uint32_t size) override;
 

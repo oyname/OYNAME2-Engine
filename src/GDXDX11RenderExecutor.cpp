@@ -1,4 +1,5 @@
 #include "GDXDX11RenderExecutor.h"
+#include "GDXDX11GpuResources.h"
 #include "GDXVertexFlags.h"
 #include "SubmeshData.h"
 #include "Core/Debug.h"
@@ -9,7 +10,7 @@
 #include <d3d11.h>
 #include "Core/GDXMath.h"
 #include "Core/GDXMathOps.h"
-#include "Core/GDXMathHelpers.h"
+#include "GDXMathHelpers.h"
 #include <cstring>
 
 // ---------------------------------------------------------------------------
@@ -51,22 +52,25 @@ static const char* ResourceStateName(ResourceState s)
 // ===========================================================================
 // GDXDX11MeshUploader
 // ===========================================================================
-bool GDXDX11MeshUploader::Upload(MeshAssetResource& mesh)
+bool GDXDX11MeshUploader::Upload(MeshHandle handle, MeshAssetResource& mesh, GDXDX11GpuRegistry& registry)
 {
     for (uint32_t i = 0; i < mesh.SubmeshCount(); ++i)
-        if (!UploadSubmesh(mesh.submeshes[i], mesh.gpuBuffers[i])) return false;
-    mesh.gpuReleaseCallback = &GDXDX11MeshUploader::Release;
+    {
+        DX11MeshGpu gpu;
+        if (!UploadSubmesh(mesh.submeshes[i], gpu)) return false;
+        registry.SetMesh(handle, i, std::move(gpu));
+    }
     mesh.gpuReady = true;
     return true;
 }
 
-bool GDXDX11MeshUploader::UploadSubmesh(SubmeshData& cpu, GpuMeshBuffer& gpu)
+bool GDXDX11MeshUploader::UploadSubmesh(SubmeshData& cpu, DX11MeshGpu& gpu)
 {
     if (cpu.VertexCount() == 0) return false;
     gpu.vertexCount = cpu.VertexCount();
 
     auto upload = [&](const void* data, uint32_t stride, uint32_t count,
-        void*& outBuf, uint32_t& outStride) -> bool
+        ID3D11Buffer*& outBuf, uint32_t& outStride) -> bool
         {
             auto* buf = CreateBuffer(m_device, data, stride * count, D3D11_BIND_VERTEX_BUFFER);
             if (!buf) return false;
@@ -123,14 +127,8 @@ bool GDXDX11MeshUploader::UploadSubmesh(SubmeshData& cpu, GpuMeshBuffer& gpu)
 
 void GDXDX11MeshUploader::Release(MeshAssetResource& mesh)
 {
-    for (auto& gpu : mesh.gpuBuffers)
-    {
-        auto sr = [](void*& p) { if (p) { static_cast<ID3D11Buffer*>(p)->Release(); p = nullptr; } };
-        sr(gpu.positionBuffer);  sr(gpu.normalBuffer);    sr(gpu.colorBuffer);
-        sr(gpu.uv1Buffer);       sr(gpu.uv2Buffer);       sr(gpu.tangentBuffer);
-        sr(gpu.boneIndexBuffer); sr(gpu.boneWeightBuffer); sr(gpu.indexBuffer);
-        gpu = GpuMeshBuffer{};
-    }
+    (void)mesh;
+    // GPU buffers are owned by GDXDX11GpuRegistry and released there.
 }
 
 // ===========================================================================
@@ -268,18 +266,18 @@ void GDXDX11RenderExecutor::BindEntityConstantsForShader(const GDXShaderResource
 // ---------------------------------------------------------------------------
 // BindVertexStreams — flag-gesteuert (wie OYNAME SurfaceGpuBuffer::Draw)
 // ---------------------------------------------------------------------------
-bool GDXDX11RenderExecutor::BindVertexStreams(const GpuMeshBuffer& gpu, uint32_t flags)
+bool GDXDX11RenderExecutor::BindVertexStreams(const DX11MeshGpu& gpu, uint32_t flags)
 {
     ID3D11Buffer* buffers[8] = {};
     UINT          strides[8] = {};
     UINT          offsets[8] = {};
     UINT          slot = 0u;
 
-    auto bind = [&](bool needed, void* buf, uint32_t stride) -> bool
+    auto bind = [&](bool needed, ID3D11Buffer* buf, uint32_t stride) -> bool
         {
             if (!needed) return true;
             if (!buf || stride == 0) return false;
-            buffers[slot] = static_cast<ID3D11Buffer*>(buf);
+            buffers[slot] = buf;
             strides[slot] = stride;
             offsets[slot] = 0u;
             ++slot;
@@ -292,7 +290,7 @@ bool GDXDX11RenderExecutor::BindVertexStreams(const GpuMeshBuffer& gpu, uint32_t
     if (!bind(flags & GDX_VERTEX_TEX1, gpu.uv1Buffer, gpu.strideUV1)) return false;
     if (flags & GDX_VERTEX_TEX2)
     {
-        void* uv1Buf = gpu.uv2Buffer ? gpu.uv2Buffer : gpu.uv1Buffer;
+        ID3D11Buffer* uv1Buf = gpu.uv2Buffer ? gpu.uv2Buffer : gpu.uv1Buffer;
         uint32_t uv1Str = gpu.uv2Buffer ? gpu.strideUV2 : gpu.strideUV1;
         if (!bind(true, uv1Buf, uv1Str)) return false;
     }
@@ -314,6 +312,7 @@ bool GDXDX11RenderExecutor::BindVertexStreams(const GpuMeshBuffer& gpu, uint32_t
 void GDXDX11RenderExecutor::BindTexturesForScope(
     const ResourceBindingSet& bindings,
     ResourceStore<GDXTextureResource, TextureTag>& texStore,
+    GDXDX11GpuRegistry& gpuRegistry,
     TextureHandle defaultWhite,
     TextureHandle defaultNormal,
     TextureHandle defaultORM,
@@ -354,8 +353,8 @@ void GDXDX11RenderExecutor::BindTexturesForScope(
             ValidateShaderReadState(texHandle, "BindTexturesForScope layout");
 
         ID3D11ShaderResourceView* srv = nullptr;
-        if (const GDXTextureResource* tex = texStore.Get(texHandle))
-            srv = static_cast<ID3D11ShaderResourceView*>(tex->srv);
+        if (DX11TextureGpu* gpu = gpuRegistry.GetTexture(texHandle))
+            srv = gpu->srv;
 
         const UINT slot = binding.bindingIndex;
         m_context->PSSetShaderResources(slot, 1, &srv);
@@ -365,16 +364,38 @@ void GDXDX11RenderExecutor::BindTexturesForScope(
 void GDXDX11RenderExecutor::BindConstantBuffersForScope(
     const ResourceBindingSet& bindings,
     const RenderCommand& cmd,
+    GDXDX11GpuRegistry& gpuRegistry,
     ResourceBindingScope scope,
     bool applyReceiveShadowOverride)
 {
     for (uint32_t i = 0; i < bindings.constantBufferCount; ++i)
     {
         const auto& binding = bindings.constantBuffers[i];
-        if (!binding.enabled || !binding.buffer || binding.scope != scope)
+        if (!binding.enabled || binding.scope != scope)
             continue;
 
-        ID3D11Buffer* cb = static_cast<ID3D11Buffer*>(binding.buffer);
+        ID3D11Buffer* cb = nullptr;
+        switch (binding.semantic)
+        {
+        case GDXShaderConstantBufferSlot::Frame:
+            cb = m_frameCB;
+            break;
+        case GDXShaderConstantBufferSlot::Entity:
+            cb = m_entityCB;
+            break;
+        case GDXShaderConstantBufferSlot::Skin:
+            cb = m_skinCB;
+            break;
+        case GDXShaderConstantBufferSlot::Material:
+            if (binding.materialHandle.IsValid())
+            {
+                if (DX11MaterialGpu* matGpu = gpuRegistry.GetMaterial(binding.materialHandle))
+                    cb = matGpu->constantBuffer;
+            }
+            break;
+        default:
+            break;
+        }
 
         if (binding.semantic == GDXShaderConstantBufferSlot::Material)
         {
@@ -392,11 +413,14 @@ void GDXDX11RenderExecutor::BindConstantBuffersForScope(
                 drawData.receiveShadows = (materialReceive && cmd.receiveShadows) ? 1.0f : 0.0f;
             }
 
-            D3D11_MAPPED_SUBRESOURCE m = {};
-            if (SUCCEEDED(m_context->Map(cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)))
+            if (cb)
             {
-                std::memcpy(m.pData, &drawData, sizeof(MaterialData));
-                m_context->Unmap(cb, 0);
+                D3D11_MAPPED_SUBRESOURCE m = {};
+                if (SUCCEEDED(m_context->Map(cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)))
+                {
+                    std::memcpy(m.pData, &drawData, sizeof(MaterialData));
+                    m_context->Unmap(cb, 0);
+                }
             }
         }
 
@@ -412,6 +436,7 @@ void GDXDX11RenderExecutor::BindConstantBuffersForScope(
 void GDXDX11RenderExecutor::ApplyScopedBindings(
     const RenderCommand& cmd,
     ResourceStore<GDXTextureResource, TextureTag>& texStore,
+    GDXDX11GpuRegistry& gpuRegistry,
     bool applyReceiveShadowOverride)
 {
     const ResourceBindingSet& bindings = cmd.GetEffectiveBindings();
@@ -434,7 +459,7 @@ void GDXDX11RenderExecutor::ApplyScopedBindings(
         const bool mustBindTextures = (!cacheHit) || (scope == ResourceBindingScope::Material);
         if (mustBindTextures)
         {
-            BindTexturesForScope(bindings, texStore, defaultWhiteTex, defaultNormalTex, defaultORMTex, defaultBlackTex, scope);
+            BindTexturesForScope(bindings, texStore, gpuRegistry, defaultWhiteTex, defaultNormalTex, defaultORMTex, defaultBlackTex, scope);
             // For non-Material cbuffers: only bind when cache misses.
         }
 
@@ -442,7 +467,7 @@ void GDXDX11RenderExecutor::ApplyScopedBindings(
         // always be uploaded — the scope key does NOT hash materialData contents,
         // only texture handles and buffer pointers.  A cache hit means the GPU-side
         // register binding is still valid, but the constant data may have changed.
-        BindConstantBuffersForScope(bindings, cmd, scope, receiveShadowOverride);
+        BindConstantBuffersForScope(bindings, cmd, gpuRegistry, scope, receiveShadowOverride);
 
         if (!cacheHit)
             m_bindingCache.MarkApplied(scope, scopeKey);
@@ -620,7 +645,8 @@ void GDXDX11RenderExecutor::ExecuteShadowQueue(
     ResourceStore<MeshAssetResource, MeshTag>& meshStore,
     ResourceStore<MaterialResource, MaterialTag>& matStore,
     ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-    ResourceStore<GDXTextureResource, TextureTag>& texStore)
+    ResourceStore<GDXTextureResource, TextureTag>& texStore,
+    GDXDX11GpuRegistry& gpuRegistry)
 {
     m_drawCalls = 0u;
     m_lastShader = ShaderHandle::Invalid();
@@ -634,17 +660,19 @@ void GDXDX11RenderExecutor::ExecuteShadowQueue(
         GDXShaderResource* shader = shaderStore.Get(cmd.shader);
 
         if (!mesh || !shader || !shader->IsValid())      continue;
-        if (cmd.submeshIndex >= mesh->gpuBuffers.size())         continue;
-
-        const GpuMeshBuffer& gpu = mesh->gpuBuffers[cmd.submeshIndex];
-        if (!gpu.ready || !gpu.positionBuffer)                   continue;
+        DX11MeshGpu* gpuPtr = gpuRegistry.GetMesh(cmd.mesh, cmd.submeshIndex);
+        if (!gpuPtr || !gpuPtr->ready || !gpuPtr->positionBuffer) continue;
+        DX11MeshGpu& gpu = *gpuPtr;
 
         if (cmd.shader != m_lastShader)
         {
             const GDXShaderLayout& layout = GetCachedShaderLayout(cmd.shader, *shader);
-            m_context->VSSetShader(static_cast<ID3D11VertexShader*>(shader->vertexShader), nullptr, 0);
-            m_context->PSSetShader(static_cast<ID3D11PixelShader*>(shader->pixelShader), nullptr, 0);
-            m_context->IASetInputLayout(static_cast<ID3D11InputLayout*>(shader->inputLayout));
+            if (DX11ShaderGpu* sg = gpuRegistry.GetShader(cmd.shader))
+            {
+                m_context->VSSetShader(sg->vertexShader, nullptr, 0);
+                m_context->PSSetShader(sg->pixelShader, nullptr, 0);
+                m_context->IASetInputLayout(sg->inputLayout);
+            }
             BindFrameConstantsForShader(*shader);
             for (uint32_t i = 0; i < layout.textureBindingCount; ++i)
             {
@@ -663,7 +691,7 @@ void GDXDX11RenderExecutor::ExecuteShadowQueue(
 
         BindSkinningPalette(registry, cmd, *shader);
 
-        ApplyScopedBindings(cmd, texStore, false);
+        ApplyScopedBindings(cmd, texStore, gpuRegistry, false);
 
         {
             Dx11EntityConstants ec = {};
@@ -685,7 +713,7 @@ void GDXDX11RenderExecutor::ExecuteShadowQueue(
 
         if (gpu.indexBuffer)
         {
-            m_context->IASetIndexBuffer(static_cast<ID3D11Buffer*>(gpu.indexBuffer), DXGI_FORMAT_R32_UINT, 0u);
+            m_context->IASetIndexBuffer(gpu.indexBuffer, DXGI_FORMAT_R32_UINT, 0u);
             m_context->DrawIndexed(gpu.indexCount, 0u, 0);
         }
         else
@@ -706,14 +734,15 @@ void GDXDX11RenderExecutor::ExecuteQueue(
     ResourceStore<MaterialResource, MaterialTag>& matStore,
     ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
     ResourceStore<GDXTextureResource, TextureTag>& texStore,
-    void* shadowSRV)
+    GDXDX11GpuRegistry& gpuRegistry,
+    ID3D11ShaderResourceView* shadowSRV)
 {
     m_drawCalls = 0u;
     m_lastShader = ShaderHandle::Invalid();
     m_lastAppliedPipelineKey = 0u;
     ResetScopeCaches();
 
-    ID3D11ShaderResourceView* globalShadowSRV = static_cast<ID3D11ShaderResourceView*>(shadowSRV);
+    ID3D11ShaderResourceView* globalShadowSRV = shadowSRV;
 
     const auto& commands = queue.GetCommands();
     for (const RenderCommand& cmd : commands)
@@ -722,18 +751,20 @@ void GDXDX11RenderExecutor::ExecuteQueue(
         GDXShaderResource* shader = shaderStore.Get(cmd.shader);
 
         if (!mesh || !shader || !shader->IsValid()) continue;
-        if (cmd.submeshIndex >= mesh->gpuBuffers.size())    continue;
-
-        const GpuMeshBuffer& gpu = mesh->gpuBuffers[cmd.submeshIndex];
-        if (!gpu.ready || !gpu.positionBuffer)              continue;
+        DX11MeshGpu* gpuPtr = gpuRegistry.GetMesh(cmd.mesh, cmd.submeshIndex);
+        if (!gpuPtr || !gpuPtr->ready || !gpuPtr->positionBuffer) continue;
+        DX11MeshGpu& gpu = *gpuPtr;
 
         // --- Shader (State-Batching) ----------------------------------------
         if (cmd.shader != m_lastShader)
         {
             const GDXShaderLayout& layout = GetCachedShaderLayout(cmd.shader, *shader);
-            m_context->VSSetShader(static_cast<ID3D11VertexShader*>(shader->vertexShader), nullptr, 0);
-            m_context->PSSetShader(static_cast<ID3D11PixelShader*> (shader->pixelShader), nullptr, 0);
-            m_context->IASetInputLayout(static_cast<ID3D11InputLayout*>(shader->inputLayout));
+            if (DX11ShaderGpu* sg = gpuRegistry.GetShader(cmd.shader))
+            {
+                m_context->VSSetShader(sg->vertexShader, nullptr, 0);
+                m_context->PSSetShader(sg->pixelShader, nullptr, 0);
+                m_context->IASetInputLayout(sg->inputLayout);
+            }
             BindFrameConstantsForShader(*shader);
             for (uint32_t i = 0; i < layout.textureBindingCount; ++i)
             {
@@ -752,7 +783,7 @@ void GDXDX11RenderExecutor::ExecuteQueue(
         BindSkinningPalette(registry, cmd, *shader);
 
         // --- Scoped Bindings -----------------------------------------------
-        ApplyScopedBindings(cmd, texStore, true);
+        ApplyScopedBindings(cmd, texStore, gpuRegistry, true);
 
         // --- Entity cbuffer b0 ----------------------------------------------
         {
@@ -785,7 +816,7 @@ void GDXDX11RenderExecutor::ExecuteQueue(
         if (gpu.indexBuffer)
         {
             m_context->IASetIndexBuffer(
-                static_cast<ID3D11Buffer*>(gpu.indexBuffer), DXGI_FORMAT_R32_UINT, 0u);
+                gpu.indexBuffer, DXGI_FORMAT_R32_UINT, 0u);
             m_context->DrawIndexed(gpu.indexCount, 0u, 0);
         }
         else
@@ -794,4 +825,27 @@ void GDXDX11RenderExecutor::ExecuteQueue(
         }
         ++m_drawCalls;
     }
+}
+
+
+void GDXDX11RenderExecutor::ForgetTextureState(TextureHandle texture)
+{
+    if (!texture.IsValid())
+        return;
+    m_textureStates.erase(texture);
+}
+
+size_t GDXDX11RenderExecutor::DebugTrackedTextureStateCount() const
+{
+    return m_textureStates.size();
+}
+
+size_t GDXDX11RenderExecutor::DebugPipelineCacheSize() const noexcept
+{
+    return m_pipelineCache.Size();
+}
+
+size_t GDXDX11RenderExecutor::DebugLayoutCacheSize() const noexcept
+{
+    return m_layoutCache.Size();
 }

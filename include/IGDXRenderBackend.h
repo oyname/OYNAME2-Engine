@@ -18,6 +18,86 @@
 #include <string>
 #include <vector>
 
+// ---------------------------------------------------------------------------
+// ShaderSourceDesc — backend-neutraler Shader-Deskriptor.
+//
+// sourceType bestimmt wie vertexCode/pixelCode interpretiert werden:
+//   HlslFilePath   DX11: vertexCode/pixelCode = UTF-16 encoded Dateipfad
+//   HlslSource     DX11: vertexCode/pixelCode = HLSL-Quelltext als UTF-8
+//   SpirvBinary    Vulkan: kompiliertes SPIR-V
+//   GlslSource     OpenGL: GLSL-Quelltext als UTF-8
+//
+// Das Frontend erzeugt den Desc, das Backend wertet sourceType aus.
+// ---------------------------------------------------------------------------
+enum class ShaderSourceType : uint8_t
+{
+    HlslFilePath  = 0,   // vertexCode/pixelCode = UTF-16 Dateipfad-Bytes
+    HlslSource    = 1,   // vertexCode/pixelCode = HLSL UTF-8 Quelltext
+    SpirvBinary   = 2,   // vertexCode/pixelCode = SPIR-V Binärdaten
+    GlslSource    = 3,   // vertexCode/pixelCode = GLSL UTF-8 Quelltext
+};
+
+
+
+enum class GDXDebugSmokeTestMode : uint8_t
+{
+    None = 0,
+    FullscreenTriangle = 1,
+    PositionOnlyTriangle = 2,
+    PositionColorTriangle = 3,
+};
+struct ShaderSourceDesc
+{
+    ShaderSourceType     sourceType   = ShaderSourceType::HlslFilePath;
+    std::vector<uint8_t> vertexCode;   // Quelltext, Pfad oder Binary
+    std::vector<uint8_t> pixelCode;
+    GDXShaderLayout      layout;
+    uint32_t             vertexFlags  = GDX_VERTEX_DEFAULT;
+    std::wstring         debugName;
+
+    // Hilfsmethode: Dateipfad-Desc aus wstring (DX11/HLSL Standardfall)
+    static ShaderSourceDesc FromHlslFiles(
+        const std::wstring& vsPath,
+        const std::wstring& psPath,
+        uint32_t            vertexFlags,
+        const GDXShaderLayout& layout,
+        const std::wstring& debugName = L"")
+    {
+        ShaderSourceDesc d;
+        d.sourceType  = ShaderSourceType::HlslFilePath;
+        d.vertexFlags = vertexFlags;
+        d.layout      = layout;
+        d.debugName   = debugName.empty() ? vsPath + L" / " + psPath : debugName;
+        d.vertexCode.assign(
+            reinterpret_cast<const uint8_t*>(vsPath.data()),
+            reinterpret_cast<const uint8_t*>(vsPath.data() + vsPath.size()));
+        d.pixelCode.assign(
+            reinterpret_cast<const uint8_t*>(psPath.data()),
+            reinterpret_cast<const uint8_t*>(psPath.data() + psPath.size()));
+        return d;
+    }
+
+    std::wstring VertexFilePath() const
+    {
+        return std::wstring(
+            reinterpret_cast<const wchar_t*>(vertexCode.data()),
+            vertexCode.size() / sizeof(wchar_t));
+    }
+
+    std::wstring PixelFilePath() const
+    {
+        return std::wstring(
+            reinterpret_cast<const wchar_t*>(pixelCode.data()),
+            pixelCode.size() / sizeof(wchar_t));
+    }
+};
+
+// ---------------------------------------------------------------------------
+// IGDXRenderBackend — backend-neutrales Render-Interface.
+//
+// Keine DX-Typen, keine void*-Rückgaben, keine HLSL-Pfade.
+// Alles DX11-Spezifische lebt in GDXDX11RenderBackend.
+// ---------------------------------------------------------------------------
 class IGDXRenderBackend
 {
 public:
@@ -31,109 +111,108 @@ public:
 
     virtual ~IGDXRenderBackend() = default;
 
+    // -- Lifecycle ----------------------------------------------------------
     virtual bool Initialize(ResourceStore<GDXTextureResource, TextureTag>& texStore) = 0;
     virtual void BeginFrame(const float clearColor[4]) = 0;
     virtual void Present(bool vsync) = 0;
     virtual void Resize(int w, int h) = 0;
-    virtual void Shutdown(ResourceStore<MaterialResource, MaterialTag>& matStore,
-                          ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-                          ResourceStore<GDXTextureResource, TextureTag>& texStore) = 0;
+    virtual void Shutdown(
+        ResourceStore<MaterialResource,   MaterialTag>&   matStore,
+        ResourceStore<GDXShaderResource,  ShaderTag>&     shaderStore,
+        ResourceStore<GDXTextureResource, TextureTag>&    texStore) = 0;
 
-    virtual ShaderHandle CreateShader(ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-                                      const std::wstring& vsFile,
-                                      const std::wstring& psFile,
-                                      uint32_t vertexFlags,
-                                      const GDXShaderLayout& layout,
-                                      const std::wstring& debugName) = 0;
+    // -- Resource upload ----------------------------------------------------
+    virtual ShaderHandle UploadShader(
+        ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+        const ShaderSourceDesc& desc) = 0;
 
-    virtual TextureHandle CreateTexture(ResourceStore<GDXTextureResource, TextureTag>& texStore,
-                                        const std::wstring& filePath,
-                                        bool isSRGB,
-                                        TextureHandle fallbackOnFailure) = 0;
+    virtual TextureHandle UploadTexture(
+        ResourceStore<GDXTextureResource, TextureTag>& texStore,
+        const std::wstring& filePath,
+        bool isSRGB,
+        TextureHandle fallbackOnFailure) = 0;
 
-    virtual TextureHandle CreateTextureFromImage(ResourceStore<GDXTextureResource, TextureTag>& texStore,
-                                                 const ImageBuffer& image,
-                                                 bool isSRGB,
-                                                 const std::wstring& debugName,
-                                                 TextureHandle fallbackOnFailure) = 0;
+    virtual TextureHandle UploadTextureFromImage(
+        ResourceStore<GDXTextureResource, TextureTag>& texStore,
+        const ImageBuffer& image,
+        bool isSRGB,
+        const std::wstring& debugName,
+        TextureHandle fallbackOnFailure) = 0;
 
-    virtual bool UploadMesh(MeshAssetResource& mesh) = 0;
-    virtual bool CreateMaterialGpu(MaterialResource& mat) = 0;
+    virtual bool UploadMesh(
+        MeshHandle handle,
+        MeshAssetResource& mesh) = 0;
 
-    // Scene extraction — CPU only, no GPU side effects.
-    // Fills frame.lights, lightCount, shadowViewProjMatrix, shadowCascade* etc.
-    // Called during frame-snapshot capture, before any backend execution.
+    virtual bool UploadMaterial(
+        MaterialHandle handle,
+        MaterialResource& mat) = 0;
+
+    // -- Frame constants ----------------------------------------------------
     virtual void ExtractLightData(Registry& registry, FrameData& frame) = 0;
-
-    // GPU upload of the already-filled FrameData light data to cbuffer b3.
-    // Called by the backend at the start of each view's execution, not during planning.
     virtual void UploadLightConstants(const FrameData& frame) = 0;
-
     virtual void UpdateFrameConstants(const FrameData& frame) = 0;
 
-    virtual void* ExecuteRenderPass(const BackendRenderPassDesc& passDesc,
-                                    Registry& registry,
-                                    const ICommandList& commandList,
-                                    ResourceStore<MeshAssetResource, MeshTag>& meshStore,
-                                    ResourceStore<MaterialResource, MaterialTag>& matStore,
-                                    ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-                                    ResourceStore<GDXTextureResource, TextureTag>& texStore,
-                                    ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore = nullptr) = 0;
+    // -- Render pass execution ----------------------------------------------
+    virtual void ExecuteRenderPass(
+        const BackendRenderPassDesc& passDesc,
+        Registry& registry,
+        const ICommandList& opaqueList,
+        const ICommandList& alphaList,
+        ResourceStore<MeshAssetResource,           MeshTag>&          meshStore,
+        ResourceStore<MaterialResource,            MaterialTag>&       matStore,
+        ResourceStore<GDXShaderResource,           ShaderTag>&         shaderStore,
+        ResourceStore<GDXTextureResource,          TextureTag>&        texStore,
+        ResourceStore<GDXRenderTargetResource,     RenderTargetTag>&   rtStore) = 0;
 
+    virtual void ExecuteShadowPass(
+        const BackendRenderPassDesc& passDesc,
+        Registry& registry,
+        const ICommandList& commandList,
+        ResourceStore<MeshAssetResource,           MeshTag>&          meshStore,
+        ResourceStore<MaterialResource,            MaterialTag>&       matStore,
+        ResourceStore<GDXShaderResource,           ShaderTag>&         shaderStore,
+        ResourceStore<GDXTextureResource,          TextureTag>&        texStore) = 0;
 
-    virtual PostProcessHandle CreatePostProcessPass(ResourceStore<PostProcessResource, PostProcessTag>& postStore,
-                                                    const PostProcessPassDesc& desc)
+    // -- Post processing ----------------------------------------------------
+    virtual PostProcessHandle CreatePostProcessPass(
+        ResourceStore<PostProcessResource, PostProcessTag>& postStore,
+        const PostProcessPassDesc& desc)
     {
         (void)postStore; (void)desc;
         return PostProcessHandle::Invalid();
     }
 
-    virtual bool UpdatePostProcessConstants(PostProcessResource& pass, const void* data, uint32_t size)
+    virtual bool UpdatePostProcessConstants(
+        PostProcessResource& pass, const void* data, uint32_t size)
     {
         (void)pass; (void)data; (void)size;
         return false;
     }
 
-
-    virtual void DestroyPostProcessPasses(ResourceStore<PostProcessResource, PostProcessTag>& postStore)
+    virtual void DestroyPostProcessPasses(
+        ResourceStore<PostProcessResource, PostProcessTag>& postStore)
     {
         (void)postStore;
     }
 
-    virtual bool ExecutePostProcessChain(const std::vector<PostProcessHandle>& orderedPasses,
-                                         ResourceStore<PostProcessResource, PostProcessTag>& postStore,
-                                         ResourceStore<GDXTextureResource, TextureTag>& texStore,
-                                         ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore,
-                                         const PostProcessExecutionInputs& execInputs,
-                                         float viewportWidth,
-                                         float viewportHeight,
-                                         RenderTargetHandle outputTarget = RenderTargetHandle::Invalid(),
-                                         bool outputToBackbuffer = true)
+    virtual bool ExecutePostProcessChain(
+        const std::vector<PostProcessHandle>& orderedPasses,
+        ResourceStore<PostProcessResource,        PostProcessTag>&    postStore,
+        ResourceStore<GDXTextureResource,         TextureTag>&        texStore,
+        ResourceStore<GDXRenderTargetResource,    RenderTargetTag>*   rtStore,
+        const PostProcessExecutionInputs& execInputs,
+        float viewportWidth,
+        float viewportHeight,
+        RenderTargetHandle outputTarget   = RenderTargetHandle::Invalid(),
+        bool               outputToBackbuffer = true)
     {
         (void)orderedPasses; (void)postStore; (void)texStore; (void)rtStore;
-        (void)execInputs; (void)viewportWidth; (void)viewportHeight;
-        (void)outputTarget; (void)outputToBackbuffer;
+        (void)execInputs;    (void)viewportWidth; (void)viewportHeight;
+        (void)outputTarget;  (void)outputToBackbuffer;
         return false;
     }
 
-    // IBL: HDR-Datei laden, Cubemaps backen und intern binden.
-    // Muss nach Initialize() aufgerufen werden.
-    // Wenn hdrPath leer oder Datei fehlt → neutraler Fallback.
-    virtual void LoadIBL(const wchar_t* hdrPath) = 0;
-
-    virtual uint32_t GetDrawCallCount() const = 0;
-    virtual bool HasShadowResources() const = 0;
-    virtual const DefaultTextureSet& GetDefaultTextures() const = 0;
-
-    // Prüft ob die GPU das angegebene Format als Render Target und Shader Resource unterstützt.
-    // Sollte vor CreateRenderTarget() aufgerufen werden wenn das Format optional ist (z.B. RGBA16_FLOAT für HDR).
-    virtual bool SupportsTextureFormat(GDXTextureFormat format) const { return true; }
-
-    virtual void SetShadowMapSize(uint32_t size)
-    {
-        (void)size;
-    }
-
+    // -- Render targets -----------------------------------------------------
     virtual RenderTargetHandle CreateRenderTarget(
         ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore,
         ResourceStore<GDXTextureResource,      TextureTag>&      texStore,
@@ -141,13 +220,11 @@ public:
         const std::wstring& debugName,
         GDXTextureFormat colorFormat = GDXTextureFormat::RGBA8_UNORM)
     {
-        (void)rtStore; (void)texStore;
-        (void)width;   (void)height; (void)debugName;
+        (void)rtStore; (void)texStore; (void)width; (void)height;
+        (void)debugName; (void)colorFormat;
         return RenderTargetHandle::Invalid();
     }
 
-    // Gibt native GPU-Ressourcen des RTs frei und entfernt exposedTexture aus texStore.
-    // Sicher bei Invalid-Handle. Muss vor jedem Überschreiben/Shutdown aufgerufen werden.
     virtual void DestroyRenderTarget(
         RenderTargetHandle handle,
         ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore,
@@ -155,4 +232,22 @@ public:
     {
         (void)handle; (void)rtStore; (void)texStore;
     }
+
+
+    virtual void ReleaseUnusedRenderTargetCaches(
+        const std::vector<RenderTargetHandle>& activeRenderTargets)
+    {
+        (void)activeRenderTargets;
+    }
+
+    // -- IBL / capabilities -------------------------------------------------
+    virtual void LoadIBL(const wchar_t* hdrPath) = 0;
+
+    virtual bool SupportsTextureFormat(GDXTextureFormat format) const { (void)format; return true; }
+    virtual void SetShadowMapSize(uint32_t size) { (void)size; }
+    virtual void SetDebugSmokeTestMode(GDXDebugSmokeTestMode mode) { (void)mode; }
+
+    virtual uint32_t GetDrawCallCount() const = 0;
+    virtual bool HasShadowResources() const = 0;
+    virtual const DefaultTextureSet& GetDefaultTextures() const = 0;
 };

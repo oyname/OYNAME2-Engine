@@ -79,7 +79,8 @@ bool GDXTextureLoader_LoadFromFile(
     ID3D11Device*        device,
     ID3D11DeviceContext* ctx,
     const wchar_t*       filename,
-    GDXTextureResource&  outResource,
+    DX11TextureGpu&      outGpu,
+    GDXTextureResource&  outMeta,
     bool                 isSRGB)
 {
     if (!device || !ctx || !filename) return false;
@@ -102,14 +103,14 @@ bool GDXTextureLoader_LoadFromFile(
 
     if (!ok) return false;
 
-    outResource.srv       = srv;
-    outResource.width     = static_cast<uint32_t>(w);
-    outResource.height    = static_cast<uint32_t>(h);
-    outResource.ready     = true;
-    outResource.isSRGB    = isSRGB;
-    outResource.format    = isSRGB ? GDXTextureFormat::RGBA8_UNORM_SRGB : GDXTextureFormat::RGBA8_UNORM;
-    outResource.semantic  = GDXTextureSemantic::Unknown;
-    outResource.debugName = filename;
+    outGpu.srv        = srv;
+    outMeta.width     = static_cast<uint32_t>(w);
+    outMeta.height    = static_cast<uint32_t>(h);
+    outMeta.ready     = true;
+    outMeta.isSRGB    = isSRGB;
+    outMeta.format    = isSRGB ? GDXTextureFormat::RGBA8_UNORM_SRGB : GDXTextureFormat::RGBA8_UNORM;
+    outMeta.semantic  = GDXTextureSemantic::Unknown;
+    outMeta.debugName = filename;
     return true;
 }
 
@@ -119,7 +120,8 @@ bool GDXTextureLoader_LoadFromFile(
 bool GDXTextureLoader_Create1x1(
     ID3D11Device* device,
     uint8_t r, uint8_t g, uint8_t b, uint8_t a,
-    GDXTextureResource& outResource)
+    DX11TextureGpu&     outGpu,
+    GDXTextureResource& outMeta)
 {
     if (!device) return false;
 
@@ -154,13 +156,13 @@ bool GDXTextureLoader_Create1x1(
 
     if (FAILED(hr) || !srv) return false;
 
-    outResource.srv    = srv;
-    outResource.width  = 1u;
-    outResource.height = 1u;
-    outResource.ready  = true;
-    outResource.isSRGB = false;
-    outResource.format = GDXTextureFormat::RGBA8_UNORM;
-    outResource.semantic = GDXTextureSemantic::Unknown;
+    outGpu.srv      = srv;
+    outMeta.width   = 1u;
+    outMeta.height  = 1u;
+    outMeta.ready   = true;
+    outMeta.isSRGB  = false;
+    outMeta.format  = GDXTextureFormat::RGBA8_UNORM;
+    outMeta.semantic = GDXTextureSemantic::Unknown;
     return true;
 }
 
@@ -172,7 +174,8 @@ bool GDXTextureLoader_CreateFromImage(
     ID3D11Device*        device,
     ID3D11DeviceContext* ctx,
     const ImageBuffer&   image,
-    GDXTextureResource&  outResource,
+    DX11TextureGpu&      outGpu,
+    GDXTextureResource&  outMeta,
     bool                 isSRGB,
     const wchar_t*       debugName)
 {
@@ -186,13 +189,13 @@ bool GDXTextureLoader_CreateFromImage(
     const bool ok = CreateSRVWithMips(device, ctx, image.Data(), static_cast<int>(image.Width()), static_cast<int>(image.Height()), fmt, &srv);
     if (!ok) return false;
 
-    outResource.srv = srv;
-    outResource.width = image.Width();
-    outResource.height = image.Height();
-    outResource.ready = true;
-    outResource.isSRGB = isSRGB;
-    outResource.format = isSRGB ? GDXTextureFormat::RGBA8_UNORM_SRGB : GDXTextureFormat::RGBA8_UNORM;
-    outResource.semantic = GDXTextureSemantic::Procedural;
-    outResource.debugName = debugName ? debugName : L"ImageBufferTexture";
+    outGpu.srv       = srv;
+    outMeta.width    = image.Width();
+    outMeta.height   = image.Height();
+    outMeta.ready    = true;
+    outMeta.isSRGB   = isSRGB;
+    outMeta.format   = isSRGB ? GDXTextureFormat::RGBA8_UNORM_SRGB : GDXTextureFormat::RGBA8_UNORM;
+    outMeta.semantic = GDXTextureSemantic::Procedural;
+    outMeta.debugName = debugName ? debugName : L"ImageBufferTexture";
     return true;
 }

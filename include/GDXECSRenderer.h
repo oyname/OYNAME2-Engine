@@ -166,6 +166,8 @@ public:
 
     const FrameStats& GetFrameStats() const { return m_stats; }
     void SetClearColor(float r, float g, float b, float a = 1.0f);
+    void SetDebugSmokeTestMode(GDXDebugSmokeTestMode mode);
+    GDXDebugSmokeTestMode GetDebugSmokeTestMode() const { return m_debugSmokeTestMode; }
 
     using DebugCullingOptions = GDXDebugCullingRenderer::Options;
     void SetDebugCullingOptions(const DebugCullingOptions& options) { m_debugCulling.options = options; }
@@ -249,6 +251,7 @@ private:
     TextureHandle m_defaultBlackTex;
 
     float      m_clearColor[4] = { 0.05f, 0.05f, 0.12f, 1.0f };
+    GDXDebugSmokeTestMode m_debugSmokeTestMode = GDXDebugSmokeTestMode::None;
     FrameStats m_stats;
     GDXDebugCullingRenderer m_debugCulling;
     DebugCamera             m_debugCamera;
