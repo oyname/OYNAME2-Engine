@@ -1,23 +1,26 @@
-# OYNAME2 Engine
+# KROM Engine
 
-OYNAME2 Engine is a custom C++ 3D engine currently built on **DirectX 11**.
+**KROM Engine** is a custom 3D engine written in **C++** and currently uses **DirectX 11** as its rendering backend.
 
-The engine is designed with a flexible architecture, so other graphics backends such as **OpenGL**, **DirectX 12**, and **Vulkan** can be integrated later. The structure also leaves room for future support of additional operating systems.
+The engine is built with a flexible architecture, allowing other graphics APIs such as **OpenGL**, **DirectX 12**, and **Vulkan** to be added later. The structure also leaves room for future support of additional operating systems.
 
-The project follows a simple idea: **The engine is under continuous development.**
+The project follows a simple principle:
+
+**KROM Engine is under continuous development.**
 
 ## Requirements
 
-- Visual Studio 2022
-- Windows SDK 10.0+
-- C++17
-- DirectX 11
+- **Visual Studio 2022**
+- **Windows SDK 10.0+**
+- **C++17**
+- **DirectX 11**
 
-## Download the Source Code
+## Get the Source Code
 
 The source code is available on GitHub.
 
 ### Option 1: Download as ZIP
+
 1. Open the GitHub repository.
 2. Click **Code**.
 3. Select **Download ZIP**.
@@ -26,27 +29,28 @@ The source code is available on GitHub.
 ### Option 2: Clone with Git
 
 ```bash
-git clone https://github.com/oyname/OYNAME2-Engine.git
+git clone https://github.com/oyname/Krom-Engine.git
 ```
 
 ## Open the Project in Visual Studio
 
-The repository already contains a Visual Studio solution file:
+The repository already includes a Visual Studio solution file:
 
-`ProjectGIDX.sln`
+`KROMEngine.sln`
 
-Steps:
+### Steps
+
 1. Open **Visual Studio 2022**.
 2. Select **Open a project or solution**.
 3. Browse to the downloaded engine folder.
-4. Open `ProjectGIDX.sln`.
+4. Open `KROMEngine.sln`.
 5. Build the solution.
 
-## Test the 3D Engine with Examples
+## Test the Engine with Example Files
 
-On the official OYNAME website, you can also download example files to test the 3D engine.
+You can also download example files from the official **OYNAME** website to test whether the engine builds and runs correctly.
 
 Main page:  
-https://oyname.github.io/index.html
+`https://oyname.github.io/index.html`
 
-These example files can be used to check whether the engine builds and runs correctly.
+These example files can be used to verify that the engine is working as expected.
