@@ -14,7 +14,7 @@
 #include <cstdint>
 #include "Core/GDXMath.h"
 
-namespace GIDX
+namespace KROM
 {
     // -----------------------------------------------------------------------
     // CollisionLayerMask — 32-Bit-Bitfeld. Jedes Bit repräsentiert einen
@@ -128,4 +128,4 @@ namespace GIDX
         CollisionBodyID    ignoreBody  = {};                    // optional: diesen Body überspringen
     };
 
-} // namespace GIDX
+} // namespace KROM

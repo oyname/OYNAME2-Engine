@@ -17,7 +17,7 @@
 #include "CollisionTypes.h"
 #include "CollisionShapes.h"
 
-namespace GIDX
+namespace KROM
 {
     // -----------------------------------------------------------------------
     // CollisionBodyDesc — Initialisierungsparameter für CreateBody().
@@ -64,4 +64,4 @@ namespace GIDX
         bool               active      = true;
     };
 
-} // namespace GIDX
+} // namespace KROM

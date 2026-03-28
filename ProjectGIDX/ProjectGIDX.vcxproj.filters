@@ -201,9 +201,6 @@
     <ClCompile Include="..\src\GDXShadowMap.cpp">
       <Filter>Renderer\Lighting</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\GDXTileLightCuller.cpp">
-      <Filter>Renderer\Lighting</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\GDXWin32Platform.cpp">
       <Filter>Platform\Win32</Filter>
     </ClCompile>
@@ -255,9 +252,6 @@
     <ClCompile Include="..\src\JobSystem.cpp">
       <Filter>Core\Jobs</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\GIDXEngine.cpp">
-      <Filter>Core\Engine</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\GDXTextureLoader.cpp">
       <Filter>Assets\Texture</Filter>
     </ClCompile>
@@ -270,13 +264,19 @@
     <ClCompile Include="..\src\GDXMathOps.cpp">
       <Filter>Math\Algorithms</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\KROMEngine.cpp">
+      <Filter>Core\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\samples\NeonTimeBuffer.cpp">
+      <Filter>Samples</Filter>
+    </ClCompile>
+    <ClCompile Include="..\samples\test_scene_rtt_hotkeys.cpp">
+      <Filter>Samples</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\third_party\stb_image.h">
       <Filter>ThirdParty</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\MeshProcessor.h">
-      <Filter>Assets\Mesh</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXVertexFlags.h">
       <Filter>RHI\Common</Filter>
@@ -343,12 +343,6 @@
     </ClInclude>
     <ClInclude Include="..\include\GDXTextureSlots.h">
       <Filter>RHI\Common</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\GDXTileLightCuller.h">
-      <Filter>Renderer\Lighting</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\IGDXLightSystem.h">
-      <Filter>Renderer\Lighting</Filter>
     </ClInclude>
     <ClInclude Include="..\include\RenderFramePipeline.h">
       <Filter>Renderer\Frame</Filter>
@@ -479,19 +473,10 @@
     <ClInclude Include="..\include\SystemScheduler.h">
       <Filter>Core\Jobs</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\JobSystem.h">
-      <Filter>Core\Jobs</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\Debug.h">
-      <Filter>Core\Debug</Filter>
-    </ClInclude>
     <ClInclude Include="..\include\GDXFrameTimer.h">
       <Filter>Core\Timing</Filter>
     </ClInclude>
     <ClInclude Include="..\include\gidx.h">
-      <Filter>Core\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\GIDXEngine.h">
       <Filter>Core\Engine</Filter>
     </ClInclude>
     <ClInclude Include="..\include\MaterialResource.h">
@@ -530,23 +515,8 @@
     <ClInclude Include="..\include\GDXTextureResource.h">
       <Filter>Assets\Texture</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\ECSTypes.h">
-      <Filter>ECS\Core</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\ComponentPool.h">
-      <Filter>ECS\Core</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\Registry.h">
-      <Filter>ECS\Core</Filter>
-    </ClInclude>
     <ClInclude Include="..\include\Components.h">
       <Filter>ECS\Components</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\TransformSystem.h">
-      <Filter>ECS\System</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\HierarchySystem.h">
-      <Filter>ECS\System</Filter>
     </ClInclude>
     <ClInclude Include="..\include\Core\GDXMath.h">
       <Filter>Math\Types</Filter>
@@ -559,6 +529,21 @@
     </ClInclude>
     <ClInclude Include="..\include\GDXMathHelpers.h">
       <Filter>Math\Helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\ECS\ECSTypes.h">
+      <Filter>ECS\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\ECS\Registry.h">
+      <Filter>ECS\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Core\Debug.h">
+      <Filter>Core\Debug</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\KROMEngine.h">
+      <Filter>Core\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\samples\NeonTimeBuffer.h">
+      <Filter>Samples</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -574,9 +559,6 @@
     <Text Include="..\shader\PostProcessFullscreenVS.hlsl">
       <Filter>Shaders\PostProcess</Filter>
     </Text>
-    <Text Include="..\shader\PostProcessTintPS.hlsl">
-      <Filter>Shaders\PostProcess</Filter>
-    </Text>
     <Text Include="..\shader\ShadowPixelShader.hlsl">
       <Filter>Shaders</Filter>
     </Text>
@@ -584,15 +566,6 @@
       <Filter>Shaders</Filter>
     </Text>
     <Text Include="..\shader\ShadowVertexShader.hlsl">
-      <Filter>Shaders</Filter>
-    </Text>
-    <Text Include="..\shader\ShadowVertexShader_AlphaTest.hlsl">
-      <Filter>Shaders</Filter>
-    </Text>
-    <Text Include="..\shader\ShadowVertexShader_Skinned.hlsl">
-      <Filter>Shaders</Filter>
-    </Text>
-    <Text Include="..\shader\ShadowVertexShader_SkinnedAlphaTest.hlsl">
       <Filter>Shaders</Filter>
     </Text>
     <Text Include="..\shader\VertexShader.hlsl">
@@ -604,23 +577,44 @@
     <Text Include="..\shader\VertexShader_SkinnedVertexColor.hlsl">
       <Filter>Shaders</Filter>
     </Text>
-    <Text Include="..\shader\VertexShader_VertexColor.hlsl">
-      <Filter>Shaders</Filter>
-    </Text>
     <Text Include="..\shader\VertexShaderNeon.hlsl">
       <Filter>Shaders\Custom</Filter>
     </Text>
     <Text Include="..\shader\PixelShaderNeon.hlsl">
       <Filter>Shaders\Custom</Filter>
     </Text>
-    <Text Include="..\shader\PixelShader_VertexColor.hlsl">
-      <Filter>Shaders</Filter>
-    </Text>
     <Text Include="..\shader\PixelShader.hlsl">
       <Filter>Shaders</Filter>
     </Text>
     <Text Include="..\shader\PostProcessFXAAPS.hlsl">
+      <Filter>Shaders\PostProcess</Filter>
+    </Text>
+    <Text Include="..\shader\PostProcessDepthDebugPS.hlsl">
+      <Filter>Shaders\PostProcess</Filter>
+    </Text>
+    <Text Include="..\shader\PostProcessDepthFogPS.hlsl">
+      <Filter>Shaders\PostProcess</Filter>
+    </Text>
+    <Text Include="..\shader\PostProcessToneMappingPS.hlsl">
+      <Filter>Shaders\PostProcess</Filter>
+    </Text>
+    <Text Include="..\shader\TileLightCullCS.hlsl">
       <Filter>Shaders</Filter>
+    </Text>
+    <Text Include="..\shader\PostProcessGTAOBlurPS.hlsl">
+      <Filter>Shaders\PostProcess</Filter>
+    </Text>
+    <Text Include="..\shader\PostProcessGTAOCompositePS.hlsl">
+      <Filter>Shaders\PostProcess</Filter>
+    </Text>
+    <Text Include="..\shader\PostProcessGTAOPS.hlsl">
+      <Filter>Shaders\PostProcess</Filter>
+    </Text>
+    <Text Include="..\shader\PostProcessNormalDebugPS.hlsl">
+      <Filter>Shaders\PostProcess</Filter>
+    </Text>
+    <Text Include="..\shader\PostProcessEdgeDebugPS.hlsl">
+      <Filter>Shaders\PostProcess</Filter>
     </Text>
   </ItemGroup>
 </Project>

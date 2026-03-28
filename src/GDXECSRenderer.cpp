@@ -1,5 +1,6 @@
 #include "GDXECSRenderer.h"
 #include "GDXDX11RenderBackend.h"
+#include "GDXDX11ShaderCompiler.h"
 #include "CameraSystem.h"
 #include "GDXRenderTargetResource.h"
 #include "Core/Debug.h"
@@ -245,7 +246,8 @@ bool GDXECSRenderer::Initialize()
     m_backend->LoadIBL(nullptr);
 
     m_shadowResourcesAvailable = m_backend->HasShadowResources();
-    m_backend->SetDebugSmokeTestMode(m_debugSmokeTestMode);
+    m_freeCamera.AttachRegistry(&m_registry);
+    PrewarmPostProcessShaders();
     m_initialized = true;
     return true;
 }
@@ -257,6 +259,132 @@ bool GDXECSRenderer::LoadDefaultShaders()
     m_defaultShader = m_shaderCache.DefaultShader();
     m_shadowShader  = m_shaderCache.ShadowShader();
     return true;
+}
+
+
+bool GDXECSRenderer::EnsureGTAOPassesCreated()
+{
+    if (!m_gtaoPass.IsValid())
+    {
+        PostProcessPassDesc desc{};
+        desc.vertexShaderFile            = L"PostProcessFullscreenVS.hlsl";
+        desc.pixelShaderFile             = L"PostProcessGTAOPS.hlsl";
+        desc.debugName                   = L"GTAO";
+        desc.constantBufferBytes         = sizeof(GTAOParams);
+        desc.enabled                     = false;
+        desc.captureSceneColorAsOriginal = true;
+        desc.inputSlots = {
+            { L"SceneDepth",   0u, PostProcessInputSemantic::SceneDepth,   true },
+            { L"SceneNormals", 1u, PostProcessInputSemantic::SceneNormals, true }
+        };
+        m_gtaoPass = CreatePostProcessPass(desc);
+    }
+    if (!m_gtaoBlurPass.IsValid())
+    {
+        PostProcessPassDesc desc{};
+        desc.vertexShaderFile    = L"PostProcessFullscreenVS.hlsl";
+        desc.pixelShaderFile     = L"PostProcessGTAOBlurPS.hlsl";
+        desc.debugName           = L"GTAOBlur";
+        desc.constantBufferBytes = sizeof(GTAOBlurParams);
+        desc.enabled             = false;
+        desc.inputSlots = {
+            { L"SceneColor",   0u, PostProcessInputSemantic::SceneColor,   true },
+            { L"SceneDepth",   1u, PostProcessInputSemantic::SceneDepth,   true },
+            { L"SceneNormals", 2u, PostProcessInputSemantic::SceneNormals, true }
+        };
+        m_gtaoBlurPass = CreatePostProcessPass(desc);
+    }
+    if (!m_gtaoCompositePass.IsValid())
+    {
+        PostProcessPassDesc desc{};
+        desc.vertexShaderFile    = L"PostProcessFullscreenVS.hlsl";
+        desc.pixelShaderFile     = L"PostProcessGTAOCompositePS.hlsl";
+        desc.debugName           = L"GTAOComposite";
+        desc.constantBufferBytes = sizeof(GTAOCompositeParams);
+        desc.enabled             = false;
+        desc.inputSlots = {
+            { L"SceneColor",         0u, PostProcessInputSemantic::SceneColor,         true },
+            { L"OriginalSceneColor", 1u, PostProcessInputSemantic::OriginalSceneColor, true }
+        };
+        m_gtaoCompositePass = CreatePostProcessPass(desc);
+    }
+    return m_gtaoPass.IsValid() && m_gtaoBlurPass.IsValid() && m_gtaoCompositePass.IsValid();
+}
+
+void GDXECSRenderer::PrewarmPostProcessShaders()
+{
+    // Kompiliert alle Post-Process-Shader einmalig in Initialize,
+    // damit kein Tastendruck spaeter einen Compile-Stall ausloest.
+    // Alle Passes werden disabled erstellt.
+
+    if (!m_toneMappingPass.IsValid())
+    {
+        PostProcessPassDesc desc{};
+        desc.vertexShaderFile    = L"PostProcessFullscreenVS.hlsl";
+        desc.pixelShaderFile     = L"PostProcessToneMappingPS.hlsl";
+        desc.debugName           = L"ToneMapping_prewarm";
+        desc.constantBufferBytes = sizeof(ToneMappingParams);
+        desc.enabled             = false;
+        m_toneMappingPass = CreatePostProcessPass(desc);
+    }
+    if (!m_fxaaPass.IsValid())
+    {
+        PostProcessPassDesc desc{};
+        desc.vertexShaderFile    = L"PostProcessFullscreenVS.hlsl";
+        desc.pixelShaderFile     = L"PostProcessFXAAPS.hlsl";
+        desc.debugName           = L"FXAA_prewarm";
+        desc.constantBufferBytes = sizeof(FXAAParams);
+        desc.enabled             = false;
+        m_fxaaPass = CreatePostProcessPass(desc);
+    }
+    if (!m_bloomBrightPass.IsValid())
+    {
+        PostProcessPassDesc desc{};
+        desc.vertexShaderFile    = L"PostProcessFullscreenVS.hlsl";
+        desc.pixelShaderFile     = L"PostProcessBloomBrightPS.hlsl";
+        desc.debugName           = L"BloomBright_prewarm";
+        desc.constantBufferBytes = sizeof(BloomBrightParams);
+        desc.enabled             = false;
+        desc.inputSlots = {{ L"SceneColor", 0u, PostProcessInputSemantic::SceneColor, true }};
+        m_bloomBrightPass = CreatePostProcessPass(desc);
+    }
+    if (!m_bloomBlurHPass.IsValid())
+    {
+        PostProcessPassDesc desc{};
+        desc.vertexShaderFile    = L"PostProcessFullscreenVS.hlsl";
+        desc.pixelShaderFile     = L"PostProcessBloomBlurPS.hlsl";
+        desc.debugName           = L"BloomBlurH_prewarm";
+        desc.constantBufferBytes = sizeof(BloomBlurParams);
+        desc.enabled             = false;
+        desc.inputSlots = {{ L"SceneColor", 0u, PostProcessInputSemantic::SceneColor, true }};
+        m_bloomBlurHPass = CreatePostProcessPass(desc);
+    }
+    if (!m_bloomBlurVPass.IsValid())
+    {
+        PostProcessPassDesc desc{};
+        desc.vertexShaderFile    = L"PostProcessFullscreenVS.hlsl";
+        desc.pixelShaderFile     = L"PostProcessBloomBlurPS.hlsl";
+        desc.debugName           = L"BloomBlurV_prewarm";
+        desc.constantBufferBytes = sizeof(BloomBlurParams);
+        desc.enabled             = false;
+        desc.inputSlots = {{ L"SceneColor", 0u, PostProcessInputSemantic::SceneColor, true }};
+        m_bloomBlurVPass = CreatePostProcessPass(desc);
+    }
+    if (!m_bloomCompositePass.IsValid())
+    {
+        PostProcessPassDesc desc{};
+        desc.vertexShaderFile    = L"PostProcessFullscreenVS.hlsl";
+        desc.pixelShaderFile     = L"PostProcessBloomCompositePS.hlsl";
+        desc.debugName           = L"BloomComposite_prewarm";
+        desc.constantBufferBytes = sizeof(BloomCompositeParams);
+        desc.enabled             = false;
+        desc.inputSlots = {
+            { L"SceneColor",         0u, PostProcessInputSemantic::SceneColor,         true },
+            { L"OriginalSceneColor", 1u, PostProcessInputSemantic::OriginalSceneColor, true }
+        };
+        m_bloomCompositePass = CreatePostProcessPass(desc);
+    }
+    EnsureGTAOPassesCreated();
 }
 
 ShaderHandle GDXECSRenderer::CreateShader(
@@ -415,6 +543,10 @@ void GDXECSRenderer::ClearPostProcessPasses()
     m_bloomBlurVPass     = PostProcessHandle::Invalid();
     m_bloomCompositePass = PostProcessHandle::Invalid();
     m_depthDebugPass     = PostProcessHandle::Invalid();
+    m_normalDebugPass    = PostProcessHandle::Invalid();
+    m_gtaoPass           = PostProcessHandle::Invalid();
+    m_gtaoBlurPass       = PostProcessHandle::Invalid();
+    m_gtaoCompositePass  = PostProcessHandle::Invalid();
     m_depthFogTestPass   = PostProcessHandle::Invalid();
     m_toneMappingPass    = PostProcessHandle::Invalid();
     m_toneMappingMode    = ToneMappingMode::None;
@@ -436,6 +568,10 @@ void GDXECSRenderer::SetBloom(int viewportW, int viewportH,
         d.pixelShaderFile     = L"PostProcessBloomBrightPS.hlsl";
         d.debugName           = L"BloomBright";
         d.constantBufferBytes = sizeof(BloomBrightParams);
+        d.captureSceneColorAsOriginal = true;
+        d.inputSlots = {
+            { L"SceneColor", 0u, PostProcessInputSemantic::SceneColor, true }
+        };
         m_bloomBrightPass     = CreatePostProcessPass(d);
     }
     if (!m_bloomBlurHPass.IsValid())
@@ -445,6 +581,9 @@ void GDXECSRenderer::SetBloom(int viewportW, int viewportH,
         d.pixelShaderFile     = L"PostProcessBloomBlurPS.hlsl";
         d.debugName           = L"BloomBlurH";
         d.constantBufferBytes = sizeof(BloomBlurParams);
+        d.inputSlots = {
+            { L"SceneColor", 0u, PostProcessInputSemantic::SceneColor, true }
+        };
         m_bloomBlurHPass      = CreatePostProcessPass(d);
     }
     if (!m_bloomBlurVPass.IsValid())
@@ -454,6 +593,9 @@ void GDXECSRenderer::SetBloom(int viewportW, int viewportH,
         d.pixelShaderFile     = L"PostProcessBloomBlurPS.hlsl";
         d.debugName           = L"BloomBlurV";
         d.constantBufferBytes = sizeof(BloomBlurParams);
+        d.inputSlots = {
+            { L"SceneColor", 0u, PostProcessInputSemantic::SceneColor, true }
+        };
         m_bloomBlurVPass      = CreatePostProcessPass(d);
     }
     if (!m_bloomCompositePass.IsValid())
@@ -463,6 +605,10 @@ void GDXECSRenderer::SetBloom(int viewportW, int viewportH,
         d.pixelShaderFile     = L"PostProcessBloomCompositePS.hlsl";
         d.debugName           = L"BloomComposite";
         d.constantBufferBytes = sizeof(BloomCompositeParams);
+        d.inputSlots = {
+            { L"SceneColor",         0u, PostProcessInputSemantic::SceneColor,         true },
+            { L"OriginalSceneColor", 1u, PostProcessInputSemantic::OriginalSceneColor, true }
+        };
         m_bloomCompositePass  = CreatePostProcessPass(d);
     }
 
@@ -502,6 +648,32 @@ void GDXECSRenderer::SetBloom(int viewportW, int viewportH,
     comp.sceneStrength = 1.0f;
     SetPostProcessEnabled(m_bloomCompositePass, true);
     SetPostProcessConstants(m_bloomCompositePass, &comp, sizeof(comp));
+
+    auto& order = m_postProcessPassOrder;
+    auto removeHandle = [&order](PostProcessHandle h)
+    {
+        auto it = std::find(order.begin(), order.end(), h);
+        if (it != order.end()) order.erase(it);
+    };
+    removeHandle(m_bloomBrightPass);
+    removeHandle(m_bloomBlurHPass);
+    removeHandle(m_bloomBlurVPass);
+    removeHandle(m_bloomCompositePass);
+
+    auto insertPos = order.begin();
+    auto tmIt   = std::find(order.begin(), order.end(), m_toneMappingPass);
+    auto fxaaIt = std::find(order.begin(), order.end(), m_fxaaPass);
+    if (tmIt != order.end()) insertPos = tmIt;
+    else if (fxaaIt != order.end()) insertPos = fxaaIt;
+    else insertPos = order.end();
+
+    insertPos = order.insert(insertPos, m_bloomBrightPass);
+    ++insertPos;
+    insertPos = order.insert(insertPos, m_bloomBlurHPass);
+    ++insertPos;
+    insertPos = order.insert(insertPos, m_bloomBlurVPass);
+    ++insertPos;
+    order.insert(insertPos, m_bloomCompositePass);
 }
 
 void GDXECSRenderer::DisableBloom()
@@ -624,18 +796,242 @@ void GDXECSRenderer::SetDepthDebugView(bool enabled)
             { L"SceneDepth", 0u, PostProcessInputSemantic::SceneDepth, true }
         };
         m_depthDebugPass = CreatePostProcessPass(desc);
+        Debug::Log(GDX_SRC_LOC,
+                   L"SetDepthDebugView create result valid=",
+                   m_depthDebugPass.IsValid() ? 1ull : 0ull,
+                   L" handle=",
+                   static_cast<unsigned long long>(m_depthDebugPass.value));
     }
 
     if (!m_depthDebugPass.IsValid())
+    {
+        Debug::LogError(GDX_SRC_LOC, L"SetDepthDebugView failed: invalid pass handle");
         return;
+    }
 
     SetPostProcessEnabled(m_depthDebugPass, true);
+    Debug::Log(GDX_SRC_LOC,
+               L"SetDepthDebugView enabled handle=",
+               static_cast<unsigned long long>(m_depthDebugPass.value));
 
     auto& order = m_postProcessPassOrder;
     auto it = std::find(order.begin(), order.end(), m_depthDebugPass);
     if (it != order.end())
         order.erase(it);
     order.push_back(m_depthDebugPass);
+
+    Debug::Log(GDX_SRC_LOC,
+               L"SetDepthDebugView order size=",
+               static_cast<unsigned long long>(order.size()),
+               L" pushed handle=",
+               static_cast<unsigned long long>(m_depthDebugPass.value));
+}
+
+
+void GDXECSRenderer::SetNormalDebugView(bool enabled)
+{
+    if (!enabled)
+    {
+        if (m_normalDebugPass.IsValid())
+            SetPostProcessEnabled(m_normalDebugPass, false);
+        return;
+    }
+
+    if (!m_normalDebugPass.IsValid())
+    {
+        PostProcessPassDesc desc{};
+        desc.vertexShaderFile    = L"PostProcessFullscreenVS.hlsl";
+        desc.pixelShaderFile     = L"PostProcessNormalDebugPS.hlsl";
+        desc.debugName           = L"NormalDebug";
+        desc.constantBufferBytes = sizeof(GTAOCompositeParams);
+        desc.enabled             = true;
+        desc.inputSlots = {
+            { L"SceneNormals", 0u, PostProcessInputSemantic::SceneNormals, true }
+        };
+        m_normalDebugPass = CreatePostProcessPass(desc);
+        Debug::Log(GDX_SRC_LOC,
+                   L"SetNormalDebugView create result valid=",
+                   m_normalDebugPass.IsValid() ? 1ull : 0ull,
+                   L" handle=",
+                   static_cast<unsigned long long>(m_normalDebugPass.value));
+    }
+
+    if (!m_normalDebugPass.IsValid())
+    {
+        Debug::LogError(GDX_SRC_LOC, L"SetNormalDebugView failed: invalid pass handle");
+        return;
+    }
+
+    SetPostProcessEnabled(m_normalDebugPass, true);
+    Debug::Log(GDX_SRC_LOC,
+               L"SetNormalDebugView enabled handle=",
+               static_cast<unsigned long long>(m_normalDebugPass.value));
+
+    auto& order = m_postProcessPassOrder;
+    auto it = std::find(order.begin(), order.end(), m_normalDebugPass);
+    if (it != order.end())
+        order.erase(it);
+    order.push_back(m_normalDebugPass);
+
+    Debug::Log(GDX_SRC_LOC,
+               L"SetNormalDebugView order size=",
+               static_cast<unsigned long long>(order.size()),
+               L" pushed handle=",
+               static_cast<unsigned long long>(m_normalDebugPass.value));
+}
+
+
+void GDXECSRenderer::SetEdgeDebugView(bool enabled,
+                                     int viewportW, int viewportH,
+                                     float depthScale,
+                                     float normalScale,
+                                     bool depthOnly,
+                                     bool normalOnly)
+{
+    if (!enabled)
+    {
+        if (m_edgeDebugPass.IsValid())
+            SetPostProcessEnabled(m_edgeDebugPass, false);
+        return;
+    }
+
+    if (!m_edgeDebugPass.IsValid())
+    {
+        PostProcessPassDesc desc{};
+        desc.vertexShaderFile    = L"PostProcessFullscreenVS.hlsl";
+        desc.pixelShaderFile     = L"PostProcessEdgeDebugPS.hlsl";
+        desc.debugName           = L"EdgeDebug";
+        desc.constantBufferBytes = sizeof(EdgeDebugParams);
+        desc.enabled             = true;
+        desc.inputSlots = {
+            { L"SceneDepth",   0u, PostProcessInputSemantic::SceneDepth,   true },
+            { L"SceneNormals", 1u, PostProcessInputSemantic::SceneNormals, true }
+        };
+        m_edgeDebugPass = CreatePostProcessPass(desc);
+        Debug::Log(GDX_SRC_LOC,
+                   L"SetEdgeDebugView create result valid=",
+                   m_edgeDebugPass.IsValid() ? 1ull : 0ull,
+                   L" handle=",
+                   static_cast<unsigned long long>(m_edgeDebugPass.value));
+    }
+
+    if (!m_edgeDebugPass.IsValid())
+    {
+        Debug::LogError(GDX_SRC_LOC, L"SetEdgeDebugView failed: invalid pass handle");
+        return;
+    }
+
+    const float w = (viewportW > 0) ? static_cast<float>(viewportW) : 1280.0f;
+    const float h = (viewportH > 0) ? static_cast<float>(viewportH) : 720.0f;
+
+    EdgeDebugParams params{};
+    params.texelW      = 1.0f / w;
+    params.texelH      = 1.0f / h;
+    params.depthScale  = depthScale;
+    params.normalScale = normalScale;
+    params.depthOnly   = depthOnly ? 1.0f : 0.0f;
+    params.normalOnly  = normalOnly ? 1.0f : 0.0f;
+
+    SetPostProcessEnabled(m_edgeDebugPass, true);
+    SetPostProcessConstants(m_edgeDebugPass, &params, sizeof(params));
+
+    auto& order = m_postProcessPassOrder;
+    auto it = std::find(order.begin(), order.end(), m_edgeDebugPass);
+    if (it != order.end())
+        order.erase(it);
+    order.push_back(m_edgeDebugPass);
+
+    Debug::Log(GDX_SRC_LOC,
+               L"SetEdgeDebugView enabled handle=",
+               static_cast<unsigned long long>(m_edgeDebugPass.value),
+               L" depthScale=", static_cast<unsigned long long>(depthScale),
+               L" normalScale=", static_cast<unsigned long long>(normalScale));
+}
+
+
+void GDXECSRenderer::SetGTAO(int viewportW, int viewportH,
+                             float nearPlane, float farPlane,
+                             float radiusPixels, float thickness,
+                             float intensity, float power)
+{
+    const float w = (viewportW > 0) ? static_cast<float>(viewportW) : 1280.0f;
+    const float h = (viewportH > 0) ? static_cast<float>(viewportH) : 720.0f;
+
+    if (!EnsureGTAOPassesCreated())
+        return;
+
+    GTAOParams ao{};
+    ao.texelW         = 1.0f / w;
+    ao.texelH         = 1.0f / h;
+    ao.radiusPixels   = (radiusPixels > 0.0f) ? radiusPixels : 8.0f;
+    ao.thickness      = (thickness > 0.0f) ? thickness : 0.45f;
+    ao.intensity      = (intensity > 0.0f) ? intensity : 2.0f;
+    ao.power          = (power > 0.0f) ? power : 2.0f;
+    ao.normalBias     = 0.12f;
+    ao.depthClamp     = 0.10f;
+    ao.nearPlane      = nearPlane;
+    ao.farPlane       = farPlane;
+    ao.depthFadeStart = farPlane * 0.08f;
+    ao.depthFadeEnd   = farPlane * 0.8f;
+    ao.projScaleX     = 1.0f;
+    ao.projScaleY     = 1.0f;
+    ao.directionCount = 8u;   // MAX_DIRECTIONS im Shader
+    ao.stepCount      = 4u;   // MAX_STEPS im Shader
+    ao.cameraIsOrtho  = 0u;
+    ao.debugView      = 0u;
+    SetPostProcessEnabled(m_gtaoPass, true);
+    SetPostProcessConstants(m_gtaoPass, &ao, sizeof(ao));
+
+    GTAOBlurParams blur{};
+    blur.texelW          = 1.0f / w;
+    blur.texelH          = 1.0f / h;
+    blur.depthSharpness  = 16.0f;
+    blur.normalSharpness = 2.0f;
+    blur.nearPlane       = nearPlane;
+    blur.farPlane        = farPlane;
+    blur.cameraIsOrtho   = 0u;
+    SetPostProcessEnabled(m_gtaoBlurPass, true);
+    SetPostProcessConstants(m_gtaoBlurPass, &blur, sizeof(blur));
+
+    GTAOCompositeParams comp{};
+    comp.minVisibility          = 0.45f;
+    comp.strength               = 1.35f;
+    comp.highlightProtectStart  = 2.0f;
+    comp.highlightProtectEnd    = 6.0f;
+    SetPostProcessEnabled(m_gtaoCompositePass, true);
+    SetPostProcessConstants(m_gtaoCompositePass, &comp, sizeof(comp));
+
+    auto& order = m_postProcessPassOrder;
+    auto removeHandle = [&order](PostProcessHandle h)
+    {
+        auto it = std::find(order.begin(), order.end(), h);
+        if (it != order.end()) order.erase(it);
+    };
+    removeHandle(m_gtaoPass);
+    removeHandle(m_gtaoBlurPass);
+    removeHandle(m_gtaoCompositePass);
+
+    auto insertPos = order.begin();
+    auto bloomCompositeIt = std::find(order.begin(), order.end(), m_bloomCompositePass);
+    auto tmIt    = std::find(order.begin(), order.end(), m_toneMappingPass);
+    auto fxaaIt  = std::find(order.begin(), order.end(), m_fxaaPass);
+    if (bloomCompositeIt != order.end()) insertPos = std::next(bloomCompositeIt);
+    else if (tmIt != order.end()) insertPos = tmIt;
+    else if (fxaaIt != order.end()) insertPos = fxaaIt;
+    else insertPos = order.end();
+
+    insertPos = order.insert(insertPos, m_gtaoPass);
+    ++insertPos;
+    insertPos = order.insert(insertPos, m_gtaoBlurPass);
+    ++insertPos;
+    order.insert(insertPos, m_gtaoCompositePass);
+}
+
+void GDXECSRenderer::DisableGTAO()
+{
+    if (m_gtaoPass.IsValid())          SetPostProcessEnabled(m_gtaoPass, false);
+    if (m_gtaoBlurPass.IsValid())      SetPostProcessEnabled(m_gtaoBlurPass, false);
+    if (m_gtaoCompositePass.IsValid()) SetPostProcessEnabled(m_gtaoCompositePass, false);
 }
 
 
@@ -649,7 +1045,7 @@ void GDXECSRenderer::SetDepthFogTest(bool enabled)
             desc.vertexShaderFile    = L"PostProcessFullscreenVS.hlsl";
             desc.pixelShaderFile     = L"PostProcessDepthFogPS.hlsl";
             desc.debugName           = L"DepthFogTest";
-            desc.constantBufferBytes = 0u;
+            desc.constantBufferBytes = sizeof(GTAOCompositeParams);
             desc.enabled             = true;
             desc.inputSlots =
             {
@@ -703,12 +1099,7 @@ bool GDXECSRenderer::SupportsTextureFormat(GDXTextureFormat format) const
     return m_backend ? m_backend->SupportsTextureFormat(format) : false;
 }
 
-void GDXECSRenderer::SetDebugSmokeTestMode(GDXDebugSmokeTestMode mode)
-{
-    m_debugSmokeTestMode = mode;
-    if (m_backend)
-        m_backend->SetDebugSmokeTestMode(mode);
-}
+
 
 void GDXECSRenderer::SetClearColor(float r, float g, float b, float a)
 {
@@ -726,7 +1117,16 @@ void GDXECSRenderer::CaptureFrameSnapshot(FrameData& outFrame)
 
     FrameData snapshot{};
     m_persistentFrameState.ApplyTo(snapshot);
-    m_cameraSystem.Update(m_registry, snapshot);
+    if (!m_cameraSystem.Update(m_registry, snapshot))
+    {
+        snapshot.lightCount       = 0u;
+        snapshot.hasShadowPass    = false;
+        snapshot.shadowCasterMask = 0xFFFFFFFFu;
+        snapshot.lightAffectMask  = 0xFFFFFFFFu;
+        outFrame    = snapshot;
+        m_frameData = snapshot;
+        return;
+    }
 
     if (m_backend)
         m_backend->ExtractLightData(m_registry, snapshot);
@@ -858,7 +1258,6 @@ void GDXECSRenderer::EndFrame()
             RenderViewPrep::PrepareMainView(
                 m_frameDispatch.viewPrep,
                 m_renderPipeline.frameSnapshot,
-                m_debugCamera,
                 m_renderPipeline.mainView);
         } });
 
@@ -983,6 +1382,8 @@ void GDXECSRenderer::Resize(int w, int h)
 void GDXECSRenderer::Shutdown()
 {
     if (!m_initialized && !m_backend) return;
+
+    GDXDX11LogShaderCacheStats();
 
     if (m_backend)
     {

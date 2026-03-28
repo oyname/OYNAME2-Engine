@@ -20,7 +20,7 @@
 #include <cstdint>
 #include "Core/GDXMath.h"
 
-namespace GIDX
+namespace KROM
 {
     // -----------------------------------------------------------------------
     // CollisionShapeType — Diskriminator für den CollisionShape-Container.
@@ -203,4 +203,4 @@ namespace GIDX
         }
     }
 
-} // namespace GIDX
+} // namespace KROM

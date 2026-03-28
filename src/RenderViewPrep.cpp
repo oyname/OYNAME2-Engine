@@ -36,18 +36,12 @@ namespace RenderViewPrep
 void PrepareMainView(
     const Context&     ctx,
     const FrameData&   frameSnapshot,
-    const DebugCamera& debugCamera,
     RFG::ViewPassData& outView)
 {
     outView.Reset();
 
     outView.prepared.frame   = frameSnapshot;
-    outView.realCameraFrame  = frameSnapshot; // echte Kamera — immer unverändert
-
-    // Debug-Kamera überschreibt View/Proj des Main-Views wenn aktiviert.
-    // Shadow, RTT und Gameplay laufen weiter mit der echten frameSnapshot-Kamera.
-    if (debugCamera.IsEnabled())
-        debugCamera.OverrideFrameData(outView.prepared.frame);
+    outView.realCameraFrame  = frameSnapshot;
 
     outView.prepared.graphicsView = {};
     outView.prepared.graphicsView.type                    = RenderViewType::Main;
@@ -91,6 +85,10 @@ void PrepareMainView(
         outView.prepared.shadowView.gatherOpaque      = false;
         outView.prepared.shadowView.gatherTransparent = false;
         outView.prepared.shadowView.gatherShadows     = true;
+
+        // Kein Shadow-Caster-Culling gegen die äußerste Cascade.
+        outView.prepared.shadowView.enableFrustumCulling = false;
+        outView.prepared.shadowView.enableDistanceCulling = false;
     }
 }
 
@@ -129,7 +127,7 @@ void PrepareRTTViews(
             // Kaskaden-Splits für das RTT-Frustum neu berechnen.
             // Der Snapshot enthält die Kaskaden der Main-Kamera — für die RTT-Kamera
             // müssen sie auf Basis des RTT-Frustums (viewProjMatrix) neu berechnet werden.
-            if (preparedView.prepared.frame.hasShadowPass)
+            if (ctx.backend && ctx.registry)
                 ctx.backend->ExtractLightData(*ctx.registry, preparedView.prepared.frame);
 
             preparedView.prepared.graphicsView = {};

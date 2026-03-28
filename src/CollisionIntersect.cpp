@@ -2,7 +2,7 @@
 // CollisionIntersect.cpp — Implementierung der Intersection-Funktionen.
 //
 // Alle Funktionen sind zustandslos. Keine Engine-Abhängigkeiten außer
-// GDXMath.h (GIDX::Float3 und freie Math-Funktionen).
+// GDXMath.h (KROM::Float3 und freie Math-Funktionen).
 // ---------------------------------------------------------------------------
 
 #include "Collision/CollisionIntersect.h"
@@ -11,7 +11,7 @@
 #include <cmath>
 #include <algorithm>
 
-namespace GIDX
+namespace KROM
 {
 using namespace GDX;
 
@@ -460,4 +460,4 @@ bool SphereCastAABB(
     return RaycastAABB(ray, expanded, outHit);
 }
 
-} // namespace GIDX
+} // namespace KROM

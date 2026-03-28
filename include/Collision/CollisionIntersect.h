@@ -18,7 +18,7 @@
 #include "CollisionTypes.h"
 #include "CollisionShapes.h"
 
-namespace GIDX
+namespace KROM
 {
     // =======================================================================
     // Boolean Overlap — nur true/false, kein Kontaktpunkt.
@@ -97,4 +97,4 @@ namespace GIDX
         const AABBShape& target,
         CollisionHit& outHit) noexcept;
 
-} // namespace GIDX
+} // namespace KROM

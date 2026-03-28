@@ -66,11 +66,11 @@ namespace GDX
 }
 
 // ---------------------------------------------------------------------------
-// GIDX-Namespace-Alias — damit GDX::* auch als GIDX::* erreichbar ist.
-// Float3/Float4/Matrix4 sind global; hier in GIDX eingebunden damit
-// GIDX::Float3 etc. in App-Code kompiliert.
+// KROM-Namespace-Alias — damit GDX::* auch als KROM::* erreichbar ist.
+// Float3/Float4/Matrix4 sind global; hier in KROM eingebunden damit
+// KROM::Float3 etc. in App-Code kompiliert.
 // ---------------------------------------------------------------------------
-namespace GIDX
+namespace KROM
 {
     using namespace GDX;
     using ::Float2;

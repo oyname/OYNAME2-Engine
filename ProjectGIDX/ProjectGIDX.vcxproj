@@ -118,13 +118,21 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\samples\50_Point_Lights.cpp" />
+    <ClCompile Include="..\samples\50_Point_Lights.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\samples\NeonTimeBuffer.cpp" />
+    <ClCompile Include="..\samples\test_scene_rtt_hotkeys.cpp" />
     <ClCompile Include="..\src\CameraSystem.cpp" />
     <ClCompile Include="..\src\CollisionIntersect.cpp" />
     <ClCompile Include="..\src\CollisionSystem.cpp" />
     <ClCompile Include="..\src\CollisionWorld.cpp" />
     <ClCompile Include="..\src\CullGatherSystem.cpp" />
-    <ClCompile Include="..\src\DebugCamera.cpp" />
+    <ClCompile Include="..\src\DebugCamera.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="..\src\GDXDebugCullingRenderer.cpp" />
     <ClCompile Include="..\src\GDXDX11LightSystem.cpp" />
     <ClCompile Include="..\src\GDXDX11RenderBackend.cpp" />
@@ -140,16 +148,15 @@
     <ClCompile Include="..\src\GDXShaderVariantCache.cpp" />
     <ClCompile Include="..\src\GDXShadowMap.cpp" />
     <ClCompile Include="..\src\GDXTextureLoader.cpp" />
-    <ClCompile Include="..\src\GDXTileLightCuller.cpp" />
     <ClCompile Include="..\src\HierarchySystem.cpp" />
     <ClCompile Include="..\src\JobSystem.cpp" />
+    <ClCompile Include="..\src\KROMEngine.cpp" />
     <ClCompile Include="..\src\RenderPassBuilder.cpp" />
     <ClCompile Include="..\src\RenderViewPrep.cpp" />
     <ClCompile Include="..\src\TransformSystem.cpp" />
     <ClCompile Include="..\src\RenderGatherSystem.cpp" />
     <ClCompile Include="..\src\GDXECSRenderer.cpp" />
     <ClCompile Include="..\src\GDXDX11RenderExecutor.cpp" />
-    <ClCompile Include="..\src\GIDXEngine.cpp" />
     <ClCompile Include="..\src\GDXWin32DX11ContextFactory.cpp" />
     <ClCompile Include="..\src\GDXWin32OpenGLContextFactory.cpp" />
     <ClCompile Include="..\src\GDXWin32Platform.cpp" />
@@ -166,14 +173,17 @@
     <ClInclude Include="..\include\Collision\CollisionShapes.h" />
     <ClInclude Include="..\include\Collision\CollisionTypes.h" />
     <ClInclude Include="..\include\Collision\CollisionWorld.h" />
-    <ClInclude Include="..\include\ComponentPool.h" />
     <ClInclude Include="..\include\Components.h" />
+    <ClInclude Include="..\include\Core\Debug.h" />
     <ClInclude Include="..\include\Core\GDXMath.h" />
     <ClInclude Include="..\include\Core\GDXMathOps.h" />
     <ClInclude Include="..\include\CullGatherSystem.h" />
-    <ClInclude Include="..\include\Debug.h" />
-    <ClInclude Include="..\include\DebugCamera.h" />
-    <ClInclude Include="..\include\ECSTypes.h" />
+    <ClInclude Include="..\include\DebugCamera.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </ClInclude>
+    <ClInclude Include="..\include\ECS\ECSTypes.h" />
+    <ClInclude Include="..\include\ECS\Registry.h" />
     <ClInclude Include="..\include\Events.h" />
     <ClInclude Include="..\include\FrameContext.h" />
     <ClInclude Include="..\include\FrameData.h" />
@@ -191,8 +201,6 @@
     <ClInclude Include="..\include\GDXMathHelpers.h" />
     <ClInclude Include="..\include\GDXRenderFrameGraph.h" />
     <ClInclude Include="..\include\GDXShaderVariantCache.h" />
-    <ClInclude Include="..\include\GDXTileLightCuller.h" />
-    <ClInclude Include="..\include\GIDXEngine.h" />
     <ClInclude Include="..\include\GDXEventQueue.h" />
     <ClInclude Include="..\include\GDXFrameTimer.h" />
     <ClInclude Include="..\include\GDXInput.h" />
@@ -216,10 +224,8 @@
     <ClInclude Include="..\include\GDXWin32Window.h" />
     <ClInclude Include="..\include\gidx.h" />
     <ClInclude Include="..\include\Handle.h" />
-    <ClInclude Include="..\include\HierarchySystem.h" />
     <ClInclude Include="..\include\ICommandList.h" />
     <ClInclude Include="..\include\IGDXDXGIContext.h" />
-    <ClInclude Include="..\include\IGDXLightSystem.h" />
     <ClInclude Include="..\include\IGDXOpenGLContext.h" />
     <ClInclude Include="..\include\IGDXPlatform.h" />
     <ClInclude Include="..\include\IGDXRenderBackend.h" />
@@ -227,14 +233,12 @@
     <ClInclude Include="..\include\IGDXWin32NativeAccess.h" />
     <ClInclude Include="..\include\IGDXWindow.h" />
     <ClInclude Include="..\include\ImageBuffer.h" />
-    <ClInclude Include="..\include\JobSystem.h" />
+    <ClInclude Include="..\include\KROMEngine.h" />
     <ClInclude Include="..\include\MaterialResource.h" />
     <ClInclude Include="..\include\MeshAssetResource.h" />
     <ClInclude Include="..\include\MeshBoundsUtil.h" />
-    <ClInclude Include="..\include\MeshProcessor.h" />
     <ClInclude Include="..\include\MeshUtilities.h" />
     <ClInclude Include="..\include\PostProcessResource.h" />
-    <ClInclude Include="..\include\Registry.h" />
     <ClInclude Include="..\include\RenderCommand.h" />
     <ClInclude Include="..\include\RenderFramePipeline.h" />
     <ClInclude Include="..\include\RenderGatherSystem.h" />
@@ -249,9 +253,9 @@
     <ClInclude Include="..\include\SubmeshBuilder.h" />
     <ClInclude Include="..\include\SubmeshData.h" />
     <ClInclude Include="..\include\SystemScheduler.h" />
-    <ClInclude Include="..\include\TransformSystem.h" />
     <ClInclude Include="..\include\ViewCullingSystem.h" />
     <ClInclude Include="..\include\WindowDesc.h" />
+    <ClInclude Include="..\samples\NeonTimeBuffer.h" />
     <ClInclude Include="..\third_party\stb_image.h" />
   </ItemGroup>
   <ItemGroup>
@@ -260,9 +264,6 @@
     </Text>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="..\shader\PixelShader_VertexColor.hlsl">
-      <FileType>Document</FileType>
-    </Text>
     <Text Include="..\shader\ShadowPixelShader.hlsl">
       <FileType>Document</FileType>
     </Text>
@@ -272,22 +273,10 @@
     <Text Include="..\shader\ShadowVertexShader.hlsl">
       <FileType>Document</FileType>
     </Text>
-    <Text Include="..\shader\ShadowVertexShader_AlphaTest.hlsl">
-      <FileType>Document</FileType>
-    </Text>
-    <Text Include="..\shader\ShadowVertexShader_Skinned.hlsl">
-      <FileType>Document</FileType>
-    </Text>
-    <Text Include="..\shader\ShadowVertexShader_SkinnedAlphaTest.hlsl">
-      <FileType>Document</FileType>
-    </Text>
     <Text Include="..\shader\VertexShader_Skinned.hlsl">
       <FileType>Document</FileType>
     </Text>
     <Text Include="..\shader\VertexShader_SkinnedVertexColor.hlsl">
-      <FileType>Document</FileType>
-    </Text>
-    <Text Include="..\shader\VertexShader_VertexColor.hlsl">
       <FileType>Document</FileType>
     </Text>
   </ItemGroup>
@@ -321,9 +310,6 @@
     <Text Include="..\shader\PostProcessFullscreenVS.hlsl">
       <FileType>Document</FileType>
     </Text>
-    <Text Include="..\shader\PostProcessTintPS.hlsl">
-      <FileType>Document</FileType>
-    </Text>
   </ItemGroup>
   <ItemGroup>
     <Text Include="..\shader\PostProcessBloomBlurPS.hlsl">
@@ -343,6 +329,39 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="..\shader\PostProcessFXAAPS.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="..\shader\PostProcessDepthDebugPS.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+    <Text Include="..\shader\PostProcessDepthFogPS.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+    <Text Include="..\shader\PostProcessToneMappingPS.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+    <Text Include="..\shader\TileLightCullCS.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="..\shader\PostProcessGTAOBlurPS.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+    <Text Include="..\shader\PostProcessGTAOCompositePS.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+    <Text Include="..\shader\PostProcessGTAOPS.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+    <Text Include="..\shader\PostProcessNormalDebugPS.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="..\shader\PostProcessEdgeDebugPS.hlsl">
       <FileType>Document</FileType>
     </Text>
   </ItemGroup>

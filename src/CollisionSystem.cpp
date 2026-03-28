@@ -24,23 +24,23 @@ static float MaxWorldScale(const Matrix4& m) noexcept
 // ---------------------------------------------------------------------------
 // TransformShape — localShape (Lokalraum) → Weltkoordinaten-Shape.
 // ---------------------------------------------------------------------------
-GIDX::CollisionShape CollisionSystem::TransformShape(
-    const GIDX::CollisionShape& local,
+KROM::CollisionShape CollisionSystem::TransformShape(
+    const KROM::CollisionShape& local,
     const Matrix4& worldMatrix)
 {
     
 
     switch (local.type)
     {
-    case GIDX::CollisionShapeType::Sphere:
+    case KROM::CollisionShapeType::Sphere:
     {
         // center transformieren, Radius mit maximaler Weltskala skalieren.
         const Float3 worldCenter = TransformPoint(local.sphere.center, worldMatrix);
         const float  worldRadius = local.sphere.radius * MaxWorldScale(worldMatrix);
-        return GIDX::CollisionShape::MakeSphere(worldCenter, worldRadius);
+        return KROM::CollisionShape::MakeSphere(worldCenter, worldRadius);
     }
 
-    case GIDX::CollisionShapeType::AABB:
+    case KROM::CollisionShapeType::AABB:
     {
         // Alle 8 Ecken der lokalen AABB transformieren, neue AABB aufspannen (konservativ).
         const Float3& lo = local.aabb.min;
@@ -58,20 +58,20 @@ GIDX::CollisionShape CollisionSystem::TransformShape(
             wMin.y = std::min(wMin.y, wp.y); wMax.y = std::max(wMax.y, wp.y);
             wMin.z = std::min(wMin.z, wp.z); wMax.z = std::max(wMax.z, wp.z);
         }
-        return GIDX::CollisionShape::MakeAABB(wMin, wMax);
+        return KROM::CollisionShape::MakeAABB(wMin, wMax);
     }
 
-    case GIDX::CollisionShapeType::Capsule:
+    case KROM::CollisionShapeType::Capsule:
     {
         // Endpunkte a und b einzeln transformieren.
         // Radius mit maximaler Weltskala skalieren.
         const Float3 wa = TransformPoint(local.capsule.a, worldMatrix);
         const Float3 wb = TransformPoint(local.capsule.b, worldMatrix);
         const float  wr = local.capsule.radius * MaxWorldScale(worldMatrix);
-        return GIDX::CollisionShape::MakeCapsule(wa, wb, wr);
+        return KROM::CollisionShape::MakeCapsule(wa, wb, wr);
     }
 
-    case GIDX::CollisionShapeType::Plane:
+    case KROM::CollisionShapeType::Plane:
     {
         // Normal als Vektor (nicht Punkt) transformieren und normieren.
         // d aus einem transformierten Punkt auf der Ebene neu berechnen.
@@ -81,7 +81,7 @@ GIDX::CollisionShape CollisionSystem::TransformShape(
         const Float3 localPoint = Scale3(local.plane.normal, local.plane.d);
         const Float3 worldPoint = TransformPoint(localPoint, worldMatrix);
         const float  worldD     = Dot3(worldNormal, worldPoint);
-        return GIDX::CollisionShape::MakePlane(worldNormal, worldD);
+        return KROM::CollisionShape::MakePlane(worldNormal, worldD);
     }
 
     default:
@@ -92,13 +92,13 @@ GIDX::CollisionShape CollisionSystem::TransformShape(
 // ---------------------------------------------------------------------------
 // RegisterNewBodies — legt Bodies für noch nicht registrierte Komponenten an.
 // ---------------------------------------------------------------------------
-void CollisionSystem::RegisterNewBodies(Registry& registry, GIDX::CollisionWorld& world)
+void CollisionSystem::RegisterNewBodies(Registry& registry, KROM::CollisionWorld& world)
 {
     registry.View<CollisionBodyComponent>([&](EntityID, CollisionBodyComponent& col)
     {
         if (col.registered) return;
 
-        GIDX::CollisionBodyDesc desc{};
+        KROM::CollisionBodyDesc desc{};
         desc.shape       = col.localShape; // Startposition — wird gleich via UpdateBody überschrieben
         desc.layer       = col.layer;
         desc.mask        = col.mask;
@@ -114,14 +114,14 @@ void CollisionSystem::RegisterNewBodies(Registry& registry, GIDX::CollisionWorld
 // ---------------------------------------------------------------------------
 // UpdateBodyTransforms — transformiert localShape → Weltkoordinaten → UpdateBody().
 // ---------------------------------------------------------------------------
-void CollisionSystem::UpdateBodyTransforms(Registry& registry, GIDX::CollisionWorld& world)
+void CollisionSystem::UpdateBodyTransforms(Registry& registry, KROM::CollisionWorld& world)
 {
     registry.View<CollisionBodyComponent, WorldTransformComponent>(
         [&](EntityID, CollisionBodyComponent& col, WorldTransformComponent& wt)
     {
         if (!col.registered || !col.bodyID.IsValid()) return;
 
-        GIDX::CollisionBodyState state{};
+        KROM::CollisionBodyState state{};
         state.shape       = TransformShape(col.localShape, wt.matrix);
         state.layer       = col.layer;
         state.mask        = col.mask;
@@ -139,8 +139,8 @@ void CollisionSystem::UpdateBodyTransforms(Registry& registry, GIDX::CollisionWo
 // ---------------------------------------------------------------------------
 void CollisionSystem::Update(
     Registry& registry,
-    GIDX::CollisionWorld& world,
-    const GIDX::CollisionQueryFilter& filter)
+    KROM::CollisionWorld& world,
+    const KROM::CollisionQueryFilter& filter)
 {
     RegisterNewBodies(registry, world);
     UpdateBodyTransforms(registry, world);
@@ -152,7 +152,7 @@ void CollisionSystem::Update(
 // ---------------------------------------------------------------------------
 // Clear — alle registrierten Bodies zerstören.
 // ---------------------------------------------------------------------------
-void CollisionSystem::Clear(Registry& registry, GIDX::CollisionWorld& world)
+void CollisionSystem::Clear(Registry& registry, KROM::CollisionWorld& world)
 {
     registry.View<CollisionBodyComponent>([&](EntityID, CollisionBodyComponent& col)
     {

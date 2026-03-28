@@ -29,24 +29,24 @@ public:
     // Haupteinsprungpunkt — einmal pro Frame nach TransformSystem::Update().
     // filter steuert welche Layer bei ComputeContacts berücksichtigt werden.
     void Update(Registry& registry,
-        GIDX::CollisionWorld& world,
-        const GIDX::CollisionQueryFilter& filter = { GIDX::COLLISION_LAYER_ALL, {} });
+        KROM::CollisionWorld& world,
+        const KROM::CollisionQueryFilter& filter = { KROM::COLLISION_LAYER_ALL, {} });
 
     // Zerstört alle registrierten Bodies und räumt die World auf.
     // Aufrufen wenn die Szene gewechselt wird oder die Engine herunterfährt.
-    void Clear(Registry& registry, GIDX::CollisionWorld& world);
+    void Clear(Registry& registry, KROM::CollisionWorld& world);
 
     // Ergebnis des letzten ComputeContacts()-Aufrufs.
-    const std::vector<GIDX::CollisionContact>& GetContacts() const { return m_contacts; }
+    const std::vector<KROM::CollisionContact>& GetContacts() const { return m_contacts; }
 
 private:
-    void RegisterNewBodies(Registry& registry, GIDX::CollisionWorld& world);
-    void UpdateBodyTransforms(Registry& registry, GIDX::CollisionWorld& world);
+    void RegisterNewBodies(Registry& registry, KROM::CollisionWorld& world);
+    void UpdateBodyTransforms(Registry& registry, KROM::CollisionWorld& world);
 
     // Transformiert localShape (Lokalraum) → Weltkoordinaten-Shape.
-    static GIDX::CollisionShape TransformShape(
-        const GIDX::CollisionShape& local,
+    static KROM::CollisionShape TransformShape(
+        const KROM::CollisionShape& local,
         const Matrix4& worldMatrix);
 
-    std::vector<GIDX::CollisionContact> m_contacts;
+    std::vector<KROM::CollisionContact> m_contacts;
 };

@@ -108,67 +108,27 @@ namespace
         LPENTITY wallRight = NULL_LPENTITY;
         LPENTITY wallBack = NULL_LPENTITY;
 
-        // Boden
-        MakeRenderable(
-            floor, g_cubeMesh, g_floorMat, "Floor",
-            0.0f, -0.1f, 0.0f,
-            kRoomHalfW * 2.0f, 0.2f, kRoomDepth,
-            0.0f, 0.0f, 0.0f, true);
-
-        // Linke Wand
-        MakeRenderable(
-            wallLeft, g_cubeMesh, g_wallMat, "WallLeft",
-            -kRoomHalfW, kRoomHalfH * 0.5f, 0.0f,
-            0.2f, kRoomHalfH, kRoomDepth,
-            0.0f, 0.0f, 0.0f, true);
-
-        // Rechte Wand
-        MakeRenderable(
-            wallRight, g_cubeMesh, g_wallMat, "WallRight",
-            kRoomHalfW, kRoomHalfH * 0.5f, 0.0f,
-            0.2f, kRoomHalfH, kRoomDepth,
-            0.0f, 0.0f, 0.0f, true);
-
-        // Rückwand
-        MakeRenderable(
-            wallBack, g_cubeMesh, g_wallMat, "WallBack",
-            0.0f, kRoomHalfH * 0.5f, kRoomDepth * 0.5f,
-            kRoomHalfW * 2.0f, kRoomHalfH, 0.2f,
-            0.0f, 0.0f, 0.0f, true);
+        MakeRenderable(floor, g_cubeMesh, g_floorMat, "Floor", 0.0f, -0.1f, 0.0f, kRoomHalfW * 2.0f, 0.2f, kRoomDepth, 0.0f, 0.0f, 0.0f, true);
+        MakeRenderable(wallLeft, g_cubeMesh, g_wallMat, "WallLeft", -kRoomHalfW, kRoomHalfH * 0.5f, 0.0f, 0.2f, kRoomHalfH, kRoomDepth, 0.0f, 0.0f, 0.0f, true);
+        MakeRenderable(wallRight, g_cubeMesh, g_wallMat, "WallRight", kRoomHalfW, kRoomHalfH * 0.5f, 0.0f, 0.2f, kRoomHalfH, kRoomDepth, 0.0f, 0.0f, 0.0f, true);
+        MakeRenderable(wallBack, g_cubeMesh, g_wallMat, "WallBack", 0.0f, kRoomHalfH * 0.5f, kRoomDepth * 0.5f, kRoomHalfW * 2.0f, kRoomHalfH, 0.2f, 0.0f, 0.0f, 0.0f, true);
     }
 
     void CreateSceneObjects()
     {
         LPENTITY centerCube = NULL_LPENTITY;
-        MakeRenderable(
-            centerCube, g_cubeMesh, g_cubeMat, "CenterCube",
-            0.0f, 3.0f, 2.0f,
-            1.5f, 1.5f, 1.5f,
-            0.0f, 25.0f, 0.0f, true);
+        MakeRenderable(centerCube, g_cubeMesh, g_cubeMat, "CenterCube", 0.0f, 3.0f, 2.0f, 1.5f, 1.5f, 1.5f, 0.0f, 25.0f, 0.0f, true);
 
         const std::array<std::array<float, 3>, 8> spherePos =
-        { {
-            { -2.5f, 0.7f,  1.0f },
-            {  2.4f, 0.7f,  1.3f },
-            { -3.2f, 0.7f,  4.2f },
-            {  3.0f, 0.7f,  4.6f },
-            { -1.2f, 0.7f,  6.0f },
-            {  1.4f, 0.7f,  6.4f },
-            { -4.4f, 0.7f,  7.8f },
-            {  4.2f, 0.7f,  8.0f }
-        } };
+        {{
+            { -2.5f, 0.7f,  1.0f }, {  2.4f, 0.7f,  1.3f }, { -3.2f, 0.7f,  4.2f }, {  3.0f, 0.7f,  4.6f },
+            { -1.2f, 0.7f,  6.0f }, {  1.4f, 0.7f,  6.4f }, { -4.4f, 0.7f,  7.8f }, {  4.2f, 0.7f,  8.0f }
+        }};
 
         for (size_t i = 0; i < spherePos.size(); ++i)
         {
             LPENTITY s = NULL_LPENTITY;
-            MakeRenderable(
-                s,
-                g_sphereMesh,
-                (i % 2 == 0) ? g_sphereMatA : g_sphereMatB,
-                "SceneSphere",
-                spherePos[i][0], spherePos[i][1], spherePos[i][2],
-                1.1f, 1.1f, 1.1f,
-                0.0f, 0.0f, 0.0f, true);
+            MakeRenderable(s, g_sphereMesh, (i % 2 == 0) ? g_sphereMatA : g_sphereMatB, "SceneSphere", spherePos[i][0], spherePos[i][1], spherePos[i][2], 1.1f, 1.1f, 1.1f, 0.0f, 0.0f, 0.0f, true);
         }
     }
 
@@ -182,9 +142,7 @@ namespace
     void CreateShadowLight()
     {
         Engine::CreateLight(&g_sun, LightKind::Directional, 0.85f, 0.88f, 1.0f, "Sun");
-
         auto& reg = Engine::_::renderer->GetRegistry();
-
         Engine::PositionEntity(g_sun, -4.0f, 7.0f, -4.0f);
         Engine::LookAt(g_sun, 0.0f, 0.8f, 4.5f);
 
@@ -201,57 +159,40 @@ namespace
     void CreateMovingPointLights()
     {
         g_lights.reserve(50);
-
         static const std::array<std::array<float, 3>, 6> palette =
-        { {
-            {1.00f, 0.25f, 0.25f},
-            {0.25f, 0.95f, 0.35f},
-            {0.25f, 0.55f, 1.00f},
-            {1.00f, 0.80f, 0.20f},
-            {0.85f, 0.25f, 1.00f},
-            {0.20f, 0.95f, 0.95f}
-        } };
+        {{
+            {1.00f, 0.25f, 0.25f}, {0.25f, 0.95f, 0.35f}, {0.25f, 0.55f, 1.00f},
+            {1.00f, 0.80f, 0.20f}, {0.85f, 0.25f, 1.00f}, {0.20f, 0.95f, 0.95f}
+        }};
 
         for (int i = 0; i < 50; ++i)
         {
             const auto& c = palette[static_cast<size_t>(i) % palette.size()];
-
             MovingLight ml;
             ml.centerX = FrandRange(-4.8f, 4.8f);
             ml.centerY = FrandRange(0.9f, 2.0f);
             ml.centerZ = FrandRange(0.8f, 10.5f);
-
             ml.radiusXZ = FrandRange(0.35f, 1.65f);
             ml.speed = FrandRange(0.6f, 2.0f);
             ml.phase = FrandRange(0.0f, 6.2831853f);
             ml.bobAmp = FrandRange(0.10f, 0.45f);
             ml.bobSpeed = FrandRange(0.9f, 2.8f);
-
-            ml.colorR = c[0];
-            ml.colorG = c[1];
-            ml.colorB = c[2];
+            ml.colorR = c[0]; ml.colorG = c[1]; ml.colorB = c[2];
 
             Engine::CreateLight(&ml.light, LightKind::Point, ml.colorR, ml.colorG, ml.colorB, "PointLight");
-
             {
                 auto& reg = Engine::_::renderer->GetRegistry();
                 if (auto* lc = reg.Get<LightComponent>(ml.light))
                 {
                     lc->radius = FrandRange(2.2f, 4.5f);
                     lc->intensity = FrandRange(1.8f, 4.2f);
-                    lc->castShadows = false; // 50 Shadow-Caster wäre Quatsch
+                    lc->castShadows = false;
                 }
             }
 
-            // kleiner Marker, damit man die Lichtbewegung sieht
             {
                 LPMATERIAL markerMat = CreateEmissiveMaterial(ml.colorR, ml.colorG, ml.colorB, 2.0f);
-                MakeRenderable(
-                    ml.marker, g_sphereMesh, markerMat, "LightMarker",
-                    ml.centerX, ml.centerY, ml.centerZ,
-                    0.12f, 0.12f, 0.12f,
-                    0.0f, 0.0f, 0.0f, false);
-
+                MakeRenderable(ml.marker, g_sphereMesh, markerMat, "LightMarker", ml.centerX, ml.centerY, ml.centerZ, 0.12f, 0.12f, 0.12f, 0.0f, 0.0f, 0.0f, false);
                 auto& reg = Engine::_::renderer->GetRegistry();
                 if (auto* vis = reg.Get<VisibilityComponent>(ml.marker))
                 {
@@ -259,7 +200,6 @@ namespace
                     vis->castShadows = false;
                 }
             }
-
             g_lights.push_back(ml);
         }
     }
@@ -267,33 +207,20 @@ namespace
     void InitScene()
     {
         std::srand(1337);
-
         Engine::_::renderer->SetClearColor(0.02f, 0.02f, 0.04f, 1.0f);
-        Engine::_::renderer->SetSceneAmbient(0.03f, 0.03f, 0.04f);
+        Engine::_::renderer->SetSceneAmbient(1.03f, 0.03f, 0.04f);
         Engine::_::renderer->SetShadowMapSize(2048);
 
-        // Post-processing
-        if (Engine::_::renderer->SupportsTextureFormat(GDXTextureFormat::RGBA16_FLOAT))
-        {
-            Engine::_::renderer->SetBloom(1280, 720,
-                1.5f,              // threshold
-                0.8f,               // intensity
-                2.2f);            // strength
-            Engine::_::renderer->SetToneMapping(ToneMappingMode::ACES, 0.25f);
-            Engine::_::renderer->SetFXAA(1280, 720);
-            Engine::_::renderer->SetDepthDebugView(false);
-            Engine::_::renderer->SetNormalDebugView(false);
-            //Engine::_::renderer->SetEdgeDebugView(true, 1280, 720, 250.0f, 4.0f, true, false); // Nur Depth-Kanten
-            //Engine::_::renderer->SetEdgeDebugView(true, 1280, 720, 250.0f, 4.0f, false, true); // Nur Normal-Kanten
-            Engine::_::renderer->SetGTAO(1280, 720, 0.1f, 100.0f, 0.8f, 10.0f, 0.5f, 0.5f);
-        }
-
-        Engine::_::renderer->LoadIBL(L"..\\media\\sky.hdr");
-
+        // Nur Normal-Debug aktivieren. Bloom / Tonemapping / FXAA aus, damit das Bild unverfÃ¤lscht bleibt.
+        Engine::_::renderer->DisableBloom();
+        Engine::_::renderer->DisableToneMapping();
+        Engine::_::renderer->DisableFXAA();
+        Engine::_::renderer->SetDepthDebugView(false);
+        Engine::_::renderer->SetDepthFogTest(false);
+        Engine::_::renderer->SetNormalDebugView(true);
 
         g_cubeMesh = Engine::Cube();
         g_sphereMesh = Engine::Sphere(0.5f, 96, 64);
-
         g_floorMat = CreateColoredPBR(0.34f, 0.34f, 0.36f, 0.00f, 0.92f);
         g_wallMat = CreateColoredPBR(0.56f, 0.58f, 0.62f, 0.00f, 0.88f);
         g_cubeMat = CreateColoredPBR(0.92f, 0.77f, 0.68f, 0.05f, 0.35f);
@@ -309,21 +236,14 @@ namespace
 
     void UpdateScene(float dt)
     {
-        (void)dt;
         const float t = Engine::_::engine ? Engine::_::engine->GetTotalTime() : 0.0f;
-
-        // Hauptwürfel langsam drehen
         {
             auto& reg = Engine::_::renderer->GetRegistry();
-
-            reg.View<TagComponent, TransformComponent>(
-                [&](EntityID e, TagComponent& tag, TransformComponent& tc)
-                {
-                    if (tag.name == "CenterCube")
-                    {
-                        Engine::TurnEntity(e, 12.0f * dt, 24.0f * dt, 0.0f);
-                    }
-                });
+            reg.View<TagComponent, TransformComponent>([&](EntityID e, TagComponent& tag, TransformComponent&)
+            {
+                if (tag.name == "CenterCube")
+                    Engine::TurnEntity(e, 12.0f * dt, 24.0f * dt, 0.0f);
+            });
         }
 
         for (auto& ml : g_lights)
@@ -332,7 +252,6 @@ namespace
             const float x = ml.centerX + std::cos(a) * ml.radiusXZ;
             const float z = ml.centerZ + std::sin(a) * ml.radiusXZ;
             const float y = ml.centerY + std::sin(t * ml.bobSpeed + ml.phase * 1.7f) * ml.bobAmp;
-
             Engine::PositionEntity(ml.light, x, y, z);
             Engine::PositionEntity(ml.marker, x, y, z);
         }
@@ -341,16 +260,8 @@ namespace
 
 int main()
 {
-    if (!Engine::Graphics(
-        Engine::Renderer::DX11,
-        1280,
-        720,
-        "Room - Cube Spheres 50 Moving Lights",
-        0.02f, 0.02f, 0.04f,
-        true))
-    {
+    if (!Engine::Graphics(Engine::Renderer::DX11, 1280, 720, "Room - Normal Debug", 0.02f, 0.02f, 0.04f, true))
         return 1;
-    }
 
     InitScene();
     Engine::OnUpdate(UpdateScene);

@@ -44,7 +44,7 @@ bool GDXSamplerCache::Init(ID3D11Device* device)
         desc.AddressU          = D3D11_TEXTURE_ADDRESS_WRAP;
         desc.AddressV          = D3D11_TEXTURE_ADDRESS_WRAP;
         desc.AddressW          = D3D11_TEXTURE_ADDRESS_WRAP;
-        desc.MaxAnisotropy     = 8;
+        desc.MaxAnisotropy     = 16;
         desc.MaxLOD            = D3D11_FLOAT32_MAX;
         desc.ComparisonFunc    = D3D11_COMPARISON_NEVER;
         if (FAILED(device->CreateSamplerState(&desc, &m_anisotropic)))
@@ -54,7 +54,7 @@ bool GDXSamplerCache::Init(ID3D11Device* device)
     // --- s7: PCF Comparison (Shadow Map — OYNAME-kompatibel) -------------
     {
         D3D11_SAMPLER_DESC desc = {};
-        desc.Filter             = D3D11_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
+        desc.Filter             = D3D11_FILTER_COMPARISON_MIN_MAG_MIP_POINT;
         desc.AddressU           = D3D11_TEXTURE_ADDRESS_CLAMP;
         desc.AddressV           = D3D11_TEXTURE_ADDRESS_CLAMP;
         desc.AddressW           = D3D11_TEXTURE_ADDRESS_CLAMP;

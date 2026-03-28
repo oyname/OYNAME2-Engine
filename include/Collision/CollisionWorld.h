@@ -32,7 +32,7 @@
 #include <vector>
 #include <cstdint>
 
-namespace GIDX
+namespace KROM
 {
     // -----------------------------------------------------------------------
     // CollisionWorld
@@ -158,4 +158,4 @@ namespace GIDX
         uint32_t              m_liveCount = 0u;
     };
 
-} // namespace GIDX
+} // namespace KROM

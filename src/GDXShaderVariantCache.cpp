@@ -111,10 +111,11 @@ ShaderHandle GDXShaderVariantCache::CreateVariant(const ShaderVariantKey& rawKey
 
     std::wstring vsFile, psFile;
     uint32_t vertexFlags = key.vertexFlags;
+    std::vector<std::string> defines;
 
-    const bool skinned      = (key.features & SVF_SKINNED)       != 0u;
-    const bool vertexColor  = (key.features & SVF_VERTEX_COLOR)  != 0u;
-    const bool alphaTest    = (key.features & SVF_ALPHA_TEST)    != 0u;
+    const bool skinned     = (key.features & SVF_SKINNED)      != 0u;
+    const bool vertexColor = (key.features & SVF_VERTEX_COLOR) != 0u;
+    const bool alphaTest   = (key.features & SVF_ALPHA_TEST)   != 0u;
 
     if (key.pass == ShaderPassType::Main)
     {
@@ -126,30 +127,23 @@ ShaderHandle GDXShaderVariantCache::CreateVariant(const ShaderVariantKey& rawKey
     }
     else
     {
-        if (skinned && alphaTest)
+        vsFile = L"ShadowVertexShader.hlsl";
+        psFile = L"ShadowPixelShader.hlsl";
+
+        if (skinned)
         {
-            vsFile = L"ShadowVertexShader_SkinnedAlphaTest.hlsl";
-            psFile = L"ShadowPixelShader_AlphaTest.hlsl";
-            vertexFlags = GDX_VERTEX_POSITION | GDX_VERTEX_TEX1 | GDX_VERTEX_BONE_INDICES | GDX_VERTEX_BONE_WEIGHTS;
-        }
-        else if (skinned)
-        {
-            vsFile = L"ShadowVertexShader_Skinned.hlsl";
-            psFile = L"ShadowPixelShader.hlsl";
-            vertexFlags = GDX_VERTEX_POSITION | GDX_VERTEX_BONE_INDICES | GDX_VERTEX_BONE_WEIGHTS;
-        }
-        else if (alphaTest)
-        {
-            vsFile = L"ShadowVertexShader_AlphaTest.hlsl";
-            psFile = L"ShadowPixelShader_AlphaTest.hlsl";
-            vertexFlags = GDX_VERTEX_POSITION | GDX_VERTEX_TEX1;
+            defines.push_back("HAS_SKINNING");
+            vertexFlags = alphaTest
+                ? GDX_VERTEX_POSITION | GDX_VERTEX_TEX1 | GDX_VERTEX_BONE_INDICES | GDX_VERTEX_BONE_WEIGHTS
+                : GDX_VERTEX_POSITION | GDX_VERTEX_BONE_INDICES | GDX_VERTEX_BONE_WEIGHTS;
         }
         else
         {
-            vsFile = L"ShadowVertexShader.hlsl";
-            psFile = L"ShadowPixelShader.hlsl";
-            vertexFlags = GDX_VERTEX_POSITION;
+            vertexFlags = alphaTest ? GDX_VERTEX_POSITION | GDX_VERTEX_TEX1 : GDX_VERTEX_POSITION;
         }
+
+        if (alphaTest)
+            defines.push_back("ALPHA_TEST");
     }
 
     const std::wstring debugName = L"Variant: " + vsFile + L" / " + psFile;
@@ -158,14 +152,15 @@ ShaderHandle GDXShaderVariantCache::CreateVariant(const ShaderVariantKey& rawKey
         : GDXShaderLayouts::BuildMain(vertexFlags, skinned);
 
     if (!m_backend || !m_shaderStore) return ShaderHandle::Invalid();
-    const ShaderSourceDesc desc = ShaderSourceDesc::FromHlslFiles(vsFile, psFile, vertexFlags, layout, debugName);
+    ShaderSourceDesc desc = ShaderSourceDesc::FromHlslFiles(vsFile, psFile, vertexFlags, layout, debugName);
+    desc.defines = std::move(defines);
     ShaderHandle handle = m_backend->UploadShader(*m_shaderStore, desc);
     if (!handle.IsValid()) return ShaderHandle::Invalid();
 
     if (auto* res = m_shaderStore->Get(handle))
     {
-        res->passType        = key.pass;
-        res->variantFeatures = key.features;
+        res->passType         = key.pass;
+        res->variantFeatures  = key.features;
         res->supportsSkinning = skinned;
         res->usesVertexColor  = vertexColor;
     }

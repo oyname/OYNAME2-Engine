@@ -9,7 +9,7 @@
 // ---------------------------------------------------------------------------
 // GDXVertexFormat — explizite Beschreibung des CPU-/GPU-Vertex-Layouts.
 //
-// Bisher steuerte GIDX fast alles nur über Bitflags. Das bleibt erhalten,
+// Bisher steuerte KROM fast alles nur über Bitflags. Das bleibt erhalten,
 // aber diese Schicht macht das Layout greifbar:
 //   - BasicMeshGenerator kann ein Zielformat anpeilen
 //   - ShaderLayout kann explizit sagen welche Streams gebraucht werden

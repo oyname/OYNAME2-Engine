@@ -192,8 +192,10 @@ void GDXDX11LightSystem::FillFrameData(Registry& registry, FrameData& frame)
                 const uint32_t numCascades = (std::clamp)(
                     lc.shadowCascadeCount, 1u, MAX_SHADOW_CASCADES);
 
-                const float camNear = 0.1f;  // Kamera-Near (Annäherung; TODO: aus CameraComponent)
-                const float camFar  = (std::max)(lc.shadowFar, camNear + 1.0f);
+                const float camNear = (std::max)(frame.cameraNearPlane, 0.001f);
+                const float camFarCamera = (std::max)(frame.cameraFarPlane, camNear + 1.0f);
+                const float camFarShadow = (std::max)(lc.shadowFar, camNear + 1.0f);
+                const float camFar = (std::min)(camFarCamera, camFarShadow);
                 const float lambda  = (std::clamp)(lc.shadowCascadeLambda, 0.0f, 1.0f);
 
                 // Praktisches Split-Schema (PSSM):

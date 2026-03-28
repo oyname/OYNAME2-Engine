@@ -1,7 +1,7 @@
 #pragma once
 
 // ---------------------------------------------------------------------------
-// gidx.h  flacher API-Wrapper fr die OYNAME2 Engine.
+// gidx.h  flacher API-Wrapper fuer die OYNAME2 Engine.
 //
 // Typische Nutzung (main.cpp):
 //
@@ -23,7 +23,7 @@
 
 #include "GDXECSRenderer.h"
 #include "Core/GDXMathOps.h"
-#include "GIDXEngine.h"
+#include "KROMEngine.h"
 #include "GDXInput.h"
 #include "GDXEventQueue.h"
 #include "GDXWin32Window.h"
@@ -66,12 +66,12 @@ namespace Engine
     namespace _
     {
         inline GDXECSRenderer* renderer = nullptr;
-        inline GIDXEngine* engine = nullptr;
+        inline KROMEngine* engine = nullptr;
         inline bool            running = false;
 
         // Ownership  lebt so lange die App luft
         inline std::unique_ptr<GDXEventQueue>  eventQueue;
-        inline std::unique_ptr<GIDXEngine>      engineOwned;
+        inline std::unique_ptr<KROMEngine>      engineOwned;
         inline GDXECSRenderer* rendererRaw = nullptr;
 
         inline std::function<void(float)>        userTickCallback;
@@ -106,7 +106,8 @@ namespace Engine
         float       clearR = 0.04f,
         float       clearG = 0.04f,
         float       clearB = 0.10f,
-        bool        resizable = true)
+        bool        resizable = true,
+        bool        borderless = false)
     {
         _::eventQueue = std::make_unique<GDXEventQueue>();
 
@@ -115,7 +116,7 @@ namespace Engine
         desc.height = height;
         desc.title = title;
         desc.resizable = resizable;
-        desc.borderless = false;
+        desc.borderless = borderless;
 
         auto window = std::make_unique<GDXWin32Window>(desc, *_::eventQueue);
         if (!window->Create())
@@ -154,10 +155,9 @@ namespace Engine
         // -- Renderer + Engine -----------------------------------------------
         auto renderer = std::make_unique<GDXECSRenderer>(std::move(renderBackend));
         renderer->SetClearColor(clearR, clearG, clearB);
-        renderer->SetDebugSmokeTestMode(GDXDebugSmokeTestMode::None);
         _::rendererRaw = renderer.get();
 
-        _::engineOwned = std::make_unique<GIDXEngine>(
+        _::engineOwned = std::make_unique<KROMEngine>(
             std::move(window), std::move(renderer), *_::eventQueue);
 
         if (!_::engineOwned->Initialize())
@@ -206,7 +206,7 @@ namespace Engine
     // ---------------------------------------------------------------------------
     // Bind  alternativ zu Graphics(), wenn Fenster/Engine extern erstellt wurden.
     // ---------------------------------------------------------------------------
-    inline void Bind(GDXECSRenderer& r, GIDXEngine& e)
+    inline void Bind(GDXECSRenderer& r, KROMEngine& e)
     {
         _::renderer = &r;
         _::engine = &e;

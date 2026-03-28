@@ -1,4 +1,4 @@
-#include "GIDXEngine.h"
+#include "KROMEngine.h"
 #include "Core/Debug.h"
 #include "GDXInput.h"
 #include "GDXECSRenderer.h"
@@ -12,7 +12,7 @@ struct Overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts>
 Overloaded(Ts...) -> Overloaded<Ts...>;
 
-GIDXEngine::GIDXEngine(std::unique_ptr<IGDXWindow>   window,
+KROMEngine::KROMEngine(std::unique_ptr<IGDXWindow>   window,
     std::unique_ptr<IGDXRenderer> renderer,
     GDXEventQueue& events)
     : m_window(std::move(window))
@@ -23,7 +23,7 @@ GIDXEngine::GIDXEngine(std::unique_ptr<IGDXWindow>   window,
         m_baseWindowTitle = m_window->GetTitle();
 }
 
-bool GIDXEngine::Initialize()
+bool KROMEngine::Initialize()
 {
     if (!m_window || !m_renderer)
     {
@@ -47,12 +47,12 @@ bool GIDXEngine::Initialize()
     return true;
 }
 
-void GIDXEngine::Run()
+void KROMEngine::Run()
 {
     while (Step()) {}
 }
 
-bool GIDXEngine::Step()
+bool KROMEngine::Step()
 {
     if (!m_running || m_window->ShouldClose() || m_quitRequested)
         return false;
@@ -90,7 +90,7 @@ bool GIDXEngine::Step()
     return true;
 }
 
-void GIDXEngine::Shutdown()
+void KROMEngine::Shutdown()
 {
     if (m_running)
     {
@@ -105,7 +105,7 @@ void GIDXEngine::Shutdown()
 }
 
 
-void GIDXEngine::ProcessEvents(const std::vector<Event>& events)
+void KROMEngine::ProcessEvents(const std::vector<Event>& events)
 {
     for (const Event& e : events)
     {
@@ -133,7 +133,7 @@ void GIDXEngine::ProcessEvents(const std::vector<Event>& events)
             {
                 if (ev.key == Key::Escape)
                 {
-                    DBLOG(GDX_SRC_LOC, "Escape pressed — quitting");
+                    DBLOG(GDX_SRC_LOC, "Escape pressed - quitting");
                     m_running = false;
                 }
             },

@@ -10,7 +10,7 @@
 //
 // Kein Reflection-Ersatz. Die Idee ist kleiner und pragmatisch:
 //   - welche Vertex-Streams der Shader erwartet
-//   - welche ConstantBuffer-Bindings GIDX belegt
+//   - welche ConstantBuffer-Bindings KROM belegt
 //   - welche Textur-Slots semantisch an welchen Registern hängen
 //
 // Das reicht, damit ECS-Renderer, Materialsystem und spätere Backends dieselbe

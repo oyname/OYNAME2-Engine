@@ -39,6 +39,78 @@ static_assert(sizeof(FXAAParams) == 16);
 
 // ---------------------------------------------------------------------------
 // Bloom
+
+// Must match cbuffer GTAOParams in PostProcessGTAOPS.hlsl.
+struct alignas(16) GTAOParams
+{
+    float    texelW         = 1.0f / 1280.0f;
+    float    texelH         = 1.0f / 720.0f;
+    float    radiusPixels   = 36.0f;
+    float    thickness      = 0.9f;
+
+    float    intensity      = 2.8f;
+    float    power          = 1.1f;
+    float    normalBias     = 0.10f;
+    float    depthClamp     = 0.85f;
+
+    float    nearPlane      = 0.1f;
+    float    farPlane       = 100.0f;
+    float    depthFadeStart = 60.0f;
+    float    depthFadeEnd   = 100.0f;
+
+    float    projScaleX     = 1.0f;
+    float    projScaleY     = 1.0f;
+    uint32_t directionCount = 8u;
+    uint32_t stepCount      = 4u;
+
+    uint32_t cameraIsOrtho  = 0u;
+    uint32_t debugView      = 0u;
+    uint32_t pad0           = 0u;
+    uint32_t pad1           = 0u;
+};
+static_assert(sizeof(GTAOParams) == 80);
+
+
+// Must match cbuffer EdgeDebugParams in PostProcessEdgeDebugPS.hlsl.
+struct alignas(16) EdgeDebugParams
+{
+    float texelW      = 1.0f / 1280.0f;
+    float texelH      = 1.0f / 720.0f;
+    float depthScale  = 250.0f;
+    float normalScale = 4.0f;
+
+    float depthOnly   = 0.0f;
+    float normalOnly  = 0.0f;
+    float pad0        = 0.0f;
+    float pad1        = 0.0f;
+};
+static_assert(sizeof(EdgeDebugParams) == 32);
+
+// Must match cbuffer GTAOBlurParams in PostProcessGTAOBlurPS.hlsl.
+struct alignas(16) GTAOBlurParams
+{
+    float texelW          = 1.0f / 1280.0f;
+    float texelH          = 1.0f / 720.0f;
+    float depthSharpness  = 64.0f;
+    float normalSharpness = 16.0f;
+
+    float nearPlane       = 0.1f;
+    float farPlane        = 100.0f;
+    uint32_t cameraIsOrtho= 0u;
+    uint32_t pad0         = 0u;
+};
+static_assert(sizeof(GTAOBlurParams) == 32);
+
+// PostProcessGTAOCompositePS.hlsl — b0
+struct alignas(16) GTAOCompositeParams
+{
+    float minVisibility          = 0.90f;  // lower clamp for AO visibility
+    float strength               = 0.18f;  // final AO blend strength
+    float highlightProtectStart  = 1.10f;  // start protecting HDR highlights
+    float highlightProtectEnd    = 3.00f;  // fully protect bright emissive/bloom sources
+};
+static_assert(sizeof(GTAOCompositeParams) == 16);
+
 // Internal structs — must match the corresponding HLSL cbuffers exactly.
 // Users interact with these only via GDXECSRenderer::SetBloom().
 // ---------------------------------------------------------------------------
@@ -114,6 +186,8 @@ struct PostProcessExecutionInputs
 
     float         cameraNearPlane    = 0.1f;
     float         cameraFarPlane     = 1000.0f;
+    float         cameraProjScaleX   = 1.0f;
+    float         cameraProjScaleY   = 1.0f;
     uint32_t      cameraIsOrtho      = 0u;
     uint32_t      depthDebugFlags    = 1u;
 
@@ -125,6 +199,8 @@ struct PostProcessExecutionInputs
         sceneNormals       = TextureHandle::Invalid();
         cameraNearPlane    = 0.1f;
         cameraFarPlane     = 1000.0f;
+        cameraProjScaleX   = 1.0f;
+        cameraProjScaleY   = 1.0f;
         cameraIsOrtho      = 0u;
         depthDebugFlags    = 1u;
     }
@@ -145,7 +221,6 @@ inline std::vector<PostProcessInputSlot> BuildDefaultPostProcessInputs(
     if (declared.empty())
     {
         out.push_back(PostProcessInputSlot{L"SceneColor", 0u, PostProcessInputSemantic::SceneColor, true, TextureHandle::Invalid()});
-        out.push_back(PostProcessInputSlot{L"OriginalSceneColor", 1u, PostProcessInputSemantic::OriginalSceneColor, false, TextureHandle::Invalid()});
         return out;
     }
     out.reserve(declared.size());
@@ -165,6 +240,8 @@ struct PostProcessPassDesc
     std::wstring debugName;
     uint32_t constantBufferBytes = 0u;
     bool enabled = true;
+    bool captureSceneColorAsOriginal = false;
+    uint32_t originalSceneGroup = 0u; // 0 = shared/default, >0 = isolated branch capture group
     std::vector<PostProcessInputSlotDesc> inputSlots;
 };
 

@@ -16,14 +16,14 @@
 #include "Collision/CollisionTypes.h"
 #include "Collision/CollisionShapes.h"
 
-namespace GIDX { }  // ensure GIDX types visible
+namespace KROM { }  // ensure KROM types visible
 
 struct CollisionBodyComponent
 {
-    GIDX::CollisionBodyID    bodyID     = {};
-    GIDX::CollisionShape     localShape = {};
-    GIDX::CollisionLayerMask layer      = GIDX::COLLISION_LAYER_DEFAULT;
-    GIDX::CollisionLayerMask mask       = GIDX::COLLISION_LAYER_ALL;
+    KROM::CollisionBodyID    bodyID     = {};
+    KROM::CollisionShape     localShape = {};
+    KROM::CollisionLayerMask layer      = KROM::COLLISION_LAYER_DEFAULT;
+    KROM::CollisionLayerMask mask       = KROM::COLLISION_LAYER_ALL;
     bool isTrigger   = false;
     bool isStatic    = true;
     bool isKinematic = false;

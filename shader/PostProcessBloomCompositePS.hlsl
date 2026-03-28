@@ -1,6 +1,6 @@
 Texture2D gBloomTexture : register(t0);
 Texture2D gSceneColor : register(t1);
-SamplerState gSampler : register(s0);
+SamplerState gSampler : register(s1);
 
 cbuffer BloomCompositeParams : register(b0)
 {

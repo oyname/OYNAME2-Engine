@@ -38,22 +38,15 @@ enum class ShaderSourceType : uint8_t
 };
 
 
-
-enum class GDXDebugSmokeTestMode : uint8_t
-{
-    None = 0,
-    FullscreenTriangle = 1,
-    PositionOnlyTriangle = 2,
-    PositionColorTriangle = 3,
-};
 struct ShaderSourceDesc
 {
-    ShaderSourceType     sourceType   = ShaderSourceType::HlslFilePath;
-    std::vector<uint8_t> vertexCode;   // Quelltext, Pfad oder Binary
-    std::vector<uint8_t> pixelCode;
-    GDXShaderLayout      layout;
-    uint32_t             vertexFlags  = GDX_VERTEX_DEFAULT;
-    std::wstring         debugName;
+    ShaderSourceType          sourceType   = ShaderSourceType::HlslFilePath;
+    std::vector<uint8_t>      vertexCode;   // Quelltext, Pfad oder Binary
+    std::vector<uint8_t>      pixelCode;
+    GDXShaderLayout           layout;
+    uint32_t                  vertexFlags  = GDX_VERTEX_DEFAULT;
+    std::wstring              debugName;
+    std::vector<std::string>  defines;      // Präprozessor-Defines (Name-only → "1")
 
     // Hilfsmethode: Dateipfad-Desc aus wstring (DX11/HLSL Standardfall)
     static ShaderSourceDesc FromHlslFiles(
@@ -245,7 +238,6 @@ public:
 
     virtual bool SupportsTextureFormat(GDXTextureFormat format) const { (void)format; return true; }
     virtual void SetShadowMapSize(uint32_t size) { (void)size; }
-    virtual void SetDebugSmokeTestMode(GDXDebugSmokeTestMode mode) { (void)mode; }
 
     virtual uint32_t GetDrawCallCount() const = 0;
     virtual bool HasShadowResources() const = 0;

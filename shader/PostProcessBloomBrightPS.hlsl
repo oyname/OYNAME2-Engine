@@ -1,5 +1,5 @@
 Texture2D gSceneColor : register(t0);
-SamplerState gSampler : register(s0);
+SamplerState gSampler : register(s1);
 
 cbuffer BloomBrightParams : register(b0)
 {
@@ -17,15 +17,14 @@ struct PSIn
 
 float4 main(PSIn input) : SV_TARGET
 {
-    float3 scene = gSceneColor.Sample(gSampler, input.uv).rgb;
+    float3 scene = gSceneColor.SampleLevel(gSampler, input.uv, 0).rgb;
     float luma = dot(scene, float3(0.2126, 0.7152, 0.0722));
 
-    // HDR-safe bright extract: proportionally retain only the energy above threshold.
-    // Works correctly for any threshold value including > 1.0.
-    // When luma <= threshold: excess = 0, no bloom contribution.
-    // When luma > threshold:  extract the above-threshold fraction of the colour.
-    float excess = max(0.0, luma - gThreshold);
-    float3 bloom = scene * (excess / max(luma, 0.0001)) * gIntensity;
+    // Soft-knee threshold so bloom starts before hard clipping and gives a visible halo.
+    const float knee = max(gThreshold * 0.5f, 0.05f);
+    float soft = saturate((luma - gThreshold + knee) / (2.0f * knee));
+    float contribution = max(luma - gThreshold, 0.0f) + knee * soft * soft;
+    float3 bloom = scene * (contribution / max(luma, 1e-4f)) * gIntensity;
 
-    return float4(bloom, 1.0);
+    return float4(max(bloom, 0.0f), 1.0f);
 }

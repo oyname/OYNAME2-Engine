@@ -67,9 +67,9 @@ bool GDXShadowMap::Create(ID3D11Device* device, uint32_t size, uint32_t cascadeC
     rsDesc.FillMode              = D3D11_FILL_SOLID;
     rsDesc.CullMode              = D3D11_CULL_BACK;
     rsDesc.FrontCounterClockwise = FALSE;
-    rsDesc.DepthBias             = 0;      // 0 — Shader übernimmt alles via Normal Offset
+    rsDesc.DepthBias             = 64;     // konservativer konstanter Bias gegen Shadow Acne
     rsDesc.DepthBiasClamp        = 0.0f;
-    rsDesc.SlopeScaledDepthBias  = 1.0f;
+    rsDesc.SlopeScaledDepthBias  = 1.5f;    // flache Winkel stabilisieren ohne starkes Peter-Panning
     rsDesc.DepthClipEnable       = TRUE;
 
     if (FAILED(device->CreateRasterizerState(&rsDesc, &m_shadowRS)))

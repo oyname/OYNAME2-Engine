@@ -1,92 +1,74 @@
 #pragma once
 
-// ---------------------------------------------------------------------------
-// DebugCamera — unabhängige Fly-Cam für Scene-Inspektion.
-//
-// Kein ECS, kein DX11, keine Engine-Abhängigkeiten außer GDXMath.h + GDXInput.h.
-//
-// Wenn aktiviert: ersetzt viewMatrix/projMatrix/viewProjMatrix im FrameData
-// des Main-Views. Gameplay, Physik, RTT, Shadow — alles läuft mit der
-// echten Kamera weiter.
-//
-// Steuerung (solange enabled == true):
-//   W/S         — vorwärts / rückwärts
-//   A/D         — links / rechts
-//   Q/E         — runter / hoch
-//   Space       — 5× schneller
-//   Up/Down     — Pitch
-//   Left/Right  — Yaw
-// ---------------------------------------------------------------------------
-
 #include "Core/GDXMath.h"
+#include "ECS/ECSTypes.h"
 #include <cstdint>
 
-struct FrameData;   // forward — vollständige Definition in FrameData.h
+class Registry;
 
-class DebugCamera
+// Echte ECS-Free-Fly-Camera.
+// Besitzt eine eigene Kamera-Entity und schaltet per ActiveCameraTag um.
+// Kein FrameData-Override, kein nachträgliches Snapshot-Mutieren.
+class FreeCamera
 {
 public:
-    DebugCamera() = default;
+    FreeCamera() = default;
 
-    // -------------------------------------------------------------------
-    // Aktivierung
-    // -------------------------------------------------------------------
-    void   SetEnabled(bool enabled) { m_enabled = enabled; }
-    bool   IsEnabled()        const { return m_enabled; }
-    void   Toggle()                 { m_enabled = !m_enabled; }
+    void AttachRegistry(Registry* registry);
 
-    // -------------------------------------------------------------------
-    // Position + Orientierung
-    // -------------------------------------------------------------------
-    void   SetPosition(const Float3& pos)         { m_position = pos; }
+    void   SetEnabled(bool enabled);
+    bool   IsEnabled() const { return m_enabled; }
+    void   Toggle()          { SetEnabled(!m_enabled); }
+
+    void   SetPosition(const Float3& pos);
     void   SetYawPitch(float yawDeg, float pitchDeg);
 
-    Float3 GetPosition()   const { return m_position; }
-    float         GetYaw()        const { return m_yawDeg;   }
-    float         GetPitch()      const { return m_pitchDeg; }
+    Float3 GetPosition() const { return m_position; }
+    float  GetYaw() const { return m_yawDeg; }
+    float  GetPitch() const { return m_pitchDeg; }
 
-    // -------------------------------------------------------------------
-    // Projektion
-    // -------------------------------------------------------------------
-    void  SetFovDeg(float fov)         { m_fovDeg  = fov;  }
-    void  SetNearFar(float n, float f) { m_near = n; m_far = f; }
-    float GetFovDeg()  const { return m_fovDeg; }
+    void   SetFovDeg(float fov);
+    void   SetNearFar(float n, float f);
+    float  GetFovDeg() const { return m_fovDeg; }
 
-    // -------------------------------------------------------------------
-    // Navigation — einmal pro Frame aufrufen wenn aktiviert.
-    // Liest GDXInput::KeyDown() — kein Maus-Delta (Maus-Support später
-    // über MouseMovedEvent ergänzbar wenn Events.h erweitert wird).
-    // -------------------------------------------------------------------
     void ProcessInput(float deltaTime);
 
-    // -------------------------------------------------------------------
-    // Matrizen
-    // -------------------------------------------------------------------
-    Matrix4 ViewMatrix()              const;
-    Matrix4 ProjMatrix(float aspect)  const;
+    Matrix4 ViewMatrix() const;
+    Matrix4 ProjMatrix(float aspect) const;
 
-    // Überschreibt viewMatrix, projMatrix, viewProjMatrix, cameraPos,
-    // cameraForward in outFrame.  Nur aufrufen wenn IsEnabled().
-    void OverrideFrameData(FrameData& outFrame) const;
+    EntityID GetCameraEntity() const { return m_cameraEntity; }
+    EntityID GetPreviousCameraEntity() const { return m_previousCameraEntity; }
 
-    // -------------------------------------------------------------------
-    // Bewegungsgeschwindigkeit
-    // -------------------------------------------------------------------
-    float moveSpeed      = 8.0f;   // Einheiten/s
-    float fastMultiplier = 5.0f;   // Shift-Faktor
-    float turnSpeedDeg   = 90.0f;  // Grad/s für Tasten-Rotation
+    float moveSpeed      = 8.0f;
+    float fastMultiplier = 5.0f;
+    float turnSpeedDeg   = 90.0f;
 
 private:
+    void EnsureCameraEntity();
+    void SyncEntityTransform();
+    void SyncEntityCamera();
+    void CaptureFromEntity(EntityID entity);
+
     Float3 ForwardVector() const;
-    Float3 RightVector()   const;
-    Float3 UpVector()      const;
+    Float3 RightVector() const;
+    Float3 UpVector() const;
 
-    bool          m_enabled  = false;
-    Float3  m_position = { 0.f, 2.f, -5.f };
-    float         m_yawDeg   = 0.f;    // Y-Achse
-    float         m_pitchDeg = 0.f;    // X-Achse, ±89°
+private:
+    Registry* m_registry = nullptr;
+    bool      m_enabled = false;
+    EntityID  m_cameraEntity = NULL_ENTITY;
+    EntityID  m_previousCameraEntity = NULL_ENTITY;
 
-    float         m_fovDeg   = 60.f;
-    float         m_near     = 0.1f;
-    float         m_far      = 1000.f;
+    Float3    m_position = { 0.f, 2.f, -5.f };
+    float     m_yawDeg = 0.f;
+    float     m_pitchDeg = 0.f;
+
+    float     m_fovDeg = 60.f;
+    float     m_near = 0.25f;
+    float     m_far = 1000.f;
+    float     m_aspect = 16.0f / 9.0f;
+    bool      m_isOrtho = false;
+    float     m_orthoWidth = 10.0f;
+    float     m_orthoHeight = 10.0f;
+    uint32_t  m_cullMask = 0xFFFFFFFFu;
 };

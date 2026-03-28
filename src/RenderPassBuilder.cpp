@@ -48,7 +48,7 @@ namespace
             return sceneRt.exposedDepthTexture.IsValid();
 
         case PostProcessInputSemantic::SceneNormals:
-            return false;
+            return sceneRt.exposedNormalsTexture.IsValid();
 
         case PostProcessInputSemantic::Custom:
             return slot.customTexture.IsValid();
@@ -118,16 +118,6 @@ namespace
         if (!ppCtx.backend || !ppCtx.rtStore || !ppCtx.texStore)
             return false;
 
-        // Diagnoseschalter: Main-View direkt ins Backbuffer rendern, um den
-        // Presentation-/PostProcess-Pfad als Fehlerquelle auszuschliessen.
-        if (outputToBackbuffer)
-        {
-            //Debug::Log(
-            //    GDX_SRC_LOC,
-            //    L"PrepareViewPostProcess: Main-View-PostProcess testweise deaktiviert. Direkter Graphics-Pass ins Backbuffer.");
-            return false;
-        }
-
         if (!HasActivePostProcessPass(ppCtx))
             return false;
 
@@ -174,9 +164,11 @@ namespace
         view.execute.presentation.postProcess.execInputs.sceneColor = sceneRt->exposedTexture;
         view.execute.presentation.postProcess.execInputs.originalSceneColor = sceneRt->exposedTexture;
         view.execute.presentation.postProcess.execInputs.sceneDepth = sceneRt->exposedDepthTexture;
-        view.execute.presentation.postProcess.execInputs.sceneNormals = TextureHandle::Invalid();
+        view.execute.presentation.postProcess.execInputs.sceneNormals = sceneRt->exposedNormalsTexture;
         view.execute.presentation.postProcess.execInputs.cameraNearPlane = view.prepared.frame.cameraNearPlane;
         view.execute.presentation.postProcess.execInputs.cameraFarPlane = view.prepared.frame.cameraFarPlane;
+        view.execute.presentation.postProcess.execInputs.cameraProjScaleX = view.prepared.frame.projMatrix._11;
+        view.execute.presentation.postProcess.execInputs.cameraProjScaleY = view.prepared.frame.projMatrix._22;
         view.execute.presentation.postProcess.execInputs.cameraIsOrtho = (view.prepared.frame.cameraProjectionFlags & 1u) ? 1u : 0u;
         view.execute.presentation.postProcess.execInputs.depthDebugFlags = 1u;
         view.execute.presentation.postProcess.outputToBackbuffer = outputToBackbuffer;
@@ -280,7 +272,7 @@ void BuildMainViewExecuteInputs(
 void BuildRTTExecuteInputs(
     std::vector<RFG::ViewPassData>&                           views,
     ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore,
-    const PostProcContext&                                    ppCtx,
+    const PostProcContext&                                    /*ppCtx*/,
     const DebugAppendFn&                                      debugFn)
 {
     for (auto& view : views)
@@ -291,14 +283,16 @@ void BuildRTTExecuteInputs(
         if (!rt || !rt->ready) continue;
 
         BuildShadowPassExecuteInput(view);
-        if (!PrepareViewPostProcess(view, ppCtx, /*outputToBackbuffer=*/false))
-        {
-            BuildGraphicsPassExecuteInput(
-                view,
-                view.prepared.graphicsTargetDesc,
-                true,
-                view.prepared.shadowEnabled);
-        }
+
+        // RTT views deliberately bypass the shared fullscreen post-process chain.
+        // Otherwise GTAO/bloom/debug passes contaminate monitor/RTT previews and
+        // make main-view debugging ambiguous.
+        BuildGraphicsPassExecuteInput(
+            view,
+            view.prepared.graphicsTargetDesc,
+            true,
+            view.prepared.shadowEnabled);
+
         BuildExecutionQueues(view, debugFn);
     }
 }

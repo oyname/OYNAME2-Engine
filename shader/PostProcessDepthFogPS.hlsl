@@ -1,6 +1,6 @@
 Texture2D gSceneColor : register(t0);
 Texture2D gSceneDepth : register(t1);
-SamplerState gSampler : register(s0);
+SamplerState gSampler : register(s1);
 
 struct PSIn
 {

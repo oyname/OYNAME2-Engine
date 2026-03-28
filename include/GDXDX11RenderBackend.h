@@ -125,7 +125,6 @@ public:
         ResourceStore<GDXTextureResource,      TextureTag>&      texStore) override;
 
     void SetShadowMapSize(uint32_t size) override { m_shadowMapSize = size; }
-    void SetDebugSmokeTestMode(GDXDebugSmokeTestMode mode) override { m_smokeTestMode = mode; }
     void LoadIBL(const wchar_t* hdrPath) override;
 
 private:
@@ -135,6 +134,7 @@ private:
     {
         DX11PostProcessSurfaceGpu ping;
         DX11PostProcessSurfaceGpu pong;
+        DX11PostProcessSurfaceGpu originalCapture;
     };
 
     void ReleasePostProcessSurface(DX11PostProcessSurfaceGpu& surface);
@@ -144,12 +144,7 @@ private:
     bool EnsurePostProcessSurface(DX11PostProcessSurfaceGpu& surface, uint32_t width, uint32_t height, GDXTextureFormat format, const wchar_t* debugName);
     bool InitDefaultTextures(ResourceStore<GDXTextureResource, TextureTag>& texStore);
 
-    bool EnsureDebugSmokeResources();
-    bool ExecuteDebugSmokePass(const FrameData* frame, ID3D11RenderTargetView* rtv, ID3D11DepthStencilView* dsv, float viewportWidth, float viewportHeight);
-    bool DrawDebugFullscreenTriangle(ID3D11RenderTargetView* rtv, float viewportWidth, float viewportHeight);
-    bool DrawDebugPositionTriangle(const FrameData* frame, ID3D11RenderTargetView* rtv, ID3D11DepthStencilView* dsv, float viewportWidth, float viewportHeight, bool withVertexColor);
 
-    GDXDebugSmokeTestMode m_smokeTestMode = GDXDebugSmokeTestMode::None;
 
     std::unique_ptr<IGDXDXGIContext> m_context;
     ID3D11Device*        m_device = nullptr;
@@ -175,16 +170,6 @@ private:
     ID3D11BlendState*        m_blendState        = nullptr;
     ID3D11BlendState*        m_blendStateAlpha   = nullptr;
 
-    ID3D11VertexShader* m_debugFullscreenVS   = nullptr;
-    ID3D11VertexShader* m_debugPositionOnlyVS = nullptr;
-    ID3D11VertexShader* m_debugVertexColorVS  = nullptr;
-    ID3D11PixelShader*  m_debugSolidPS        = nullptr;
-    ID3D11PixelShader*  m_debugVertexColorPS  = nullptr;
-    ID3D11InputLayout*  m_debugPosInputLayout = nullptr;
-    ID3D11InputLayout*  m_debugPosColorInputLayout = nullptr;
-    ID3D11Buffer*       m_debugSmokeCB        = nullptr;
-    ID3D11Buffer*       m_debugPosTriangleVB  = nullptr;
-    ID3D11Buffer*       m_debugPosColorTriangleVB = nullptr;
 
     // IBL-SRVs — werden von LoadIBL() aus GDXIBLData hochgeladen
     ID3D11ShaderResourceView* m_iblIrradiance  = nullptr;  // t17

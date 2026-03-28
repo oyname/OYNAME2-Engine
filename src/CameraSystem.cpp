@@ -2,6 +2,8 @@
 #include "Core/GDXMath.h"
 #include "Core/GDXMathOps.h"
 
+#include <vector>
+
 // ---------------------------------------------------------------------------
 // Statische Kern-Hilfsmethode — wird von Update() und GDXECSRenderer genutzt.
 // Kein Duplikat mehr zwischen CameraSystem und BuildFrameDataFromWorldAndCamera.
@@ -43,13 +45,55 @@ void CameraSystem::BuildFrameData(
     frame.viewProjMatrix = GDX::Multiply(view, proj);
 }
 
-void CameraSystem::Update(Registry& registry, FrameData& frame) const
+EntityID CameraSystem::FindActiveCameraEntity(Registry& registry) const
 {
+    EntityID found = NULL_ENTITY;
     registry.View<WorldTransformComponent, CameraComponent, ActiveCameraTag>(
-        [&](EntityID, WorldTransformComponent& wt, CameraComponent& cam, ActiveCameraTag&)
+        [&](EntityID id, WorldTransformComponent&, CameraComponent&, ActiveCameraTag&)
         {
-            BuildFrameData(wt, cam, frame);
+            if (!found.IsValid())
+                found = id;
         });
+    return found;
+}
+
+bool CameraSystem::SetActiveCamera(Registry& registry, EntityID cameraEntity) const
+{
+    if (!cameraEntity.IsValid())
+        return false;
+
+    if (!registry.IsAlive(cameraEntity))
+        return false;
+
+    if (!registry.Has<CameraComponent>(cameraEntity) || !registry.Has<WorldTransformComponent>(cameraEntity))
+        return false;
+
+    std::vector<EntityID> activeCameras;
+    registry.View<CameraComponent, ActiveCameraTag>(
+        [&](EntityID id, CameraComponent&, ActiveCameraTag&)
+        {
+            activeCameras.push_back(id);
+        });
+
+    for (EntityID id : activeCameras)
+    {
+        if (id != cameraEntity)
+            registry.Remove<ActiveCameraTag>(id);
+    }
+
+    if (!registry.Has<ActiveCameraTag>(cameraEntity))
+        registry.Add<ActiveCameraTag>(cameraEntity);
+
+    return true;
+}
+
+bool CameraSystem::Update(Registry& registry, FrameData& frame) const
+{
+    const EntityID activeCamera = FindActiveCameraEntity(registry);
+    if (!activeCamera.IsValid())
+        return false;
+
+    return BuildFrameDataForCamera(registry, activeCamera, frame);
 }
 
 bool CameraSystem::BuildFrameDataForCamera(Registry& registry, EntityID cameraEntity, FrameData& frame, float aspectOverride) const

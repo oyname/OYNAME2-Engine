@@ -15,7 +15,7 @@
 #include <cassert>
 #include <cstdint>
 
-namespace GIDX
+namespace KROM
 {
 using namespace GDX;
 
@@ -527,4 +527,4 @@ void CollisionWorld::ComputeContacts(
     }
 }
 
-} // namespace GIDX
+} // namespace KROM

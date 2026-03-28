@@ -1,3 +1,12 @@
+cbuffer FrameConstants : register(b1)
+{
+    row_major float4x4 gView;
+    row_major float4x4 gProj;
+    row_major float4x4 gViewProj;
+    float4             gCameraPos;
+    row_major float4x4 gShadowViewProj;
+};
+
 cbuffer MaterialConstants : register(b2)
 {
     float4   gBaseColor;
@@ -26,6 +35,12 @@ struct PS_INPUT
     float3 worldPosition : TEXCOORD0;
 };
 
+struct PS_OUTPUT
+{
+    float4 color  : SV_Target0;
+    float4 normal : SV_Target1;
+};
+
 float3 HsvToRgb(float h, float s, float v)
 {
     float c = v * s;
@@ -43,7 +58,15 @@ float3 HsvToRgb(float h, float s, float v)
     return rgb + m;
 }
 
-float4 main(PS_INPUT input) : SV_TARGET
+float3 EncodeViewNormal(float3 worldNormal)
+{
+    float3x3 view3x3 = (float3x3)gView;
+    float3 viewNormal = mul(worldNormal, view3x3);
+    viewNormal = normalize(viewNormal);
+    return viewNormal * 0.5f + 0.5f;
+}
+
+PS_OUTPUT main(PS_INPUT input)
 {
     float3 wp = input.worldPosition;
     float  time = gUVTilingOffset.x;
@@ -57,15 +80,24 @@ float4 main(PS_INPUT input) : SV_TARGET
     plasma = plasma * 0.5f + 0.5f;
 
     float hue = fmod(plasma * 360.0f + time * 40.0f, 360.0f);
-    float brightness = 0.75f + 0.25f * sin(time * 3.0f + plasma * 6.2831853f);
-    float saturation = 1.0f;
+    float brightness = 0.52f + 0.12f * sin(time * 2.5f + plasma * 6.2831853f);
+    float3 color = HsvToRgb(hue, 0.95f, brightness);
+    color = pow(max(color, 0.0f), 1.05f);
 
-    float3 color = HsvToRgb(hue, saturation, brightness);
-    color = pow(color, 0.7f);
+    float3 tintedBase = lerp(float3(1.0f, 1.0f, 1.0f), max(gBaseColor.rgb, 0.0f), 0.65f);
+    color *= tintedBase;
 
-    color *= gBaseColor.rgb;
-    color += gEmissiveColor.rgb;
+    float3 emissive = max(gEmissiveColor.rgb, 0.0f) * 0.12f;
+    float3 finalColor = color + emissive;
+
+    float3 dpdx = ddx(input.worldPosition);
+    float3 dpdy = ddy(input.worldPosition);
+    float3 worldNormal = normalize(cross(dpdx, dpdy));
 
     float alpha = saturate(gBaseColor.a * (1.0f - gTransparency));
-    return float4(saturate(color), alpha);
+
+    PS_OUTPUT o;
+    o.color = float4(finalColor, alpha);
+    o.normal = float4(EncodeViewNormal(worldNormal), 1.0f);
+    return o;
 }

@@ -136,7 +136,27 @@ public:
     // Minimaler Test-Pass: visualisiert SceneDepth als Graustufenbild.
     // Dient nur zum Nachweis, dass die Depth-SRV im Post-Processing ankommt.
     void               SetDepthDebugView(bool enabled);
+    void               SetNormalDebugView(bool enabled);
+    void               SetEdgeDebugView(bool enabled,
+                                        int viewportW, int viewportH,
+                                        float depthScale = 250.0f,
+                                        float normalScale = 4.0f,
+                                        bool depthOnly = false,
+                                        bool normalOnly = false);
+    void               SetGTAO(int viewportW, int viewportH,
+                               float nearPlane, float farPlane,
+                               float radiusPixels = 18.0f,
+                               float thickness    = 1.5f,
+                               float intensity    = 1.0f,
+                               float power        = 1.5f);
+    void               DisableGTAO();
     void               SetDepthFogTest(bool enabled);
+
+private:
+    bool               EnsureGTAOPassesCreated();
+    void               PrewarmPostProcessShaders();
+
+public:
 
     struct FrameStats
     {
@@ -166,14 +186,12 @@ public:
 
     const FrameStats& GetFrameStats() const { return m_stats; }
     void SetClearColor(float r, float g, float b, float a = 1.0f);
-    void SetDebugSmokeTestMode(GDXDebugSmokeTestMode mode);
-    GDXDebugSmokeTestMode GetDebugSmokeTestMode() const { return m_debugSmokeTestMode; }
 
     using DebugCullingOptions = GDXDebugCullingRenderer::Options;
     void SetDebugCullingOptions(const DebugCullingOptions& options) { m_debugCulling.options = options; }
     const DebugCullingOptions& GetDebugCullingOptions() const { return m_debugCulling.options; }
 
-    DebugCamera& GetDebugCamera() { return m_debugCamera; }
+    FreeCamera& GetFreeCamera() { return m_freeCamera; }
 
 private:
     enum class RenderFramePhase : uint8_t
@@ -251,10 +269,9 @@ private:
     TextureHandle m_defaultBlackTex;
 
     float      m_clearColor[4] = { 0.05f, 0.05f, 0.12f, 1.0f };
-    GDXDebugSmokeTestMode m_debugSmokeTestMode = GDXDebugSmokeTestMode::None;
     FrameStats m_stats;
     GDXDebugCullingRenderer m_debugCulling;
-    DebugCamera             m_debugCamera;
+    FreeCamera              m_freeCamera;
     bool       m_initialized = false;
     bool       m_shadowResourcesAvailable = false;
 
@@ -276,6 +293,11 @@ private:
     PostProcessHandle  m_bloomBlurVPass              = PostProcessHandle::Invalid();
     PostProcessHandle  m_bloomCompositePass          = PostProcessHandle::Invalid();
     PostProcessHandle  m_depthDebugPass              = PostProcessHandle::Invalid();
+    PostProcessHandle  m_normalDebugPass             = PostProcessHandle::Invalid();
+    PostProcessHandle  m_edgeDebugPass               = PostProcessHandle::Invalid();
+    PostProcessHandle  m_gtaoPass                    = PostProcessHandle::Invalid();
+    PostProcessHandle  m_gtaoBlurPass                = PostProcessHandle::Invalid();
+    PostProcessHandle  m_gtaoCompositePass           = PostProcessHandle::Invalid();
     PostProcessHandle  m_depthFogTestPass            = PostProcessHandle::Invalid();
 
     JobSystem        m_jobSystem;

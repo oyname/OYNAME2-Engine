@@ -43,18 +43,24 @@ struct DX11RenderTargetGpu
     ID3D11Texture2D*          colorTexture = nullptr;
     ID3D11RenderTargetView*   rtv          = nullptr;
     ID3D11ShaderResourceView* srv          = nullptr;
-    ID3D11Texture2D*          depthTexture = nullptr;
-    ID3D11DepthStencilView*   dsv          = nullptr;
-    ID3D11ShaderResourceView* depthSrv     = nullptr;
+    ID3D11Texture2D*          depthTexture  = nullptr;
+    ID3D11DepthStencilView*   dsv           = nullptr;
+    ID3D11ShaderResourceView* depthSrv      = nullptr;
+    ID3D11Texture2D*          normalTexture = nullptr;
+    ID3D11RenderTargetView*   normalRtv     = nullptr;
+    ID3D11ShaderResourceView* normalSrv     = nullptr;
 
     void Release()
     {
         if (srv)          { srv->Release();          srv          = nullptr; }
         if (rtv)          { rtv->Release();          rtv          = nullptr; }
         if (colorTexture) { colorTexture->Release(); colorTexture = nullptr; }
-        if (depthSrv)     { depthSrv->Release();     depthSrv     = nullptr; }
-        if (dsv)          { dsv->Release();          dsv          = nullptr; }
-        if (depthTexture) { depthTexture->Release(); depthTexture = nullptr; }
+        if (depthSrv)      { depthSrv->Release();      depthSrv      = nullptr; }
+        if (dsv)           { dsv->Release();           dsv           = nullptr; }
+        if (depthTexture)  { depthTexture->Release();  depthTexture  = nullptr; }
+        if (normalSrv)     { normalSrv->Release();     normalSrv     = nullptr; }
+        if (normalRtv)     { normalRtv->Release();     normalRtv     = nullptr; }
+        if (normalTexture) { normalTexture->Release(); normalTexture = nullptr; }
     }
 };
 

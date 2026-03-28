@@ -29,7 +29,7 @@ enum GDXVertexFlags : uint32_t
     GDX_VERTEX_BONE_INDICES = (1u << 6),  // uint4   BLENDINDICES0
     GDX_VERTEX_BONE_WEIGHTS = (1u << 7),  // float4  BLENDWEIGHT0
 
-    // Standard-Kombination für ECSVertexShader.hlsl
+    // Standard-Kombination für VertexShader.hlsl
     GDX_VERTEX_DEFAULT = GDX_VERTEX_POSITION | GDX_VERTEX_NORMAL | GDX_VERTEX_TEX1,
 
     // Skinning-Erweiterung des Standard-Shaders

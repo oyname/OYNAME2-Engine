@@ -12,7 +12,6 @@
 
 #include "RenderFramePipeline.h"
 #include "FrameData.h"
-#include "DebugCamera.h"
 #include "RenderComponents.h"
 #include "GDXRenderTargetResource.h"
 #include "ResourceStore.h"
@@ -36,12 +35,11 @@ namespace RenderViewPrep
 
     // ---------------------------------------------------------------------------
     // Baut einen vollständigen ViewPassData-Eintrag für den Haupt-View aus dem
-    // eingefrorenen FrameSnapshot.  Debug-Kamera überschreibt ggf. View/Proj.
+    // bereits vollständig aus der aktiven Kamera erzeugten FrameSnapshot.
     // ---------------------------------------------------------------------------
     void PrepareMainView(
         const Context&       ctx,
         const FrameData&     frameSnapshot,
-        const DebugCamera&   debugCamera,
         RFG::ViewPassData&   outView);
 
     // ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 Texture2D gSceneDepth : register(t0);
-SamplerState gSampler : register(s0);
+SamplerState gSampler : register(s1);
 
 cbuffer DepthDebugParams : register(b0)
 {

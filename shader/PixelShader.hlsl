@@ -1,4 +1,7 @@
-// ECSPixelShader.hlsl — GIDX ECS Engine
+// ECSPixelShader.hlsl — KROM Engine
+// TBN:     ddx/ddy Cotangent-Frame (kein Vertex-Tangent erforderlich).
+//          Relative-Threshold-Fix: Threshold skaliert mit |dp|^2 * |duv|^2
+//          → distanzunabhaengig. Gram-Schmidt T gegen NGeom. Hemisphere Clamp.
 // Lighting: Directional, Point, Spot.
 // Shading:  Phong (Standard) oder Cook-Torrance PBR (MF_SHADING_PBR).
 // Shadow:   CSM PCF 3x3 (Texture2DArray t16, Kaskaden-Selektion via b5).
@@ -12,13 +15,14 @@ Texture2D              gNormalMap : register(t1);
 Texture2D              gORM       : register(t2);
 Texture2D              gEmissive  : register(t3);
 Texture2D              gDetailMap : register(t4);
-Texture2DArray         gShadowMap : register(t16);  // CSM: Array[cascadeCount]
-TextureCube            gIrradianceMap   : register(t17);  // IBL diffuse
-TextureCube            gPrefilteredEnv  : register(t18);  // IBL specular
-Texture2D              gBrdfLut         : register(t19);  // Split-sum LUT
+Texture2DArray         gShadowMap : register(t16);
+TextureCube            gIrradianceMap  : register(t17);
+TextureCube            gPrefilteredEnv : register(t18);
+Texture2D              gBrdfLut        : register(t19);
 
-SamplerState           gSampler      : register(s0);  // Linear Wrap — Materialien
-SamplerState           gSamplerClamp : register(s1);  // Linear Clamp — IBL, RTT
+SamplerState           gSampler      : register(s0);
+SamplerState           gSamplerClamp : register(s1);
+SamplerState           gSamplerAniso : register(s2);
 SamplerComparisonState gShadowSamp   : register(s7);
 
 // ---------------------------------------------------------------------------
@@ -30,7 +34,7 @@ cbuffer FrameConstants : register(b1)
     row_major float4x4 gProj;
     row_major float4x4 gViewProj;
     float4             gCameraPos;
-    row_major float4x4 gShadowViewProj;  // Legacy — Padding, nicht mehr genutzt
+    row_major float4x4 gShadowViewProj;
 };
 
 cbuffer MaterialConstants : register(b2)
@@ -55,7 +59,6 @@ cbuffer MaterialConstants : register(b2)
     float    _pad0;
 };
 
-// MaterialFlags
 #define MF_ALPHA_TEST      (1u << 0)
 #define MF_DOUBLE_SIDED    (1u << 1)
 #define MF_UNLIT           (1u << 2)
@@ -67,23 +70,22 @@ cbuffer MaterialConstants : register(b2)
 #define ROUGHNESS_MIN      0.04f
 
 // ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 // Forward+ Light Data (t20/t21/t22) + Tile Info (b3)
 // ---------------------------------------------------------------------------
 struct LightData
 {
-    float4 position;       // xyz=pos, w: 0=directional, 1=point, 2=spot
-    float4 direction;      // xyz=dir (world space), w=castShadows
-    float4 diffuse;        // rgb=color*intensity, a=radius
+    float4 position;
+    float4 direction;
+    float4 diffuse;
     float  innerCosAngle;
     float  outerCosAngle;
     float  _pad0;
     float  _pad1;
 };
 
-StructuredBuffer<LightData> gTileLights     : register(t20);  // all light data
-StructuredBuffer<uint>      gLightIndexList : register(t21);  // flat index list
-StructuredBuffer<uint2>     gLightGrid      : register(t22);  // (offset,count) per tile
+StructuredBuffer<LightData> gTileLights     : register(t20);
+StructuredBuffer<uint>      gLightIndexList : register(t21);
+StructuredBuffer<uint2>     gLightGrid      : register(t22);
 
 cbuffer TileInfo : register(b3)
 {
@@ -95,19 +97,26 @@ cbuffer TileInfo : register(b3)
     float  _tPad1;
 };
 
+cbuffer LegacyLightBuffer : register(b4)
+{
+    LightData gLegacyLights[32];
+    float3    gLegacySceneAmbient;
+    uint      gLegacyLightCount;
+};
+
 // ---------------------------------------------------------------------------
-// CascadeConstants (b5) — CSM
+// CascadeConstants (b5)
 // ---------------------------------------------------------------------------
 cbuffer CascadeConstants : register(b5)
 {
     row_major float4x4 gCascadeViewProj[4];
-    float4             gCascadeSplits;   // x=c0, y=c1, z=c2, w=c3 (View-Space far)
+    float4             gCascadeSplits;
     uint               gCascadeCount;
     float3             _cascadePad;
 };
 
 // ---------------------------------------------------------------------------
-// PS Input — kein positionLightSpace mehr (wird im PS pro Kaskade berechnet)
+// PS Input
 // ---------------------------------------------------------------------------
 struct PS_INPUT
 {
@@ -120,8 +129,14 @@ struct PS_INPUT
     float4 vertexColor   : COLOR0;
 };
 
+struct PS_OUTPUT
+{
+    float4 color  : SV_Target0;
+    float4 normal : SV_Target1;
+};
+
 // ---------------------------------------------------------------------------
-// PBR Hilfsfunktionen
+// PBR helpers
 // ---------------------------------------------------------------------------
 static const float PI = 3.14159265359f;
 
@@ -150,7 +165,6 @@ float3 FresnelSchlick(float cosTheta, float3 F0)
     return F0 + (1.0f - F0) * pow(max(1.0f - cosTheta, 0.0f), 5.0f);
 }
 
-// IBL: Fresnel mit Roughness-Dämpfung (Karis)
 float3 FresnelSchlickRoughness(float cosTheta, float3 F0, float roughness)
 {
     float3 r = max(float3(1.0f - roughness, 1.0f - roughness, 1.0f - roughness), F0);
@@ -158,48 +172,34 @@ float3 FresnelSchlickRoughness(float cosTheta, float3 F0, float roughness)
 }
 
 // ---------------------------------------------------------------------------
-// CSM: Kaskaden-Index aus View-Space-Tiefe wählen
+// CSM
 // ---------------------------------------------------------------------------
 uint SelectCascade(float viewDepth)
 {
     float splits[4] = {
-        gCascadeSplits.x,
-        gCascadeSplits.y,
-        gCascadeSplits.z,
-        gCascadeSplits.w
+        gCascadeSplits.x, gCascadeSplits.y,
+        gCascadeSplits.z, gCascadeSplits.w
     };
     uint cascade = gCascadeCount - 1u;
     [unroll] for (uint c = 0; c < gCascadeCount; ++c)
     {
-        if (viewDepth < splits[c])
-        {
-            cascade = c;
-            break;
-        }
+        if (viewDepth < splits[c]) { cascade = c; break; }
     }
     return cascade;
 }
 
-// ---------------------------------------------------------------------------
-// CSM PCF 3x3
-// ---------------------------------------------------------------------------
-float CalculateShadowCSM(float3 worldPos, float3 N, float3 lightDir, float viewDepth)
+float CalculateShadowCSM(float3 worldPos, float3 NGeom, float3 lightDir, float viewDepth)
 {
     uint cascade = SelectCascade(viewDepth);
 
-    // NdotL muss VOR der Projektion stehen, damit der Normal-Offset-Bias greifen kann.
-    float NdotL = saturate(dot(normalize(N), normalize(-lightDir)));
+    float3 Ng    = normalize(NGeom);
+    float3 L     = normalize(-lightDir);
+    float NdotL  = saturate(dot(Ng, L));
 
-    // Normal Offset Bias: worldPos entlang der Oberflächennormale verschieben, bevor
-    // in den Light-Space projiziert wird.  Robuster als reiner Depth-Bias für flache
-    // Flächen (NdotL ≈ 1) und streifende Lichtwinkel (NdotL ≈ 0).
-    // Bei NdotL≈1 (Licht senkrecht) ist Offset klein; bei NdotL≈0 (streifend) groß.
-    // Hardware-Bias in GDXShadowMap.cpp ist minimal — kein doppelter Bias.
-    float normalOffset = 0.01f * (1.0f - NdotL);
-    float3 biasedPos = worldPos + normalize(N) * normalOffset;
+    float normalOffset = 0.0025f + (1.0f - NdotL) * 0.0100f;
+    float3 biasedPos   = worldPos + Ng * normalOffset;
 
     float4 lightSpacePos = mul(float4(biasedPos, 1.0f), gCascadeViewProj[cascade]);
-
     if (lightSpacePos.w <= 0.00001f) return 1.0f;
 
     float3 proj = lightSpacePos.xyz / lightSpacePos.w;
@@ -210,13 +210,11 @@ float CalculateShadowCSM(float3 worldPos, float3 N, float3 lightDir, float viewD
         proj.y < 0.0f || proj.y > 1.0f ||
         proj.z < 0.0f || proj.z > 1.0f) return 1.0f;
 
-    uint tw2, th2, elems2;
-    gShadowMap.GetDimensions(tw2, th2, elems2);
-    float texelSize = 1.0f / float(tw2);
+    uint tw, th, elems;
+    gShadowMap.GetDimensions(tw, th, elems);
+    float texelSize = 1.0f / float(tw);
 
-    // Minimaler Depth-Bias — normalOffset übernimmt die Hauptarbeit.
-    // Kein cascadeScale-Multiplikator mehr — verhindert Peter Panning in weiten Kaskaden.
-    float bias  = 0.0005f;
+    float bias  = 0.0008f + (1.0f - NdotL) * 0.0017f;
     float depth = proj.z - bias;
 
     float shadow = 0.0f;
@@ -233,8 +231,8 @@ float CalculateShadowCSM(float3 worldPos, float3 N, float3 lightDir, float viewD
 // ---------------------------------------------------------------------------
 float CalcAttenuation(float dist, float radius)
 {
-    float r  = max(radius, 0.001f);
-    float s  = dist / r;
+    float r = max(radius, 0.001f);
+    float s = dist / r;
     if (s >= 1.0f) return 0.0f;
     float s2 = s * s;
     return (1.0f - s2) * (1.0f - s2) / max(1.0f + s2, 1e-5f);
@@ -247,181 +245,254 @@ float CalcSpotCone(float3 lightDir, float3 spotDir, float innerCos, float outerC
 }
 
 // ---------------------------------------------------------------------------
+// Utility
+// ---------------------------------------------------------------------------
+float3 EncodeViewNormal(float3 worldNormal)
+{
+    float3x3 view3x3  = (float3x3)gView;
+    float3 viewNormal = mul(worldNormal, view3x3);
+    return normalize(viewNormal) * 0.5f + 0.5f;
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
-float4 main(PS_INPUT input) : SV_TARGET
+PS_OUTPUT main(PS_INPUT input)
 {
-    float2 uv    = input.texCoord  * gUVTilingOffset.xy       + gUVTilingOffset.zw;
-    float2 uvN   = input.texCoord  * gUVNormalTilingOffset.xy + gUVNormalTilingOffset.zw;
-    float2 uv1   = input.texCoord1 * gUVDetailTilingOffset.xy + gUVDetailTilingOffset.zw;
+    float2 uv  = input.texCoord  * gUVTilingOffset.xy       + gUVTilingOffset.zw;
+    float2 uvN = input.texCoord  * gUVNormalTilingOffset.xy + gUVNormalTilingOffset.zw;
+    float2 uv1 = input.texCoord1 * gUVDetailTilingOffset.xy + gUVDetailTilingOffset.zw;
 
-    // --- Normal ---
-    float3 N = normalize(input.normal);
+    // -------------------------------------------------------------------------
+    // Normal — ddx/ddy Cotangent-Frame mit relativem Threshold
+    // -------------------------------------------------------------------------
+    float3 NGeom  = normalize(input.normal);
+    float3 NShade = NGeom;
+
     if ((gFlags & MF_USE_NORMAL_MAP) != 0u)
     {
-        // Cotangent frame (Mikkelsen / ShaderX5 / thetenthplanet.de/archives/1180)
-        // This is the standard used by Unreal Engine and Unity for ddx/ddy-based
-        // TBN reconstruction without precomputed tangents.
-        //
-        // Key properties vs naive T=normalize(Q1*st2.y - Q2*st1.y):
-        //   - Solves the full UV->position linear system (not just one component).
-        //   - UV handedness (mirrored faces, det<0) is handled automatically.
-        //   - Scale-invariant: invmax uses max(|T|,|B|) instead of normalizing
-        //     both independently, so degenerate near-zero cases are safe.
-        //   - No branch, no quad-divergence seams.
+        float3 dp1  = ddx(input.worldPosition);
+        float3 dp2  = ddy(input.worldPosition);
+        float2 duv1 = ddx(uvN);
+        float2 duv2 = ddy(uvN);
 
-        float3 dp1   = ddx(input.worldPosition);
-        float3 dp2   = ddy(input.worldPosition);
-        float2 duv1  = ddx(uvN);
-        float2 duv2  = ddy(uvN);
+        float3 dp2perp = cross(dp2, NGeom);
+        float3 dp1perp = cross(NGeom, dp1);
 
-        // Solve: [dp1, dp2]^T = [duv1, duv2]^T * [T, B]
-        float3 dp2perp = cross(dp2, N);
-        float3 dp1perp = cross(N, dp1);
-        float3 T = dp2perp * duv1.x + dp1perp * duv2.x;
-        float3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+        float3 T_raw = dp2perp * duv1.x + dp1perp * duv2.x;
+        float3 B_raw = dp2perp * duv1.y + dp1perp * duv2.y;
 
-        // Scale-invariant normalization: safe against degenerate UV layouts.
-        float invmax = rsqrt(max(dot(T, T), dot(B, B)));
-        T *= invmax;
-        B *= invmax;
+        float tLen2  = dot(T_raw, T_raw);
 
-        // Sample and decode normal map.
-        // Re-normalize after decode: GenerateMips() box-filters XYZ bytes
-        // which shrinks vector length at mip boundaries.
-        float3 nTS = gNormalMap.Sample(gSampler, uvN).xyz * 2.0f - 1.0f;
-        float  nLen = dot(nTS, nTS);
-        nTS = (nLen > 1e-10f) ? nTS * rsqrt(nLen) : float3(0.0f, 0.0f, 1.0f);
-        nTS.xy *= gNormalScale;
+        // Relativer Threshold: T_raw skaliert mit d^3, tLen2 mit d^6.
+        // Ein absoluter Wert (z.B. 1e-10) versagt bei Kameraabstand < ~1m.
+        float dpLen2 = max(dot(dp1, dp1), dot(dp2, dp2));
+        float uvLen2 = max(dot(duv1, duv1), dot(duv2, duv2));
+        float relRef = dpLen2 * uvLen2;
 
-        N = normalize(nTS.x * T + nTS.y * B + nTS.z * N);
+        if (tLen2 > relRef * 1e-6f && relRef > 0.0f)
+        {
+            // Normieren
+            T_raw *= rsqrt(tLen2);
+            float3 T = T_raw;
+
+            // Gram-Schmidt: T orthogonal zu NGeom erzwingen
+            float3 T_gs = T - dot(T, NGeom) * NGeom;
+            float  tgs2 = dot(T_gs, T_gs);
+            T = (tgs2 > 1e-6f) ? T_gs * rsqrt(tgs2) : T;
+
+            // B aus Kreuzprodukt — Handedness aus B_raw ableiten
+            float3 B_cross    = cross(NGeom, T);
+            float  handedness = (dot(B_cross, B_raw) >= 0.0f) ? 1.0f : -1.0f;
+            float3 B          = B_cross * handedness;
+
+            float3 nTS = gNormalMap.Sample(gSamplerAniso, uvN).xyz * 2.0f - 1.0f;
+            float  nLen = dot(nTS, nTS);
+            nTS = (nLen > 1e-10f) ? nTS * rsqrt(nLen) : float3(0.0f, 0.0f, 1.0f);
+            nTS.xy *= gNormalScale;
+
+            NShade = normalize(nTS.x * T + nTS.y * B + nTS.z * NGeom);
+
+            // Hemisphere Clamp
+            float NdotNs = dot(NShade, NGeom);
+            if (NdotNs < 0.0f)
+                NShade = normalize(NShade - 2.0f * NdotNs * NGeom);
+        }
     }
 
-    // --- Albedo ---
-    float4 baseColor = gAlbedo.Sample(gSampler, uv) * gBaseColor * input.vertexColor;
+    float3 N = NShade;
+
+    // -------------------------------------------------------------------------
+    // Albedo
+    // -------------------------------------------------------------------------
+    float4 baseColor = gAlbedo.Sample(gSamplerAniso, uv) * gBaseColor * input.vertexColor;
     if ((gFlags & MF_ALPHA_TEST) != 0u)
         if (baseColor.a < gAlphaCutoff) discard;
 
-    // --- Detail-Map (UV1) ---
     if ((gFlags & MF_USE_DETAIL_MAP) != 0u)
     {
-        float3 detail  = gDetailMap.Sample(gSampler, uv1).rgb;
-        baseColor.rgb *= detail * 2.0f;
-        baseColor.rgb  = saturate(baseColor.rgb);
+        float3 detail  = gDetailMap.Sample(gSamplerAniso, uv1).rgb;
+        baseColor.rgb  = saturate(baseColor.rgb * detail * 2.0f);
     }
 
     float3 albedo = baseColor.rgb;
 
-    // --- PBR Parameter ---
+    // -------------------------------------------------------------------------
+    // PBR Parameter
+    // -------------------------------------------------------------------------
     float metallic  = gMetallic;
     float roughness = max(gRoughness, ROUGHNESS_MIN);
     float ao        = 1.0f;
     if ((gFlags & MF_USE_ORM_MAP) != 0u)
     {
-        float3 orm = gORM.Sample(gSampler, uv).rgb;
+        float3 orm = gORM.Sample(gSamplerAniso, uv).rgb;
         ao         = lerp(1.0f, orm.r, saturate(gOcclusionStrength));
         roughness  = max(orm.g, ROUGHNESS_MIN);
         metallic   = saturate(orm.b);
     }
 
-    // --- Unlit ---
+    // -------------------------------------------------------------------------
+    // Unlit
+    // -------------------------------------------------------------------------
     if ((gFlags & MF_UNLIT) != 0u)
     {
         float3 em = float3(0, 0, 0);
         if ((gFlags & MF_USE_EMISSIVE) != 0u)
-            em = gEmissive.Sample(gSampler, uv).rgb * gEmissiveColor.rgb;
-        return float4(albedo + em, baseColor.a * (1.0f - gTransparency));
+            em = gEmissive.Sample(gSamplerAniso, uv).rgb * gEmissiveColor.rgb;
+
+        PS_OUTPUT output;
+        output.color  = float4(albedo + em, baseColor.a * (1.0f - gTransparency));
+        output.normal = float4(EncodeViewNormal(N), 1.0f);
+        return output;
     }
 
-    // --- View-Space-Tiefe für Kaskaden-Selektion ---
-    float4 viewPos = mul(float4(input.worldPosition, 1.0f), gView);
-    float  viewDepth = viewPos.z;
+    // -------------------------------------------------------------------------
+    // View-Space-Tiefe + Forward+ Tile
+    // -------------------------------------------------------------------------
+    float  viewDepth = mul(float4(input.worldPosition, 1.0f), gView).z;
 
-    // --- Forward+: Tile-Index bestimmen ---
-    uint2  tileIdx     = uint2(input.position.xy) / uint2(16u, 16u);
-    uint   tileFlat    = tileIdx.y * tileCountX + tileIdx.x;
-    uint2  tileGrid    = (tileCountX > 0u) ? gLightGrid[tileFlat] : uint2(0u, lightCount);
-    uint   tileOffset  = tileGrid.x;
-    uint   tileLights  = tileGrid.y;
+    const bool useTiledLighting   = (tileCountX > 0u) && (tileCountY > 0u);
+    const uint fallbackLightCount = min(gLegacyLightCount, 32u);
 
+    uint   tileOffset          = 0u;
+    uint   tileLights          = fallbackLightCount;
+    float3 activeSceneAmbient  = gLegacySceneAmbient;
 
-    // --- Lighting ---
+    if (useTiledLighting)
+    {
+        uint2 tileIdx  = uint2(input.position.xy) / uint2(16u, 16u);
+        tileIdx.x      = min(tileIdx.x, tileCountX - 1u);
+        tileIdx.y      = min(tileIdx.y, tileCountY - 1u);
+        uint2 tileGrid = gLightGrid[tileIdx.y * tileCountX + tileIdx.x];
+        tileOffset         = tileGrid.x;
+        tileLights         = tileGrid.y;
+        activeSceneAmbient = sceneAmbient;
+    }
+
+    // -------------------------------------------------------------------------
+    // Lighting
+    // -------------------------------------------------------------------------
     float3 V     = normalize(input.viewDirection);
     bool   isPBR = (gFlags & MF_SHADING_PBR) != 0u;
 
-    float3 ambient     = sceneAmbient;
     float3 diffuseAcc  = float3(0, 0, 0);
     float3 specularAcc = float3(0, 0, 0);
 
-    // Find shadow-casting directional light (first in tile list)
-    int    shadowIdx = -1;
-    float3 shadowDir = float3(0, -1, 0);
-    [loop] for (uint s = 0; s < tileLights; ++s)
+    // Directional light — global (nicht tile-abhaengig)
+    int    dirLightIdx   = -1;
+    float3 dirLightDir   = float3(0, -1, 0);
+    float3 dirLightColor = float3(0, 0, 0);
+
+    const uint globalLightCount = useTiledLighting ? lightCount : fallbackLightCount;
+    [loop]
+    for (uint s = 0; s < globalLightCount; ++s)
     {
-        uint lightIdx = (tileCountX > 0u) ? gLightIndexList[tileOffset + s] : s;
-        const bool isDirectional = (gTileLights[lightIdx].position.w < 0.5f);
-        const bool castsShadows  = (gTileLights[lightIdx].direction.w > 0.5f);
-        if (isDirectional && castsShadows)
+        LightData ld; if (useTiledLighting) ld = gTileLights[s]; else ld = gLegacyLights[s];
+        if (ld.position.w < 0.5f && ld.direction.w > 0.5f)
         {
-            shadowIdx = (int)lightIdx;
-            shadowDir = normalize(gTileLights[lightIdx].direction.xyz);
+            dirLightIdx   = (int)s;
+            dirLightDir   = normalize(ld.direction.xyz);
+            dirLightColor = ld.diffuse.rgb;
             break;
         }
     }
 
-    // Main lighting loop — only tile-visible lights
-    [loop]
-    for (uint i = 0; i < tileLights; ++i)
+    if (dirLightIdx >= 0)
     {
-        uint      lightIdx  = (tileCountX > 0u) ? gLightIndexList[tileOffset + i] : i;
-        LightData light     = gTileLights[lightIdx];
+        float shadow = (gReceiveShadows > 0.5f)
+            ? CalculateShadowCSM(input.worldPosition, NGeom, dirLightDir, viewDepth)
+            : 1.0f;
 
-        float  lightType  = light.position.w;
-        float3 lightColor = light.diffuse.rgb;
-        float  radius     = light.diffuse.a;
+        float NdotL = max(dot(N, -dirLightDir), 0.0f);
 
-        float3 lightDir;
-        float  attenuation = 1.0f;
-
-        if (lightType < 0.5f)
+        if (!isPBR)
         {
-            lightDir    = normalize(light.direction.xyz);
-            attenuation = 1.0f;
-        }
-        else if (lightType < 1.5f)
-        {
-            float3 toLight = light.position.xyz - input.worldPosition;
-            float  dist    = length(toLight);
-            lightDir       = -normalize(toLight);
-            attenuation    = CalcAttenuation(dist, radius);
+            diffuseAcc  += dirLightColor * NdotL * shadow;
+            float3 H     = normalize(-dirLightDir + V);
+            float  spec  = pow(max(dot(N, H), 0.0f), max(gShininess, 1.0f));
+            specularAcc += gSpecularColor.rgb * spec * dirLightColor * shadow * NdotL;
         }
         else
         {
-            float3 toLight  = light.position.xyz - input.worldPosition;
-            float  dist     = length(toLight);
+            float3 L    = -dirLightDir;
+            float3 H    = normalize(V + L);
+            float NdotV = max(dot(N, V), 0.0f);
+            float NdotH = max(dot(N, H), 0.0f);
+            float VdotH = max(dot(V, H), 0.0f);
+
+            float3 F0   = lerp(float3(0.04f, 0.04f, 0.04f), albedo, metallic);
+            float  D    = DistributionGGX(NdotH, roughness);
+            float  G    = GeometrySmith(NdotV, NdotL, roughness);
+            float3 F    = FresnelSchlick(VdotH, F0);
+            float3 kD   = (1.0f - F) * (1.0f - metallic);
+            float3 spec = (D * G * F) / max(4.0f * NdotV * NdotL, 1e-6f);
+
+            diffuseAcc += (kD * albedo / PI + spec) * dirLightColor * NdotL * shadow;
+        }
+    }
+
+    // Local lights
+    [loop]
+    for (uint i = 0; i < tileLights; ++i)
+    {
+        uint lightIdx = useTiledLighting ? gLightIndexList[tileOffset + i] : i;
+        LightData ld; if (useTiledLighting) ld = gTileLights[lightIdx]; else ld = gLegacyLights[lightIdx];
+
+        if (ld.position.w < 0.5f) continue;  // directional already handled
+
+        float lightType  = ld.position.w;
+        float3 lightColor = ld.diffuse.rgb;
+        float  radius     = ld.diffuse.a;
+
+        float3 lightDir;
+        float  attenuation;
+
+        if (lightType < 1.5f)
+        {
+            float3 toLight = ld.position.xyz - input.worldPosition;
+            lightDir       = -normalize(toLight);
+            attenuation    = CalcAttenuation(length(toLight), radius);
+        }
+        else
+        {
+            float3 toLight  = ld.position.xyz - input.worldPosition;
             float3 toLightN = normalize(toLight);
             lightDir        = -toLightN;
-            float distAtt   = CalcAttenuation(dist, radius);
-            float coneAtt   = CalcSpotCone(
-                light.direction.xyz, -toLightN,
-                light.innerCosAngle, light.outerCosAngle);
-            attenuation = distAtt * coneAtt;
+            attenuation     = CalcAttenuation(length(toLight), radius)
+                            * CalcSpotCone(ld.direction.xyz, -toLightN,
+                                           ld.innerCosAngle, ld.outerCosAngle);
         }
 
         if (attenuation <= 0.0f) continue;
-
-        float shadow = 1.0f;
-        if (shadowIdx >= 0 && gReceiveShadows > 0.5f && (int)lightIdx == shadowIdx)
-            shadow = CalculateShadowCSM(input.worldPosition, N, shadowDir, viewDepth);
 
         float NdotL = max(dot(N, -lightDir), 0.0f);
 
         if (!isPBR)
         {
-            diffuseAcc += lightColor * NdotL * attenuation * shadow;
-            float3 H    = normalize(-lightDir + V);
-            float  spec = pow(max(dot(N, H), 0.0f), max(gShininess, 1.0f));
-            specularAcc += gSpecularColor.rgb * spec * lightColor * attenuation * shadow * NdotL;
+            diffuseAcc  += lightColor * NdotL * attenuation;
+            float3 H     = normalize(-lightDir + V);
+            float  spec  = pow(max(dot(N, H), 0.0f), max(gShininess, 1.0f));
+            specularAcc += gSpecularColor.rgb * spec * lightColor * attenuation * NdotL;
         }
         else
         {
@@ -438,47 +509,56 @@ float4 main(PS_INPUT input) : SV_TARGET
             float3 kD   = (1.0f - F) * (1.0f - metallic);
             float3 spec = (D * G * F) / max(4.0f * NdotV * NdotL, 1e-6f);
 
-            diffuseAcc += (kD * albedo / PI + spec) * lightColor * NdotL * attenuation * shadow;
+            diffuseAcc += (kD * albedo / PI + spec) * lightColor * NdotL * attenuation;
         }
     }
 
-    // --- Emissive ---
+    // -------------------------------------------------------------------------
+    // Emissive
+    // -------------------------------------------------------------------------
     float3 emissive = float3(0, 0, 0);
     if ((gFlags & MF_USE_EMISSIVE) != 0u)
     {
         emissive = gEmissiveColor.rgb;
-        float3 emissiveTex = gEmissive.Sample(gSampler, uv).rgb;
-        if (dot(emissiveTex, emissiveTex) > 0.000001f)
-            emissive *= emissiveTex;
+        float3 emTex = gEmissive.Sample(gSampler, uv).rgb;
+        if (dot(emTex, emTex) > 0.000001f)
+            emissive *= emTex;
     }
 
-    // --- Zusammensetzen ---
+    // -------------------------------------------------------------------------
+    // Compositing
+    // -------------------------------------------------------------------------
     float3 color;
     if (isPBR)
     {
-        // IBL ambient: diffuse Irradiance + specular Prefiltered-Env + BRDF-LUT
+        // NdotV_safe: dot(N,V) -> 0 bei Streiflicht treibt FresnelSchlickRoughness
+        // auf 1 → kD_amb = 0 → "Wet Plastic"-Artefakt. Clamp verhindert Singularitaet.
+        float NdotV_safe = max(dot(N, V), 1e-4f);
+
         float3 F0     = lerp(float3(0.04f, 0.04f, 0.04f), albedo, metallic);
-        float3 kS_amb = FresnelSchlickRoughness(max(dot(N, V), 0.0f), F0, roughness);
+        float3 kS_amb = FresnelSchlickRoughness(NdotV_safe, F0, roughness);
         float3 kD_amb = (1.0f - kS_amb) * (1.0f - metallic);
 
-        // Diffuse IBL: Irradiance-Cubemap samplen
-        float3 irradiance  = gIrradianceMap.Sample(gSamplerClamp, N).rgb;
-        float3 diffuseIBL  = kD_amb * irradiance * albedo;
+        float3 irradiance       = gIrradianceMap.Sample(gSamplerClamp, N).rgb;
+        float3 diffuseIBL       = kD_amb * irradiance * albedo;
 
-        // Specular IBL: Prefiltered Env + BRDF-LUT (Karis Split-Sum)
-        float3 R = reflect(-V, N);
-        const float MAX_REFLECTION_LOD = 4.0f;
-        float3 prefilteredColor = gPrefilteredEnv.SampleLevel(gSamplerClamp, R, roughness * MAX_REFLECTION_LOD).rgb;
-        float2 brdf = gBrdfLut.Sample(gSamplerClamp, float2(max(dot(N, V), 0.0f), roughness)).rg;
-        float3 specularIBL = prefilteredColor * (kS_amb * brdf.x + brdf.y);
+        float3 R                = reflect(-V, N);
+        float3 prefilteredColor = gPrefilteredEnv.SampleLevel(
+            gSamplerClamp, R, roughness * 4.0f).rgb;
+        float2 brdf             = gBrdfLut.Sample(gSamplerClamp,
+            float2(NdotV_safe, roughness)).rg;
+        float3 specularIBL      = prefilteredColor * (kS_amb * brdf.x + brdf.y);
 
-        float3 ambient = (diffuseIBL + specularIBL) * ao;
-        color = ambient + diffuseAcc + emissive;
+        float3 ambientIBL = ((diffuseIBL + specularIBL) + activeSceneAmbient * albedo) * ao;
+        color = ambientIBL + diffuseAcc + emissive;
     }
     else
     {
-        color = (sceneAmbient + diffuseAcc) * albedo * ao + specularAcc + emissive;
+        color = (activeSceneAmbient + diffuseAcc) * albedo * ao + specularAcc + emissive;
     }
 
-    return float4(color, baseColor.a * (1.0f - gTransparency));
+    PS_OUTPUT output;
+    output.color  = float4(color, baseColor.a * (1.0f - gTransparency));
+    output.normal = float4(EncodeViewNormal(N), 1.0f);
+    return output;
 }

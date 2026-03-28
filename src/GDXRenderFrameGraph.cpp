@@ -26,7 +26,7 @@ namespace
         const std::vector<PostProcessHandle>& passOrder,
         ResourceStore<PostProcessResource, PostProcessTag>& postStore)
     {
-        const DepthDebugParams params{
+        const DepthDebugParams depthParams{
             exec.presentation.postProcess.execInputs.cameraNearPlane,
             exec.presentation.postProcess.execInputs.cameraFarPlane,
             exec.presentation.postProcess.execInputs.cameraIsOrtho,
@@ -38,15 +38,47 @@ namespace
             PostProcessResource* pass = postStore.Get(handle);
             if (!pass || !pass->ready || !pass->enabled)
                 continue;
-            if (pass->desc.pixelShaderFile != L"PostProcessDepthDebugPS.hlsl")
-                continue;
-            if (pass->constantBufferBytes < sizeof(DepthDebugParams))
-                continue;
-            if (pass->constantData.size() < sizeof(DepthDebugParams))
-                continue;
 
-            std::memcpy(pass->constantData.data(), &params, sizeof(DepthDebugParams));
-            pass->cpuDirty = true;
+            if (pass->desc.pixelShaderFile == L"PostProcessDepthDebugPS.hlsl")
+            {
+                if (pass->constantBufferBytes >= sizeof(DepthDebugParams) &&
+                    pass->constantData.size() >= sizeof(DepthDebugParams))
+                {
+                    std::memcpy(pass->constantData.data(), &depthParams, sizeof(DepthDebugParams));
+                    pass->cpuDirty = true;
+                }
+                continue;
+            }
+
+            if (pass->desc.pixelShaderFile == L"PostProcessGTAOPS.hlsl")
+            {
+                if (pass->constantBufferBytes >= sizeof(GTAOParams) &&
+                    pass->constantData.size() >= sizeof(GTAOParams))
+                {
+                    GTAOParams* params = reinterpret_cast<GTAOParams*>(pass->constantData.data());
+                    params->nearPlane = exec.presentation.postProcess.execInputs.cameraNearPlane;
+                    params->farPlane = exec.presentation.postProcess.execInputs.cameraFarPlane;
+                    params->projScaleX = exec.presentation.postProcess.execInputs.cameraProjScaleX;
+                    params->projScaleY = exec.presentation.postProcess.execInputs.cameraProjScaleY;
+                    params->cameraIsOrtho = exec.presentation.postProcess.execInputs.cameraIsOrtho;
+                    pass->cpuDirty = true;
+                }
+                continue;
+            }
+
+            if (pass->desc.pixelShaderFile == L"PostProcessGTAOBlurPS.hlsl")
+            {
+                if (pass->constantBufferBytes >= sizeof(GTAOBlurParams) &&
+                    pass->constantData.size() >= sizeof(GTAOBlurParams))
+                {
+                    GTAOBlurParams* params = reinterpret_cast<GTAOBlurParams*>(pass->constantData.data());
+                    params->nearPlane = exec.presentation.postProcess.execInputs.cameraNearPlane;
+                    params->farPlane = exec.presentation.postProcess.execInputs.cameraFarPlane;
+                    params->cameraIsOrtho = exec.presentation.postProcess.execInputs.cameraIsOrtho;
+                    pass->cpuDirty = true;
+                }
+                continue;
+            }
         }
     }
 }
@@ -328,6 +360,11 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
                     exec->frame.viewportHeight,
                     exec->presentation.postProcess.outputTarget,
                     exec->presentation.postProcess.outputToBackbuffer);
+                if (!ok)
+                {
+                    Debug::LogWarning(GDX_SRC_LOC,
+                        L"MainView post-process chain did not execute successfully.");
+                }
                 s->presentationExecuted = ok;
             }
         };
