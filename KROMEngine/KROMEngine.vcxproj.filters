@@ -267,12 +267,6 @@
     <ClCompile Include="..\src\KROMEngine.cpp">
       <Filter>Core\Engine</Filter>
     </ClCompile>
-    <ClCompile Include="..\samples\NeonTimeBuffer.cpp">
-      <Filter>Samples</Filter>
-    </ClCompile>
-    <ClCompile Include="..\samples\test_scene_rtt_hotkeys.cpp">
-      <Filter>Samples</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\third_party\stb_image.h">
@@ -541,9 +535,6 @@
     </ClInclude>
     <ClInclude Include="..\include\KROMEngine.h">
       <Filter>Core\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="..\samples\NeonTimeBuffer.h">
-      <Filter>Samples</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
