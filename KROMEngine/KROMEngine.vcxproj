@@ -18,21 +18,25 @@
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
+
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{3301dc4c-6a88-4573-aeef-7fc1a5edb9f1}</ProjectGuid>
-    <RootNamespace>ProjektGIDX</RootNamespace>
+    <RootNamespace>KROMEngine</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
-    <ProjectName>oyname</ProjectName>
+    <ProjectName>KROMEngine</ProjectName>
   </PropertyGroup>
+
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
+
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
@@ -40,12 +44,14 @@
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
+
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
+
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
@@ -53,30 +59,47 @@
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
+
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings" />
   <ImportGroup Label="Shared" />
+
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props"
+            Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')"
+            Label="LocalAppDataPlatform" />
   </ImportGroup>
+
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props"
+            Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')"
+            Label="LocalAppDataPlatform" />
   </ImportGroup>
+
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props"
+            Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')"
+            Label="LocalAppDataPlatform" />
   </ImportGroup>
+
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props"
+            Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')"
+            Label="LocalAppDataPlatform" />
   </ImportGroup>
+
   <PropertyGroup Label="UserMacros" />
+
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <IncludePath>../include;$(IncludePath)</IncludePath>
     <IntDir>$(Configuration)\$(ProjectName)\</IntDir>
   </PropertyGroup>
+
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <IncludePath>../include;$(IncludePath)</IncludePath>
     <IntDir>$(Configuration)\$(ProjectName)\</IntDir>
   </PropertyGroup>
+
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -90,6 +113,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
+
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -107,16 +131,19 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
+
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
   </ItemDefinitionGroup>
+
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
   </ItemDefinitionGroup>
+
   <ItemGroup>
     <ClCompile Include="..\samples\50_Point_Lights.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
@@ -163,6 +190,7 @@
     <ClCompile Include="..\src\GDXWin32Window.cpp" />
     <ClCompile Include="..\src\ViewCullingSystem.cpp" />
   </ItemGroup>
+
   <ItemGroup>
     <ClInclude Include="..\include\BackendRenderPassDesc.h" />
     <ClInclude Include="..\include\BasicMeshGenerator.h" />
@@ -258,11 +286,13 @@
     <ClInclude Include="..\samples\NeonTimeBuffer.h" />
     <ClInclude Include="..\third_party\stb_image.h" />
   </ItemGroup>
+
   <ItemGroup>
     <Text Include="..\shader\VertexShader.hlsl">
       <FileType>Document</FileType>
     </Text>
   </ItemGroup>
+
   <ItemGroup>
     <Text Include="..\shader\ShadowPixelShader.hlsl">
       <FileType>Document</FileType>
@@ -280,6 +310,7 @@
       <FileType>Document</FileType>
     </Text>
   </ItemGroup>
+
   <ItemGroup>
     <Text Include="..\shader\VertexShaderNeon.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
@@ -293,6 +324,7 @@
       <FileType>Document</FileType>
     </Text>
   </ItemGroup>
+
   <ItemGroup>
     <Text Include="..\shader\PixelShaderNeon.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
@@ -306,11 +338,13 @@
       <FileType>Document</FileType>
     </Text>
   </ItemGroup>
+
   <ItemGroup>
     <Text Include="..\shader\PostProcessFullscreenVS.hlsl">
       <FileType>Document</FileType>
     </Text>
   </ItemGroup>
+
   <ItemGroup>
     <Text Include="..\shader\PostProcessBloomBlurPS.hlsl">
       <FileType>Document</FileType>
@@ -322,16 +356,19 @@
       <FileType>Document</FileType>
     </Text>
   </ItemGroup>
+
   <ItemGroup>
     <Text Include="..\shader\PixelShader.hlsl">
       <FileType>Document</FileType>
     </Text>
   </ItemGroup>
+
   <ItemGroup>
     <Text Include="..\shader\PostProcessFXAAPS.hlsl">
       <FileType>Document</FileType>
     </Text>
   </ItemGroup>
+
   <ItemGroup>
     <Text Include="..\shader\PostProcessDepthDebugPS.hlsl">
       <FileType>Document</FileType>
@@ -346,6 +383,7 @@
       <FileType>Document</FileType>
     </Text>
   </ItemGroup>
+
   <ItemGroup>
     <Text Include="..\shader\PostProcessGTAOBlurPS.hlsl">
       <FileType>Document</FileType>
@@ -360,11 +398,13 @@
       <FileType>Document</FileType>
     </Text>
   </ItemGroup>
+
   <ItemGroup>
     <Text Include="..\shader\PostProcessEdgeDebugPS.hlsl">
       <FileType>Document</FileType>
     </Text>
   </ItemGroup>
+
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
 </Project>

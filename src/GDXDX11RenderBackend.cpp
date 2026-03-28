@@ -1837,15 +1837,15 @@ void GDXDX11RenderBackend::DestroyRenderTarget(
     if (rt)
     {
         static uint64_t s_rtDestroyCount = 0;
-        Debug::LogWarning(GDX_SRC_LOC, "RT destroy #", ++s_rtDestroyCount,
-                          " handle=", handle.value,
-                          " colorTex=", rt->exposedTexture.value,
-                          " depthTex=", rt->exposedDepthTexture.value,
-                          " normalsTex=", rt->exposedNormalsTexture.value,
-                          " rtAliveBefore=", rtStore.AliveCount(),
-                          " texAliveBefore=", texStore.AliveCount(),
-                          " trackedTexStatesBefore=", m_executor.DebugTrackedTextureStateCount());
-
+        //Debug::LogWarning(GDX_SRC_LOC, "RT destroy #", ++s_rtDestroyCount,
+        //                  " handle=", handle.value,
+        //                  " colorTex=", rt->exposedTexture.value,
+        //                  " depthTex=", rt->exposedDepthTexture.value,
+        //                  " normalsTex=", rt->exposedNormalsTexture.value,
+        //                  " rtAliveBefore=", rtStore.AliveCount(),
+        //                  " texAliveBefore=", texStore.AliveCount(),
+        //                  " trackedTexStatesBefore=", m_executor.DebugTrackedTextureStateCount());
+        
         if (rt->exposedTexture.IsValid())
         {
             m_executor.ForgetTextureState(rt->exposedTexture);
@@ -1867,9 +1867,9 @@ void GDXDX11RenderBackend::DestroyRenderTarget(
     }
     rtStore.Remove(handle);
 
-    Debug::LogWarning(GDX_SRC_LOC, "RT destroy done handle=", handle.value,
-                      " rtAliveNow=", rtStore.AliveCount(),
-                      " texAliveNow=", texStore.AliveCount(),
-                      " rttSurfacePairs=", m_rttPostProcessSurfaces.size(),
-                      " trackedTexStatesNow=", m_executor.DebugTrackedTextureStateCount());
+    //Debug::LogWarning(GDX_SRC_LOC, "RT destroy done handle=", handle.value,
+    //                  " rtAliveNow=", rtStore.AliveCount(),
+    //                  " texAliveNow=", texStore.AliveCount(),
+    //                  " rttSurfacePairs=", m_rttPostProcessSurfaces.size(),
+    //                  " trackedTexStatesNow=", m_executor.DebugTrackedTextureStateCount());
 }

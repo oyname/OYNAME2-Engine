@@ -233,9 +233,9 @@ bool GDXDX11CompileShaderFromFile(const std::wstring& file,
     {
         *outBlob = cached;
         g_stats.RecordHit();
-        Debug::Log(GDX_SRC_LOC,
-                   L"Shader cache HIT  file=", file.c_str(),
-                   L" [", entry, L"/", target, L"]");
+        //Debug::Log(GDX_SRC_LOC,
+        //           L"Shader cache HIT  file=", file.c_str(),
+        //           L" [", entry, L"/", target, L"]");
         return true;
     }
 
@@ -266,17 +266,8 @@ bool GDXDX11CompileShaderFromFile(const std::wstring& file,
     if (FAILED(hr))
     {
         if (errors)
-        {
-            const char* msg = static_cast<const char*>(errors->GetBufferPointer());
-            Debug::LogError("HLSL compile FAILED: ", resolvedPath.string().c_str(),
-                            " [", entry, "/", target, "] ", msg ? msg : "");
             errors->Release();
-        }
-        else
-        {
-            Debug::LogError("HLSL compile FAILED: ", resolvedPath.string().c_str(),
-                            " [", entry, "/", target, "] (no message)");
-        }
+
         g_stats.RecordFailure();
         return false;
     }
@@ -290,9 +281,6 @@ bool GDXDX11CompileShaderFromFile(const std::wstring& file,
                                 + " [" + (entry ? entry : "") + "/" + (target ? target : "") + "]";
     g_stats.RecordMiss(pathLabel, ms);
 
-    Debug::Log(GDX_SRC_LOC,
-               L"Shader compile MISS file=", file.c_str(),
-               L" [", entry, L"/", target, L"]  ", ms, L" ms  → cached");
     return true;
 }
 
