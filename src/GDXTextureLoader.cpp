@@ -110,6 +110,11 @@ bool GDXTextureLoader_LoadFromFile(
     outMeta.isSRGB    = isSRGB;
     outMeta.format    = isSRGB ? GDXTextureFormat::RGBA8_UNORM_SRGB : GDXTextureFormat::RGBA8_UNORM;
     outMeta.semantic  = GDXTextureSemantic::Unknown;
+    outMeta.usageDesc.usage = GDXResourceUsage::ShaderResource | GDXResourceUsage::CopyDest;
+    outMeta.usageDesc.lifetime = GDXResourceLifetime::Persistent;
+    outMeta.usageDesc.temporalScope = GDXResourceTemporalScope::LongLived;
+    outMeta.usageDesc.initialState = ResourceState::CopyDest;
+    outMeta.usageDesc.defaultState = ResourceState::ShaderRead;
     outMeta.debugName = filename;
     return true;
 }
@@ -163,6 +168,11 @@ bool GDXTextureLoader_Create1x1(
     outMeta.isSRGB  = false;
     outMeta.format  = GDXTextureFormat::RGBA8_UNORM;
     outMeta.semantic = GDXTextureSemantic::Unknown;
+    outMeta.usageDesc.usage = GDXResourceUsage::ShaderResource;
+    outMeta.usageDesc.lifetime = GDXResourceLifetime::Persistent;
+    outMeta.usageDesc.temporalScope = GDXResourceTemporalScope::LongLived;
+    outMeta.usageDesc.initialState = ResourceState::ShaderRead;
+    outMeta.usageDesc.defaultState = ResourceState::ShaderRead;
     return true;
 }
 
@@ -196,6 +206,11 @@ bool GDXTextureLoader_CreateFromImage(
     outMeta.isSRGB   = isSRGB;
     outMeta.format   = isSRGB ? GDXTextureFormat::RGBA8_UNORM_SRGB : GDXTextureFormat::RGBA8_UNORM;
     outMeta.semantic = GDXTextureSemantic::Procedural;
+    outMeta.usageDesc.usage = GDXResourceUsage::ShaderResource | GDXResourceUsage::CopyDest;
+    outMeta.usageDesc.lifetime = GDXResourceLifetime::Persistent;
+    outMeta.usageDesc.temporalScope = GDXResourceTemporalScope::LongLived;
+    outMeta.usageDesc.initialState = ResourceState::CopyDest;
+    outMeta.usageDesc.defaultState = ResourceState::ShaderRead;
     outMeta.debugName = debugName ? debugName : L"ImageBufferTexture";
     return true;
 }

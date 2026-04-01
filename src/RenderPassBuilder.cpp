@@ -1,4 +1,5 @@
 #include "RenderPassBuilder.h"
+#include "Core/GDXMathOps.h"
 #include "IGDXRenderBackend.h"
 #include "BackendRenderPassDesc.h"
 #include "Core/Debug.h"
@@ -171,6 +172,24 @@ namespace
         view.execute.presentation.postProcess.execInputs.cameraProjScaleY = view.prepared.frame.projMatrix._22;
         view.execute.presentation.postProcess.execInputs.cameraIsOrtho = (view.prepared.frame.cameraProjectionFlags & 1u) ? 1u : 0u;
         view.execute.presentation.postProcess.execInputs.depthDebugFlags = 1u;
+        view.execute.presentation.postProcess.execInputs.cameraPos = view.prepared.frame.cameraPos;
+        view.execute.presentation.postProcess.execInputs.invViewMatrix = KROM::Inverse(view.prepared.frame.viewMatrix);
+        view.execute.presentation.postProcess.execInputs.shadowCascadeCount = view.prepared.frame.shadowCascadeCount;
+        for (uint32_t c = 0u; c < 4u; ++c)
+        {
+            view.execute.presentation.postProcess.execInputs.shadowCascadeViewProj[c] = view.prepared.frame.shadowCascadeViewProj[c];
+            view.execute.presentation.postProcess.execInputs.shadowCascadeSplits[c] = view.prepared.frame.shadowCascadeSplits[c];
+        }
+        view.execute.presentation.postProcess.execInputs.shadowLightDir = { 0.0f, -1.0f, 0.0f };
+        for (uint32_t li = 0u; li < view.prepared.frame.lightCount; ++li)
+        {
+            const LightEntry& le = view.prepared.frame.lights[li];
+            if (le.position.w == 0.0f && le.direction.w > 0.5f)
+            {
+                view.execute.presentation.postProcess.execInputs.shadowLightDir = { le.direction.x, le.direction.y, le.direction.z };
+                break;
+            }
+        }
         view.execute.presentation.postProcess.outputToBackbuffer = outputToBackbuffer;
         view.execute.presentation.postProcess.outputTarget =
             outputToBackbuffer ? RenderTargetHandle::Invalid()
@@ -191,6 +210,50 @@ namespace
     }
 }
 
+
+
+void PopulateShadowPassResourceUsages(RFG::ViewPassData& view)
+{
+    view.execute.shadowPass.desc.ClearResourceUsages();
+    view.execute.shadowPass.desc.AddResourceUsage({ GDXPassResourceKind::ShadowMap,
+                                                    GDXPassResourceAccess::DepthTarget,
+                                                    TextureHandle::Invalid(),
+                                                    RenderTargetHandle::Invalid(),
+                                                    L"ShadowMap",
+                                                    ResourceState::ShaderRead,
+                                                    ResourceState::DepthWrite,
+                                                    ResourceState::ShaderRead });
+}
+
+void PopulateGraphicsPassResourceUsages(RFG::ViewPassData& view)
+{
+    BackendRenderPassDesc& desc = view.execute.graphicsPass.desc;
+    desc.ClearResourceUsages();
+
+    if (desc.target.useBackbuffer || !desc.target.renderTarget.IsValid())
+    {
+        desc.AddResourceUsage({ GDXPassResourceKind::Backbuffer,
+                                GDXPassResourceAccess::Present,
+                                TextureHandle::Invalid(),
+                                RenderTargetHandle::Invalid(),
+                                L"Backbuffer",
+                                ResourceState::Present,
+                                ResourceState::RenderTarget,
+                                ResourceState::Present });
+    }
+    else
+    {
+        desc.AddResourceUsage({ GDXPassResourceKind::RenderTarget,
+                                GDXPassResourceAccess::RenderTarget,
+                                TextureHandle::Invalid(),
+                                desc.target.renderTarget,
+                                L"OffscreenRenderTarget",
+                                ResourceState::ShaderRead,
+                                ResourceState::RenderTarget,
+                                ResourceState::ShaderRead });
+    }
+}
+
 // ---------------------------------------------------------------------------
 void ConfigureCommonExecuteInputs(RFG::ViewPassData& view, bool presentAfterExecute)
 {
@@ -203,10 +266,13 @@ void BuildShadowPassExecuteInput(RFG::ViewPassData& view)
 {
     view.execute.shadowPass.Reset();
     view.execute.shadowPass.enabled =
-        view.prepared.shadowEnabled && !view.shadowQueue.Empty();
+        view.prepared.shadowEnabled &&
+        !view.shadowQueue.Empty() &&
+        (!view.opaqueQueue.Empty() || !view.transparentQueue.Empty());
     if (!view.execute.shadowPass.enabled) return;
 
     view.execute.shadowPass.desc = BackendRenderPassDesc::Shadow(view.execute.frame);
+    PopulateShadowPassResourceUsages(view);
 }
 
 void BuildGraphicsPassExecuteInput(
@@ -224,6 +290,7 @@ void BuildGraphicsPassExecuteInput(
     view.execute.graphicsPass.appendGraphicsVisibleSet = appendGraphicsVisibleSet;
     view.execute.graphicsPass.appendShadowVisibleSet   = appendShadowVisibleSet;
     view.execute.graphicsPass.sortQueueBeforeExecute   = true;
+    PopulateGraphicsPassResourceUsages(view);
 }
 
 void BuildExecutionQueues(RFG::ViewPassData& view, const DebugAppendFn& debugFn)

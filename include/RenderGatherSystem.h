@@ -7,6 +7,7 @@
 #include "ResourceStore.h"
 #include "MeshAssetResource.h"
 #include "MaterialResource.h"
+#include "MaterialParams.h"
 #include "GDXShaderResource.h"
 #include "CameraSystem.h"
 #include "RenderViewData.h"
@@ -43,7 +44,9 @@ public:
         ResourceBindingSet bindings{};
         GDXPipelineStateDesc pipelineState{};
         GDXPipelineStateKey pipelineStateKey{};
-        MaterialData materialData{};
+        MaterialParams materialParams{};
+        MaterialRenderPolicy materialRenderPolicy{};
+        MaterialTextureLayerArray materialTextureLayers{};
         bool transparent = false;
         uint32_t materialSortID = 0u;
         uint32_t renderStateVersion = 0u;
@@ -52,7 +55,7 @@ public:
         uint32_t layerMask = 0x00000001u;
         bool castShadows = true;
         bool receiveShadows = true;
-        bool materialCpuDirtySnapshot = true;
+        uint32_t materialStateVersion = 0u;
         uint64_t passBindingsKey = 0ull;
         uint64_t materialBindingsKey = 0ull;
         bool valid = false;

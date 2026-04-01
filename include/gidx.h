@@ -38,6 +38,7 @@
 #include "WindowDesc.h"
 #include "Events.h"
 #include "Core/Debug.h"
+#include "Particles/GDXParticleTypes.h"
 
 #include <functional>
 #include <variant>
@@ -107,7 +108,8 @@ namespace Engine
         float       clearG = 0.04f,
         float       clearB = 0.10f,
         bool        resizable = true,
-        bool        borderless = false)
+        bool        borderless = false,
+        bool        fullscreen = false)
     {
         _::eventQueue = std::make_unique<GDXEventQueue>();
 
@@ -117,6 +119,7 @@ namespace Engine
         desc.title = title;
         desc.resizable = resizable;
         desc.borderless = borderless;
+        desc.fullscreen = fullscreen;
 
         auto window = std::make_unique<GDXWin32Window>(desc, *_::eventQueue);
         if (!window->Create())
@@ -165,6 +168,10 @@ namespace Engine
             DBERROR(GDX_SRC_LOC, "Engine::Graphics: Engine-Initialisierung fehlgeschlagen");
             return false;
         }
+
+        // Vollbild nach Initialize() aktivieren
+        if (fullscreen)
+            _::rendererRaw->SetFullscreen(true);
 
         _::renderer = _::rendererRaw;
         _::engine = _::engineOwned.get();
@@ -435,6 +442,140 @@ namespace Engine
         reg.Add<ActiveCameraTag>(*out);
     }
 
+    inline void CreateParticleEmitter(LPENTITY* out,
+        const GDXParticleEmitterComponent& emitter,
+        bool playOnStart = true,
+        bool oneShot = false,
+        const char* tag = "ParticleEmitter")
+    {
+        if (!out) { DBERROR(GDX_SRC_LOC, "Engine::CreateParticleEmitter: out ist nullptr"); return; }
+        if (!_::renderer) { DBERROR(GDX_SRC_LOC, "Engine::CreateParticleEmitter: Bind() fehlt"); return; }
+
+        Registry& reg = _::renderer->GetRegistry();
+        *out = _::MakeEntity(tag);
+        reg.Add<GDXParticleEmitterComponent>(*out, emitter);
+        reg.Add<ParticleEmitterStateComponent>(*out);
+
+        ParticleEmitterControlComponent control;
+        control.playOnStart = playOnStart;
+        control.requestedActive = playOnStart;
+        control.oneShot = oneShot;
+        reg.Add<ParticleEmitterControlComponent>(*out, control);
+    }
+
+    inline void StartParticleEmitter(LPENTITY e)
+    {
+        if (!_::renderer) return;
+        auto& reg = _::renderer->GetRegistry();
+        if (auto* c = reg.Get<ParticleEmitterControlComponent>(e))
+        {
+            c->startRequested = true;
+            c->requestedActive = true;
+        }
+        else if (auto* em = reg.Get<GDXParticleEmitterComponent>(e))
+        {
+            em->active = true;
+        }
+    }
+
+    inline void StopParticleEmitter(LPENTITY e)
+    {
+        if (!_::renderer) return;
+        auto& reg = _::renderer->GetRegistry();
+        if (auto* c = reg.Get<ParticleEmitterControlComponent>(e))
+        {
+            c->stopRequested = true;
+            c->requestedActive = false;
+        }
+        else if (auto* em = reg.Get<GDXParticleEmitterComponent>(e))
+        {
+            em->active = false;
+        }
+    }
+
+    inline void RestartParticleEmitter(LPENTITY e)
+    {
+        if (!_::renderer) return;
+        auto& reg = _::renderer->GetRegistry();
+        if (auto* c = reg.Get<ParticleEmitterControlComponent>(e))
+        {
+            c->restartRequested = true;
+            c->requestedActive = true;
+        }
+        else if (auto* em = reg.Get<GDXParticleEmitterComponent>(e))
+        {
+            em->active = true;
+        }
+    }
+
+    inline void PauseParticleEmitter(LPENTITY e)
+    {
+        if (!_::renderer) return;
+        auto& reg = _::renderer->GetRegistry();
+        if (auto* c = reg.Get<ParticleEmitterControlComponent>(e))
+        {
+            c->pauseRequested = true;
+            c->resumeRequested = false;
+            c->paused = true;
+            c->requestedActive = true;
+        }
+        else if (auto* em = reg.Get<GDXParticleEmitterComponent>(e))
+        {
+            em->paused = true;
+            em->active = false;
+        }
+    }
+
+    inline void ResumeParticleEmitter(LPENTITY e)
+    {
+        if (!_::renderer) return;
+        auto& reg = _::renderer->GetRegistry();
+        if (auto* c = reg.Get<ParticleEmitterControlComponent>(e))
+        {
+            c->resumeRequested = true;
+            c->pauseRequested = false;
+            c->paused = false;
+            c->requestedActive = true;
+        }
+        else if (auto* em = reg.Get<GDXParticleEmitterComponent>(e))
+        {
+            em->paused = false;
+            em->active = true;
+        }
+    }
+
+    inline bool IsParticleEmitterPaused(LPENTITY e)
+    {
+        if (!_::renderer) return false;
+        auto& reg = _::renderer->GetRegistry();
+        if (auto* c = reg.Get<ParticleEmitterControlComponent>(e))
+            return c->paused;
+        if (auto* em = reg.Get<GDXParticleEmitterComponent>(e))
+            return em->paused;
+        return false;
+    }
+
+    inline bool IsParticleEmitterPlaying(LPENTITY e)
+    {
+        if (!_::renderer) return false;
+        auto& reg = _::renderer->GetRegistry();
+        if (auto* em = reg.Get<GDXParticleEmitterComponent>(e))
+            return em->active && !em->paused;
+        return false;
+    }
+
+    inline bool IsParticleEmitterFinished(LPENTITY e)
+    {
+        if (!_::renderer) return false;
+        auto& reg = _::renderer->GetRegistry();
+        auto* em = reg.Get<GDXParticleEmitterComponent>(e);
+        if (!em) return false;
+        auto* c = reg.Get<ParticleEmitterControlComponent>(e);
+        if (c && c->restartRequested)
+            return false;
+        return !em->active && !em->paused && em->maxLife > 0 && em->elapsedMs >= em->maxLife;
+    }
+
     // ---------------------------------------------------------------------------
     // CreateLight  erstellt eine Licht-Entity.
     // ---------------------------------------------------------------------------
@@ -445,7 +586,7 @@ namespace Engine
     {
         if (!out) { DBERROR(GDX_SRC_LOC, "Engine::CreateLight: out ist nullptr"); return; }
         if (!_::renderer) { DBERROR(GDX_SRC_LOC, "Engine::CreateLight: Bind() fehlt"); return; }
-        
+
         Registry& reg = _::renderer->GetRegistry();
         *out = _::MakeEntity(tag);
 
@@ -594,8 +735,7 @@ namespace Engine
         if (!_::renderer) return;
         auto* m = _::renderer->GetMatStore().Get(mat);
         if (!m) { DBERROR(GDX_SRC_LOC, "Engine::MaterialColor: ungltiger Handle"); return; }
-        m->data.baseColor = { r, g, b, a };
-        m->cpuDirty = true;
+        m->SetBaseColor(r, g, b, a);
     }
 
     inline void MaterialMetallic(LPMATERIAL mat, float metallic)
@@ -603,8 +743,7 @@ namespace Engine
         if (!_::renderer) return;
         auto* m = _::renderer->GetMatStore().Get(mat);
         if (!m) return;
-        m->data.metallic = metallic;
-        m->cpuDirty = true;
+        m->SetMetallic(metallic);
     }
 
     inline void MaterialRoughness(LPMATERIAL mat, float roughness)
@@ -612,8 +751,7 @@ namespace Engine
         if (!_::renderer) return;
         auto* m = _::renderer->GetMatStore().Get(mat);
         if (!m) return;
-        m->data.roughness = roughness;
-        m->cpuDirty = true;
+        m->SetRoughness(roughness);
     }
 
     inline void MaterialPBR(LPMATERIAL mat, float metallic, float roughness)
@@ -621,10 +759,9 @@ namespace Engine
         if (!_::renderer) return;
         auto* m = _::renderer->GetMatStore().Get(mat);
         if (!m) return;
-        m->data.metallic = metallic;
-        m->data.roughness = roughness;
-        m->SetFlag(MF_SHADING_PBR, true);
-        m->cpuDirty = true;
+        m->SetMetallic(metallic);
+        m->SetRoughness(roughness);
+        m->SetShadingModel(MaterialShadingModel::PBR);
     }
 
     inline void MaterialEmissive(LPMATERIAL mat, float r, float g, float b, float intensity = 1.0f)
@@ -632,18 +769,35 @@ namespace Engine
         if (!_::renderer) return;
         auto* m = _::renderer->GetMatStore().Get(mat);
         if (!m) return;
-        m->data.emissiveColor = { r * intensity, g * intensity, b * intensity, 1.0f };
-        m->SetFlag(MF_USE_EMISSIVE, true);
-        m->cpuDirty = true;
+        m->SetEmissiveColor(r * intensity, g * intensity, b * intensity);
     }
 
+    inline void MaterialLegacyPhong(LPMATERIAL mat, float specR, float specG, float specB, float shininess)
+    {
+        if (!_::renderer) return;
+        auto* m = _::renderer->GetMatStore().Get(mat);
+        if (!m) return;
+        m->SetLegacyPhong(specR, specG, specB, shininess);
+    }
+
+    // Setzt den Transparenzzustand explizit.
+    // Für alpha-basierte Transparenz MaterialOpacity() bevorzugen —
+    // das synchronisiert den Zustand über die Opacity.
     inline void MaterialTransparent(LPMATERIAL mat, bool enabled)
     {
         if (!_::renderer) return;
         auto* m = _::renderer->GetMatStore().Get(mat);
         if (!m) return;
-        m->SetFlag(MF_TRANSPARENT, enabled);
-        m->cpuDirty = true;
+        m->SetTransparent(enabled);
+    }
+
+    // Setzt nur opacity [0..1]. Transparenz wird separat ueber MaterialTransparent/BlendMode gesteuert.
+    inline void MaterialOpacity(LPMATERIAL mat, float opacity)
+    {
+        if (!_::renderer) return;
+        auto* m = _::renderer->GetMatStore().Get(mat);
+        if (!m) return;
+        m->SetOpacity(opacity);
     }
 
     inline void MaterialNormalScale(LPMATERIAL mat, float scale)
@@ -651,8 +805,7 @@ namespace Engine
         if (!_::renderer) return;
         auto* m = _::renderer->GetMatStore().Get(mat);
         if (!m) return;
-        m->data.normalScale = scale;
-        m->cpuDirty = true;
+        m->SetNormalScale(scale);
     }
 
     inline void MaterialReceiveShadows(LPMATERIAL mat, bool enabled)
@@ -660,8 +813,7 @@ namespace Engine
         if (!_::renderer) return;
         auto* m = _::renderer->GetMatStore().Get(mat);
         if (!m) return;
-        m->data.receiveShadows = enabled ? 1.0f : 0.0f;
-        m->cpuDirty = true;
+        m->SetReceiveShadows(enabled);
     }
 
     inline void MaterialShadowCullBackfaces(LPMATERIAL mat, bool enabled)
@@ -670,7 +822,7 @@ namespace Engine
         auto* m = _::renderer->GetMatStore().Get(mat);
         if (!m) return;
         m->SetShadowCullMode(enabled ? MaterialShadowCullMode::Back
-                                     : MaterialShadowCullMode::None);
+            : MaterialShadowCullMode::None);
     }
 
     inline void MaterialShadowCullAuto(LPMATERIAL mat)
@@ -849,6 +1001,35 @@ namespace Engine
         _::renderer->SetSceneAmbient(r, g, b);
     }
 
+    // Konfiguriert Engine-Default-Shader (VS/PS/Flags).
+    // Muss vor Engine::Graphics() aufgerufen werden.
+    inline void SetShaderConfig(const ShaderPathConfig& config)
+    {
+        if (!_::renderer) return;
+        _::renderer->SetShaderConfig(config);
+    }
+
+    inline bool SupportsOcclusionCulling()
+    {
+        return _::renderer ? _::renderer->SupportsOcclusionCulling() : false;
+    }
+
+    inline void SetOcclusionCulling(bool enabled)
+    {
+        if (!_::renderer) return;
+        _::renderer->SetOcclusionCulling(enabled);
+    }
+
+    inline bool SetFullscreen(bool fullscreen)
+    {
+        return _::renderer ? _::renderer->SetFullscreen(fullscreen) : false;
+    }
+
+    inline bool IsFullscreen()
+    {
+        return _::renderer ? _::renderer->IsFullscreen() : false;
+    }
+
     inline void SetClearColor(float r, float g, float b, float a = 1.0f)
     {
         if (!_::renderer) return;
@@ -862,4 +1043,3 @@ namespace Engine
     }
 
 } // namespace Engine
-#include "GDXDX12RenderBackend.h"

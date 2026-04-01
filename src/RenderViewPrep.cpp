@@ -86,8 +86,9 @@ void PrepareMainView(
         outView.prepared.shadowView.gatherTransparent = false;
         outView.prepared.shadowView.gatherShadows     = true;
 
-        // Kein Shadow-Caster-Culling gegen die äußerste Cascade.
-        outView.prepared.shadowView.enableFrustumCulling = false;
+        // Culle gegen die äußerste Kaskade (shadowViewProjMatrix).
+        // Per-Kaskaden-Culling übernimmt ExecuteShadowPass im Backend.
+        outView.prepared.shadowView.enableFrustumCulling  = false;
         outView.prepared.shadowView.enableDistanceCulling = false;
     }
 }
@@ -173,9 +174,10 @@ void PrepareRTTViews(
                 preparedView.prepared.shadowView.gatherOpaque       = false;
                 preparedView.prepared.shadowView.gatherTransparent  = false;
                 preparedView.prepared.shadowView.gatherShadows      = true;
-                // Shadow-Caster für RTT nicht per Frustum cullen —
-                // der Licht-Frustum deckt die RTT-Szene möglicherweise nicht vollständig ab.
-                preparedView.prepared.shadowView.enableFrustumCulling = false;
+                // RTT-Kaskaden werden von ExtractLightData für das RTT-Frustum gebaut —
+                // shadowViewProjMatrix ist die äußerste RTT-Kaskade, also korrekt zum Cullen.
+                preparedView.prepared.shadowView.enableFrustumCulling  = false;
+                preparedView.prepared.shadowView.enableDistanceCulling = false;
             }
 
             outViews.push_back(std::move(preparedView));

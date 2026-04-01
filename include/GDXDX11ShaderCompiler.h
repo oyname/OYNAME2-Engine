@@ -20,3 +20,16 @@ bool GDXDX11CompileShaderFromFile(const std::wstring& file,
 // Loggt Cache-Statistiken (Hits/Misses/Failures/Zeiten) via Debug::Log.
 // Aufrufen am Ende von Shutdown oder nach dem ersten Frame.
 void GDXDX11LogShaderCacheStats();
+
+// ---------------------------------------------------------------------------
+// GDXDX11PrecompileAllShaders — kompiliert alle Shader und füllt den Disk-Cache.
+//
+// Wird im Dev-Build vor dem Shipping-Build aufgerufen (z.B. als Build-Step).
+// Shipping-Build setzt KROM_SHIPPING → D3DCompileFromFile nie aufgerufen.
+//
+// shaderDir: Verzeichnis mit .hlsl-Dateien (z.B. L"F:/proj/shader")
+// Gibt Anzahl fehlgeschlagener Compiles zurück (0 = alles ok).
+// ---------------------------------------------------------------------------
+#if !defined(KROM_SHIPPING)
+uint32_t GDXDX11PrecompileAllShaders(const std::wstring& shaderDir);
+#endif

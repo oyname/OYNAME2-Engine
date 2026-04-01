@@ -3,7 +3,8 @@
 #include "ECS/ECSTypes.h"
 #include "GDXResourceBinding.h"
 #include "GDXPipelineState.h"
-#include "MaterialResource.h"
+#include "MaterialParams.h"
+#include "GDXTextureSlots.h"
 
 #include <cstdint>
 #include "Core/GDXMath.h"
@@ -31,10 +32,19 @@ struct RenderCommand
     uint64_t             passBindingsKey = 0ull;
     uint64_t             materialBindingsKey = 0ull;
     uint64_t             drawBindingsKey = 0ull;
-    MaterialData         materialData{};
+    MaterialParams             materialParams{};
+    MaterialRenderPolicy       materialRenderPolicy{};
+    MaterialTextureLayerArray  materialTextureLayers{};
 
     uint64_t sortKey = 0ull;
     bool     receiveShadows = true;
+
+    // Weltraum-Bounds — von VisibleRenderCandidate übertragen.
+    // Werden im Backend für per-Kaskaden-Culling genutzt.
+    // hasBounds=false → Objekt wird immer gezeichnet (konservativ).
+    Float3   worldBoundsCenter = {};
+    float    worldBoundsRadius = 0.0f;
+    bool     hasBounds         = false;
 
     static uint64_t MakeSortKey(RenderPass pass,
                                  uint32_t shaderSortID,

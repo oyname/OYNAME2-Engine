@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <string>
+#include "GDXResourceState.h"
 
 // ---------------------------------------------------------------------------
 // GDXTextureResource — CPU-Metadaten einer Textur im ResourceStore.
@@ -38,6 +39,7 @@ struct GDXTextureResource
     bool               isSRGB   = false;
     GDXTextureFormat   format   = GDXTextureFormat::Unknown;
     GDXTextureSemantic semantic = GDXTextureSemantic::Unknown;
+    GDXResourceUsageDesc usageDesc{};
     std::wstring       debugName;
 
     GDXTextureResource() = default;

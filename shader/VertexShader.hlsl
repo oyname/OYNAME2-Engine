@@ -1,31 +1,26 @@
-// ECSVertexShader.hlsl — KROM Engine
-// cbuffer:
-//   b0: EntityConstants  — World, WorldInverseTranspose
-//   b1: FrameConstants   — View, Proj, ViewProj, CameraPos, ShadowViewProj(unused)
-//
-// Shadow: wird im PS via CascadeConstants (b5) und worldPosition berechnet.
-// positionLightSpace wird nicht mehr im VS vorberechnet.
+// VertexShader.hlsl — KROM Engine
+// Unified VS via preprocessor defines:
+//   HAS_VERTEX_COLOR  — liest COLOR0-Stream
+//   HAS_SKINNING      — liest BLENDINDICES0/BLENDWEIGHT0, transformiert per Bone
 
-cbuffer EntityConstants : register(b0)
-{
-    row_major float4x4 gWorld;
-    row_major float4x4 gWorldInverseTranspose;
-};
-
-cbuffer FrameConstants : register(b1)
-{
-    row_major float4x4 gView;
-    row_major float4x4 gProj;
-    row_major float4x4 gViewProj;
-    float4             gCameraPos;
-    row_major float4x4 gShadowViewProj;  // Legacy — nicht mehr genutzt, Padding
-};
+#include "include/CBuffer_Entity.hlsli"
+#include "include/CBuffer_Frame.hlsli"
+#ifdef HAS_SKINNING
+#include "include/CBuffer_Skin.hlsli"
+#endif
 
 struct VS_INPUT
 {
-    float3 position  : POSITION;
-    float3 normal    : NORMAL;
-    float2 texCoord  : TEXCOORD0;
+    float3 position    : POSITION;
+    float3 normal      : NORMAL;
+#ifdef HAS_VERTEX_COLOR
+    float4 color       : COLOR;
+#endif
+    float2 texCoord    : TEXCOORD0;
+#ifdef HAS_SKINNING
+    uint4  boneIndices : BLENDINDICES0;
+    float4 boneWeights : BLENDWEIGHT0;
+#endif
 };
 
 struct VS_OUTPUT
@@ -41,18 +36,30 @@ struct VS_OUTPUT
 
 VS_OUTPUT main(VS_INPUT input)
 {
-    VS_OUTPUT output;
+    VS_OUTPUT o;
 
-    float4 worldPos = mul(float4(input.position, 1.0f), gWorld);
-    output.worldPosition = worldPos.xyz;
+#ifdef HAS_SKINNING
+    float4x4 skin    = BuildSkinMatrix(input.boneIndices, input.boneWeights);
+    float4 localPos  = mul(float4(input.position, 1.0f), skin);
+    float4 worldPos  = mul(localPos, gWorld);
+    float3x3 skinN   = (float3x3)mul(skin, gWorldInverseTranspose);
+    o.normal         = normalize(mul(input.normal, skinN));
+#else
+    float4 worldPos  = mul(float4(input.position, 1.0f), gWorld);
+    o.normal         = normalize(mul(float4(input.normal, 0.0f), gWorldInverseTranspose).xyz);
+#endif
 
-    output.normal = normalize(mul(float4(input.normal, 0.0f), gWorldInverseTranspose).xyz);
+    o.worldPosition  = worldPos.xyz;
+    o.position       = mul(worldPos, gViewProj);
+    o.texCoord       = input.texCoord;
+    o.texCoord1      = input.texCoord;
+    o.viewDirection  = normalize(gCameraPos.xyz - worldPos.xyz);
 
-    output.position = mul(worldPos, gViewProj);
-    output.texCoord = input.texCoord;
-    output.texCoord1 = input.texCoord;
-    output.vertexColor = float4(1.0f, 1.0f, 1.0f, 1.0f);
-    output.viewDirection = normalize(gCameraPos.xyz - worldPos.xyz);
+#ifdef HAS_VERTEX_COLOR
+    o.vertexColor    = input.color;
+#else
+    o.vertexColor    = float4(1.0f, 1.0f, 1.0f, 1.0f);
+#endif
 
-    return output;
+    return o;
 }

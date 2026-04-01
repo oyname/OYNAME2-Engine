@@ -1,6 +1,8 @@
 #pragma once
 
 #include "GDXVertexFormat.h"
+#include "GDXRenderBindingModel.h"
+#include "GDXResourceBinding.h"
 
 #include <array>
 #include <cstdint>
@@ -11,43 +13,11 @@
 // Kein Reflection-Ersatz. Die Idee ist kleiner und pragmatisch:
 //   - welche Vertex-Streams der Shader erwartet
 //   - welche ConstantBuffer-Bindings KROM belegt
-//   - welche Textur-Slots semantisch an welchen Registern hängen
+//   - welche semantischen Textur-Bindings der Shader erwartet
 //
 // Das reicht, damit ECS-Renderer, Materialsystem und spätere Backends dieselbe
 // Sprache sprechen.
 // ---------------------------------------------------------------------------
-
-enum class GDXShaderConstantBufferSlot : uint8_t
-{
-    Entity,
-    Frame,
-    Material,
-    Skin,
-    Light,
-};
-
-enum class GDXShaderTextureSemantic : uint8_t
-{
-    Albedo,
-    Normal,
-    ORM,
-    Emissive,
-    Detail,
-    ShadowMap,
-};
-
-struct GDXShaderConstantBufferBinding
-{
-    GDXShaderConstantBufferSlot slot = GDXShaderConstantBufferSlot::Entity;
-    uint8_t vsRegister = 0u;
-    uint8_t psRegister = 0u;
-};
-
-struct GDXShaderTextureBinding
-{
-    GDXShaderTextureSemantic semantic = GDXShaderTextureSemantic::Albedo;
-    uint8_t shaderRegister = 0u;
-};
 
 struct GDXShaderLayout
 {
@@ -59,16 +29,45 @@ struct GDXShaderLayout
     bool expectsShadowMap = false;
     bool depthOnly = false;
 
-    void AddConstantBuffer(GDXShaderConstantBufferSlot slot, uint8_t vsRegister, uint8_t psRegister) noexcept
+    void AddConstantBuffer(GDXShaderConstantBufferSlot slot, GDXShaderStageVisibility visibility) noexcept
     {
-        constantBuffers[constantBufferCount++] = { slot, vsRegister, psRegister };
+        GDXShaderConstantBufferBinding b{};
+        b.slot = slot;
+        b.bindingGroup = GDXBindingGroupFromScope(GDXBindingScopeForConstantBufferSlot(slot));
+        b.resourceClass = GDXBoundResourceClass::ConstantBuffer;
+        b.visibility = visibility;
+        b.layoutBindingIndex = constantBufferCount;
+        if (constantBufferCount >= constantBuffers.size())
+            return;
+        constantBuffers[constantBufferCount++] = b;
     }
 
-    void AddTexture(GDXShaderTextureSemantic semantic, uint8_t shaderRegister) noexcept
+    void AddTexture(GDXShaderTextureSemantic semantic) noexcept
     {
-        textureBindings[textureBindingCount++] = { semantic, shaderRegister };
+        GDXShaderTextureBinding b{};
+        b.semantic = semantic;
+        b.bindingGroup = (semantic == GDXShaderTextureSemantic::ShadowMap)
+            ? GDXBindingGroup::Pass
+            : GDXBindingGroup::Material;
+        b.resourceClass = GDXBoundResourceClass::Texture;
+        b.visibility = GDXShaderStageVisibility::Pixel;
+        b.layoutBindingIndex = textureBindingCount;
+        if (textureBindingCount >= textureBindings.size())
+            return;
+        textureBindings[textureBindingCount++] = b;
     }
 };
+
+inline GDXPipelineLayoutDesc BuildPipelineLayoutFromShaderLayout(const GDXShaderLayout& layout) noexcept
+{
+    GDXPipelineLayoutDesc out{};
+    out.Reset();
+    for (uint32_t i = 0; i < layout.constantBufferCount; ++i)
+        out.AddConstantBufferBinding(layout.constantBuffers[i]);
+    for (uint32_t i = 0; i < layout.textureBindingCount; ++i)
+        out.AddTextureBinding(layout.textureBindings[i]);
+    return out;
+}
 
 namespace GDXShaderLayouts
 {
@@ -76,18 +75,18 @@ namespace GDXShaderLayouts
     {
         GDXShaderLayout l{};
         l.vertexFormat = GDXVertexFormat::FromFlags(vertexFlags);
-        l.AddConstantBuffer(GDXShaderConstantBufferSlot::Entity, 0u, 255u);
-        l.AddConstantBuffer(GDXShaderConstantBufferSlot::Frame, 1u, 1u);
-        l.AddConstantBuffer(GDXShaderConstantBufferSlot::Material, 255u, 2u);
+        l.AddConstantBuffer(GDXShaderConstantBufferSlot::Entity, GDXShaderStageVisibility::Vertex);
+        l.AddConstantBuffer(GDXShaderConstantBufferSlot::Frame, GDXShaderStageVisibility::AllGraphics);
+        l.AddConstantBuffer(GDXShaderConstantBufferSlot::Material, GDXShaderStageVisibility::Pixel);
         if (supportsSkinning)
-            l.AddConstantBuffer(GDXShaderConstantBufferSlot::Skin, 4u, 255u);
+            l.AddConstantBuffer(GDXShaderConstantBufferSlot::Skin, GDXShaderStageVisibility::Vertex);
 
-        l.AddTexture(GDXShaderTextureSemantic::Albedo,   0u);
-        l.AddTexture(GDXShaderTextureSemantic::Normal,   1u);
-        l.AddTexture(GDXShaderTextureSemantic::ORM,      2u);
-        l.AddTexture(GDXShaderTextureSemantic::Emissive, 3u);
-        l.AddTexture(GDXShaderTextureSemantic::Detail,   4u);
-        l.AddTexture(GDXShaderTextureSemantic::ShadowMap, 16u);
+        l.AddTexture(GDXShaderTextureSemantic::Albedo);
+        l.AddTexture(GDXShaderTextureSemantic::Normal);
+        l.AddTexture(GDXShaderTextureSemantic::ORM);
+        l.AddTexture(GDXShaderTextureSemantic::Emissive);
+        l.AddTexture(GDXShaderTextureSemantic::Detail);
+        l.AddTexture(GDXShaderTextureSemantic::ShadowMap);
         l.expectsShadowMap = true;
         return l;
     }
@@ -96,17 +95,17 @@ namespace GDXShaderLayouts
     {
         GDXShaderLayout l{};
         l.vertexFormat = GDXVertexFormat::FromFlags(vertexFlags);
-        l.AddConstantBuffer(GDXShaderConstantBufferSlot::Entity, 0u, 255u);
-        l.AddConstantBuffer(GDXShaderConstantBufferSlot::Frame, 1u, 1u);
+        l.AddConstantBuffer(GDXShaderConstantBufferSlot::Entity, GDXShaderStageVisibility::Vertex);
+        l.AddConstantBuffer(GDXShaderConstantBufferSlot::Frame, GDXShaderStageVisibility::AllGraphics);
 
         if (alphaTest)
         {
-            l.AddConstantBuffer(GDXShaderConstantBufferSlot::Material, 255u, 2u);
-            l.AddTexture(GDXShaderTextureSemantic::Albedo, 0u);
+            l.AddConstantBuffer(GDXShaderConstantBufferSlot::Material, GDXShaderStageVisibility::Pixel);
+            l.AddTexture(GDXShaderTextureSemantic::Albedo);
         }
 
         if (supportsSkinning)
-            l.AddConstantBuffer(GDXShaderConstantBufferSlot::Skin, 4u, 255u);
+            l.AddConstantBuffer(GDXShaderConstantBufferSlot::Skin, GDXShaderStageVisibility::Vertex);
 
         l.depthOnly = true;
         return l;

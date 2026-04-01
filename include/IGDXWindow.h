@@ -18,6 +18,7 @@ public:
     virtual int         GetWidth()    const = 0;
     virtual int         GetHeight()   const = 0;
     virtual bool        GetBorderless() const = 0;
+    virtual bool        GetFullscreen() const = 0;
     virtual const char* GetTitle()    const = 0;
     virtual void        SetTitle(const char* title) = 0;
 };

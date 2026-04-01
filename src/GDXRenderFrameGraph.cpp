@@ -79,6 +79,57 @@ namespace
                 }
                 continue;
             }
+
+            if (pass->desc.pixelShaderFile == L"PostProcessDepthFogPS.hlsl")
+            {
+                if (pass->constantBufferBytes >= sizeof(FogParams) &&
+                    pass->constantData.size() >= sizeof(FogParams))
+                {
+                    FogParams* params = reinterpret_cast<FogParams*>(pass->constantData.data());
+                    params->cameraNearPlane = exec.presentation.postProcess.execInputs.cameraNearPlane;
+                    params->cameraFarPlane  = exec.presentation.postProcess.execInputs.cameraFarPlane;
+                    params->projScaleX      = exec.presentation.postProcess.execInputs.cameraProjScaleX;
+                    params->projScaleY      = exec.presentation.postProcess.execInputs.cameraProjScaleY;
+                    params->cameraIsOrtho   = exec.presentation.postProcess.execInputs.cameraIsOrtho;
+                    std::memcpy(params->invView, &exec.presentation.postProcess.execInputs.invViewMatrix, sizeof(params->invView));
+                    pass->cpuDirty = true;
+                }
+                continue;
+            }
+
+            if (pass->desc.pixelShaderFile == L"PostProcessVolumetricFogPS.hlsl")
+            {
+                if (pass->constantBufferBytes >= sizeof(VolumetricFogParams) &&
+                    pass->constantData.size() >= sizeof(VolumetricFogParams))
+                {
+                    VolumetricFogParams* params = reinterpret_cast<VolumetricFogParams*>(pass->constantData.data());
+                    params->cameraNearPlane = exec.presentation.postProcess.execInputs.cameraNearPlane;
+                    params->cameraFarPlane  = exec.presentation.postProcess.execInputs.cameraFarPlane;
+                    params->projScaleX      = exec.presentation.postProcess.execInputs.cameraProjScaleX;
+                    params->projScaleY      = exec.presentation.postProcess.execInputs.cameraProjScaleY;
+                    params->cameraIsOrtho   = exec.presentation.postProcess.execInputs.cameraIsOrtho;
+                    params->cascadeCount    = exec.presentation.postProcess.execInputs.shadowCascadeCount;
+
+                    params->cameraPos[0] = exec.presentation.postProcess.execInputs.cameraPos.x;
+                    params->cameraPos[1] = exec.presentation.postProcess.execInputs.cameraPos.y;
+                    params->cameraPos[2] = exec.presentation.postProcess.execInputs.cameraPos.z;
+                    params->cameraPos[3] = 0.0f;
+
+                    params->lightDir[0] = exec.presentation.postProcess.execInputs.shadowLightDir.x;
+                    params->lightDir[1] = exec.presentation.postProcess.execInputs.shadowLightDir.y;
+                    params->lightDir[2] = exec.presentation.postProcess.execInputs.shadowLightDir.z;
+                    params->lightDir[3] = 0.0f;
+
+                    std::memcpy(params->invView, &exec.presentation.postProcess.execInputs.invViewMatrix, sizeof(params->invView));
+                    for (uint32_t c = 0u; c < 4u; ++c)
+                    {
+                        std::memcpy(params->cascadeViewProj[c], &exec.presentation.postProcess.execInputs.shadowCascadeViewProj[c], sizeof(params->cascadeViewProj[c]));
+                        params->cascadeSplits[c] = exec.presentation.postProcess.execInputs.shadowCascadeSplits[c];
+                    }
+                    pass->cpuDirty = true;
+                }
+                continue;
+            }
         }
     }
 }

@@ -2,6 +2,7 @@
 
 #include "Handle.h"
 #include "RenderPassClearDesc.h"
+#include "GDXResourceState.h"
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -13,6 +14,8 @@ struct RenderPassTargetDesc
     RenderPassClearDesc clear{};
     float viewportWidth = 0.0f;
     float viewportHeight = 0.0f;
+    GDXResourceLifetime lifetime = GDXResourceLifetime::Persistent;
+    GDXResourceTemporalScope temporalScope = GDXResourceTemporalScope::LongLived;
     std::wstring debugName;
 
     static RenderPassTargetDesc Backbuffer(float width, float height)
@@ -21,6 +24,8 @@ struct RenderPassTargetDesc
         d.useBackbuffer = true;
         d.viewportWidth = width;
         d.viewportHeight = height;
+        d.lifetime = GDXResourceLifetime::External;
+        d.temporalScope = GDXResourceTemporalScope::LongLived;
         d.debugName = L"Backbuffer";
         return d;
     }
@@ -34,6 +39,8 @@ struct RenderPassTargetDesc
         d.clear = clearDesc;
         d.viewportWidth = width;
         d.viewportHeight = height;
+        d.lifetime = GDXResourceLifetime::Transient;
+        d.temporalScope = GDXResourceTemporalScope::PerFrame;
         d.debugName = std::move(name);
         return d;
     }

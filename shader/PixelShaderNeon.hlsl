@@ -1,3 +1,9 @@
+// PixelShaderNeon.hlsl — KROM Engine
+// Prozeduraler Plasma-Neon-Effekt; keine Textur-Samples.
+// Liest gBaseColor, gEmissiveColor, gOpacity aus dem Material-CBuffer.
+
+#include "include/CBuffer_Material.hlsli"
+
 cbuffer FrameConstants : register(b1)
 {
     row_major float4x4 gView;
@@ -5,28 +11,6 @@ cbuffer FrameConstants : register(b1)
     row_major float4x4 gViewProj;
     float4             gCameraPos;
     row_major float4x4 gShadowViewProj;
-};
-
-cbuffer MaterialConstants : register(b2)
-{
-    float4   gBaseColor;
-    float4   gSpecularColor;
-    float4   gEmissiveColor;
-    float4   gUVTilingOffset;
-    float4   gUVDetailTilingOffset;
-    float4   gUVNormalTilingOffset;
-    float    gMetallic;
-    float    gRoughness;
-    float    gNormalScale;
-    float    gOcclusionStrength;
-    float    gShininess;
-    float    gTransparency;
-    float    gAlphaCutoff;
-    float    gReceiveShadows;
-    float    gBlendMode;
-    float    gBlendFactor;
-    uint     gFlags;
-    float    _pad0;
 };
 
 struct PS_INPUT
@@ -60,16 +44,15 @@ float3 HsvToRgb(float h, float s, float v)
 
 float3 EncodeViewNormal(float3 worldNormal)
 {
-    float3x3 view3x3 = (float3x3)gView;
+    float3x3 view3x3  = (float3x3)gView;
     float3 viewNormal = mul(worldNormal, view3x3);
-    viewNormal = normalize(viewNormal);
-    return viewNormal * 0.5f + 0.5f;
+    return normalize(viewNormal) * 0.5f + 0.5f;
 }
 
 PS_OUTPUT main(PS_INPUT input)
 {
-    float3 wp = input.worldPosition;
-    float  time = gUVTilingOffset.x;
+    float3 wp   = input.worldPosition;
+    float  time = gUVTilingOffset.x;  // Zeit-Hack via uvTilingOffset.x
 
     float wave1 = sin(wp.x * 2.0f + time * 1.5f);
     float wave2 = sin(wp.y * 2.5f + time * 1.1f);
@@ -79,25 +62,25 @@ PS_OUTPUT main(PS_INPUT input)
     float plasma = (wave1 + wave2 + wave3 + wave4) * 0.25f;
     plasma = plasma * 0.5f + 0.5f;
 
-    float hue = fmod(plasma * 360.0f + time * 40.0f, 360.0f);
+    float hue        = fmod(plasma * 360.0f + time * 40.0f, 360.0f);
     float brightness = 0.52f + 0.12f * sin(time * 2.5f + plasma * 6.2831853f);
-    float3 color = HsvToRgb(hue, 0.95f, brightness);
+    float3 color     = HsvToRgb(hue, 0.95f, brightness);
     color = pow(max(color, 0.0f), 1.05f);
 
     float3 tintedBase = lerp(float3(1.0f, 1.0f, 1.0f), max(gBaseColor.rgb, 0.0f), 0.65f);
     color *= tintedBase;
 
-    float3 emissive = max(gEmissiveColor.rgb, 0.0f) * 0.12f;
-    float3 finalColor = color + emissive;
+    float3 emissive    = max(gEmissiveColor.rgb, 0.0f) * 0.12f;
+    float3 finalColor  = color + emissive;
 
-    float3 dpdx = ddx(input.worldPosition);
-    float3 dpdy = ddy(input.worldPosition);
-    float3 worldNormal = normalize(cross(dpdx, dpdy));
+    float3 dpdx      = ddx(input.worldPosition);
+    float3 dpdy      = ddy(input.worldPosition);
+    float3 worldNorm = normalize(cross(dpdx, dpdy));
 
-    float alpha = saturate(gBaseColor.a * (1.0f - gTransparency));
+    float alpha = saturate(gBaseColor.a * gOpacity);
 
     PS_OUTPUT o;
-    o.color = float4(finalColor, alpha);
-    o.normal = float4(EncodeViewNormal(worldNormal), 1.0f);
+    o.color  = float4(finalColor, alpha);
+    o.normal = float4(EncodeViewNormal(worldNorm), 1.0f);
     return o;
 }

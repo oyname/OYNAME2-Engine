@@ -1,5 +1,5 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
   <ItemGroup>
     <Filter Include="ThirdParty">
       <UniqueIdentifier>{4132ef45-9b48-487e-91c6-6c80e2b19e23}</UniqueIdentifier>
@@ -157,6 +157,18 @@
     <Filter Include="Tools\IBL">
       <UniqueIdentifier>{d4a2e4f9-e26a-4be1-b0e4-0f2ed4111002}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Particle">
+      <UniqueIdentifier>{9371fdbe-4590-479a-9d14-8e7601aa0fff}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Core\Editor">
+      <UniqueIdentifier>{cfade61c-7238-429d-8da1-f5721d0c5dcf}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Scene\Authoring">
+      <UniqueIdentifier>{5d3ba626-2526-4906-a30a-a6712de8cb0d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Samples\Point Light">
+      <UniqueIdentifier>{dac9785d-9324-4ae4-b3d9-75cdbdc42a25}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\ViewCullingSystem.cpp">
@@ -176,9 +188,6 @@
     </ClCompile>
     <ClCompile Include="..\src\DebugCamera.cpp">
       <Filter>Scene\Camera</Filter>
-    </ClCompile>
-    <ClCompile Include="..\samples\50_Point_Lights.cpp">
-      <Filter>Samples</Filter>
     </ClCompile>
     <ClCompile Include="..\src\CullGatherSystem.cpp">
       <Filter>Renderer\Culling</Filter>
@@ -225,20 +234,8 @@
     <ClCompile Include="..\src\GDXDX11TileLightCuller.cpp">
       <Filter>Renderer\Lighting</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\GDXDX12RenderBackend.cpp">
-      <Filter>RHI\DX12</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\GDXOpenGLRenderBackend.cpp">
-      <Filter>RHI\OpenGL</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\GDXWin32DX11ContextFactory.cpp">
       <Filter>Platform\Win32</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\GDXWin32OpenGLContextFactory.cpp">
-      <Filter>Platform\Win32</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\GDXWin32Window.cpp">
-      <Filter>Platform\Window</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GDXInput.cpp">
       <Filter>Platform\Input</Filter>
@@ -266,6 +263,18 @@
     </ClCompile>
     <ClCompile Include="..\src\KROMEngine.cpp">
       <Filter>Core\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\Particles\GDXDX11ParticleRenderer.cpp">
+      <Filter>Particle</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\Particles\GDXParticleSystem.cpp">
+      <Filter>Particle</Filter>
+    </ClCompile>
+    <ClCompile Include="..\samples\Point Light\Point_Lights.cpp">
+      <Filter>Samples\Point Light</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXWin32Window.cpp">
+      <Filter>Platform\Win32</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -368,43 +377,19 @@
     <ClInclude Include="..\include\GDXDX11TileLightCuller.h">
       <Filter>Renderer\Lighting</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\GDXDX12RenderBackend.h">
-      <Filter>RHI\DX12</Filter>
-    </ClInclude>
     <ClInclude Include="..\include\GDXOpenGLIncludes.h">
-      <Filter>RHI\OpenGL</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\GDXOpenGLRenderBackend.h">
       <Filter>RHI\OpenGL</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXWin32DX11ContextFactory.h">
       <Filter>Platform\Win32</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\GDXWin32OpenGLContextFactory.h">
-      <Filter>Platform\Win32</Filter>
-    </ClInclude>
     <ClInclude Include="..\include\GDXWin32Platform.h">
-      <Filter>Platform\Win32</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\GDXWin32Window.h">
-      <Filter>Platform\Window</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\IGDXDXGIContext.h">
-      <Filter>Platform\Win32</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\IGDXOpenGLContext.h">
       <Filter>Platform\Win32</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXInput.h">
       <Filter>Platform\Input</Filter>
     </ClInclude>
     <ClInclude Include="..\include\GDXWin32NativeHandles.h">
-      <Filter>Platform\Win32</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\IGDXPlatform.h">
-      <Filter>Platform\Win32</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\IGDXWin32NativeAccess.h">
       <Filter>Platform\Win32</Filter>
     </ClInclude>
     <ClInclude Include="..\include\IGDXWindow.h">
@@ -536,6 +521,48 @@
     <ClInclude Include="..\include\KROMEngine.h">
       <Filter>Core\Engine</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\Particles\GDXDX11ParticleRenderer.h">
+      <Filter>Particle</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Particles\GDXParticleSystem.h">
+      <Filter>Particle</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Particles\GDXParticleTypes.h">
+      <Filter>Particle</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Particles\IGDXParticleRenderer.h">
+      <Filter>Particle</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Particles\GDXParticleEmitterSystem.h">
+      <Filter>Particle</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\MaterialParams.h">
+      <Filter>Assets\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXDX11MaterialCBuffer.h">
+      <Filter>RHI\DX11</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXDX11MaterialSerializer.h">
+      <Filter>RHI\DX11</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\MaterialSemanticLayout.h">
+      <Filter>Assets\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXWin32Window.h">
+      <Filter>Platform\Win32</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXWin32NativeAccess.h">
+      <Filter>Platform\Window</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXPlatform.h">
+      <Filter>Platform\Window</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXDXGIContext.h">
+      <Filter>Platform\Window</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXOpenGLContext.h">
+      <Filter>Platform\Window</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Text Include="..\shader\PostProcessBloomBlurPS.hlsl">
@@ -607,5 +634,146 @@
     <Text Include="..\shader\PostProcessEdgeDebugPS.hlsl">
       <Filter>Shaders\PostProcess</Filter>
     </Text>
+    <Text Include="..\shader\ParticleVS.hlsl">
+      <Filter>Shaders</Filter>
+    </Text>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\include\CollisionBodyComponent.h">
+      <Filter>ECS\Components</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Core\JobSystem.h">
+      <Filter>Core\Jobs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\ECS\ComponentPool.h">
+      <Filter>ECS\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\ECS\HierarchySystem.h">
+      <Filter>ECS\System</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\ECS\TransformSystem.h">
+      <Filter>ECS\System</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\FrustumUtils.h">
+      <Filter>Math\Geometry</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXBindingGroupData.h">
+      <Filter>RHI\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXDX11GpuResources.h">
+      <Filter>RHI\DX11</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXDX11ShaderProfile.h">
+      <Filter>RHI\DX11</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXDX11TextureSemanticMapping.h">
+      <Filter>RHI\DX11</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXDescriptorSystem.h">
+      <Filter>RHI\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXPassCommandList.h">
+      <Filter>Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXPipelineCache.h">
+      <Filter>RHI\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXRecordedCommand.h">
+      <Filter>Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXRenderBindingModel.h">
+      <Filter>RHI\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXResourceState.h">
+      <Filter>RHI\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXSamplerCache.h">
+      <Filter>RHI\DX11</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXShaderContracts.h">
+      <Filter>RHI\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Math\Geometry\Frustum.h">
+      <Filter>Math\Geometry</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Math\Geometry\FrustumUtils.h">
+      <Filter>Math\Geometry</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\PostProcessBindingResolver.h">
+      <Filter>Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\RenderComponents.h">
+      <Filter>ECS\Components</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\ShaderSourceType.h">
+      <Filter>Assets\Shader</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="..\shader\OcclusionQueryVS.hlsl">
+      <Filter>Shaders\Custom</Filter>
+    </Text>
+    <Text Include="..\shader\ParticlePS.hlsl">
+      <Filter>Shaders\Custom</Filter>
+    </Text>
+    <Text Include="..\shader\PostProcessVolumetricFogPS.hlsl">
+      <Filter>Shaders\PostProcess</Filter>
+    </Text>
+    <Text Include="..\shader\VertexShader_VertexColor.hlsl">
+      <Filter>Shaders\Custom</Filter>
+    </Text>
+    <Text Include="..\shader\include\CBuffer_Cascade.hlsli">
+      <Filter>Shaders</Filter>
+    </Text>
+    <Text Include="..\shader\include\CBuffer_Entity.hlsli">
+      <Filter>Shaders</Filter>
+    </Text>
+    <Text Include="..\shader\include\CBuffer_Frame.hlsli">
+      <Filter>Shaders</Filter>
+    </Text>
+    <Text Include="..\shader\include\CBuffer_Material.hlsli">
+      <Filter>Shaders</Filter>
+    </Text>
+    <Text Include="..\shader\include\CBuffer_Skin.hlsli">
+      <Filter>Shaders</Filter>
+    </Text>
+    <Text Include="..\shader\include\Common.hlsli">
+      <Filter>Shaders</Filter>
+    </Text>
+    <Text Include="..\shader\include\Lighting.hlsli">
+      <Filter>Shaders</Filter>
+    </Text>
+    <Text Include="..\shader\include\PostProcess.hlsli">
+      <Filter>Shaders</Filter>
+    </Text>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\samples\media\albedo.png">
+      <Filter>Assets\Texture</Filter>
+    </None>
+    <None Include="..\samples\media\alpha_mask.png">
+      <Filter>Assets\Texture</Filter>
+    </None>
+    <None Include="..\samples\media\bricks.bmp">
+      <Filter>Assets\Texture</Filter>
+    </None>
+    <None Include="..\samples\media\engine.png">
+      <Filter>Assets\Texture</Filter>
+    </None>
+    <None Include="..\samples\media\face.bmp">
+      <Filter>Assets\Texture</Filter>
+    </None>
+    <None Include="..\samples\media\normal.png">
+      <Filter>Assets\Texture</Filter>
+    </None>
+    <None Include="..\samples\media\orm.png">
+      <Filter>Assets\Texture</Filter>
+    </None>
+    <None Include="..\samples\media\particles.png">
+      <Filter>Assets\Texture</Filter>
+    </None>
+    <None Include="..\samples\media\studio.hdr">
+      <Filter>Tools\IBL</Filter>
+    </None>
   </ItemGroup>
 </Project>

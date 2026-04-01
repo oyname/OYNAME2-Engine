@@ -9,9 +9,46 @@
 #include <d3d11.h>
 #include <dxgi.h>
 #include <d3dcommon.h>
+#include <dxgidebug.h>
+#include <cstring>
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
+
+
+#ifdef _DEBUG
+namespace
+{
+    // Local copy of the well-known D3D debug object name GUID.
+    // Kept local to avoid linker issues with WKPDID_D3DDebugObjectName in some setups.
+    static const GUID kGDXD3DDebugObjectName =
+    { 0x429b8c22, 0x9188, 0x4b0c, { 0x87, 0x42, 0xac, 0xb0, 0xbf, 0x85, 0xc2, 0x00 } };
+
+    inline void SetDebugName(IUnknown* obj, const char* name)
+    {
+        if (!obj || !name || !*name) return;
+
+        ID3D11DeviceChild* child = nullptr;
+        if (SUCCEEDED(obj->QueryInterface(__uuidof(ID3D11DeviceChild), reinterpret_cast<void**>(&child))) && child)
+        {
+            child->SetPrivateData(kGDXD3DDebugObjectName,
+                static_cast<UINT>(std::strlen(name)), name);
+            child->Release();
+        }
+    }
+
+    inline void ReportLiveObjects(ID3D11Device* device)
+    {
+        if (!device) return;
+        ID3D11Debug* debug = nullptr;
+        if (SUCCEEDED(device->QueryInterface(__uuidof(ID3D11Debug), reinterpret_cast<void**>(&debug))) && debug)
+        {
+            debug->ReportLiveDeviceObjects(D3D11_RLDO_DETAIL);
+            debug->Release();
+        }
+    }
+}
+#endif
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -98,13 +135,16 @@ namespace
         bool Create(HWND hwnd, IDXGIAdapter* adapter,
                     int width, int height,
                     const GDXDXGIAdapterInfo& adapterInfo,
-                    bool borderless);
+                    bool borderless,
+                    bool fullscreen);
 
         // IGDXDXGIContext
         bool              IsValid()          const override { return m_device != nullptr; }
         void              Present(bool vsync) override;
         void              Resize(int w, int h) override;
         GDXDXGIDeviceInfo QueryDeviceInfo()   const override;
+        bool              SetFullscreen(bool fullscreen) override;
+        bool              IsFullscreen()      const override { return m_fullscreen; }
 
         ID3D11Device*           GetDevice()        const override { return m_device; }
         ID3D11DeviceContext*    GetDeviceContext() const override { return m_context; }
@@ -132,18 +172,21 @@ namespace
         int                m_height       = 0;
         HWND               m_hwnd         = nullptr;
         bool               m_borderless   = true;
+        bool               m_fullscreen   = false;
     };
 
     bool Win32DXGIContext::Create(HWND hwnd, IDXGIAdapter* adapter,
                                    int width, int height,
                                    const GDXDXGIAdapterInfo& adapterInfo,
-                                   bool borderless)
+                                   bool borderless,
+                                   bool fullscreen)
     {
         m_hwnd        = hwnd;
         m_width       = width;
         m_height      = height;
         m_adapterInfo = adapterInfo;
         m_borderless  = borderless;
+        m_fullscreen  = fullscreen;
 
         // --- Device + context -----------------------------------------------
         const D3D_FEATURE_LEVEL levels[] =
@@ -173,6 +216,10 @@ namespace
                             static_cast<unsigned long>(hr));
             return false;
         }
+#ifdef _DEBUG
+        SetDebugName(m_device, "GDX.D3D11.Device");
+        SetDebugName(m_context, "GDX.D3D11.ImmediateContext");
+#endif
 
         // --- Swap chain -----------------------------------------------------
         auto [rn, rd] = QueryRefreshRate(adapter,
@@ -195,7 +242,7 @@ namespace
         sc.BufferUsage                        = DXGI_USAGE_RENDER_TARGET_OUTPUT;
         sc.BufferCount                        = 1;
         sc.OutputWindow                       = hwnd;
-        sc.Windowed                           = TRUE;
+        sc.Windowed                           = fullscreen ? FALSE : TRUE;
         sc.SwapEffect                         = DXGI_SWAP_EFFECT_DISCARD;
         sc.Flags                              = 0;
 
@@ -208,6 +255,9 @@ namespace
                             static_cast<unsigned long>(hr));
             return false;
         }
+#ifdef _DEBUG
+        SetDebugName(m_swapChain, "GDX.D3D11.SwapChain");
+#endif
 
         // DXGI::CreateSwapChain entfernt intern WS_CAPTION / WS_THICKFRAME.
         // Bei borderless == false den Rahmen explizit wiederherstellen.
@@ -239,6 +289,9 @@ namespace
         dsd.DepthFunc      = D3D11_COMPARISON_LESS_EQUAL;
         dsd.StencilEnable  = FALSE;
         m_device->CreateDepthStencilState(&dsd, &m_dsState);
+#ifdef _DEBUG
+        SetDebugName(m_dsState, "GDX.D3D11.DefaultDepthStencilState");
+#endif
 
         // Bind output-merger and rasterizer state
         m_context->OMSetRenderTargets(1, &m_rtv, m_dsv);
@@ -264,6 +317,10 @@ namespace
         if (FAILED(hr)) { Debug::LogError("gdxwin32dx11contextfactory.cpp: GetBuffer failed"); return false; }
 
         hr = m_device->CreateRenderTargetView(backBuffer, nullptr, &m_rtv);
+#ifdef _DEBUG
+        SetDebugName(backBuffer, "GDX.D3D11.BackBuffer");
+        SetDebugName(m_rtv, "GDX.D3D11.BackBufferRTV");
+#endif
         backBuffer->Release();
         if (FAILED(hr)) { Debug::LogError("gdxwin32dx11contextfactory.cpp: CreateRenderTargetView failed"); return false; }
         return true;
@@ -286,6 +343,10 @@ namespace
         if (FAILED(hr)) { Debug::LogError("gdxwin32dx11contextfactory.cpp: depth texture failed"); return false; }
 
         hr = m_device->CreateDepthStencilView(m_depthTex, nullptr, &m_dsv);
+#ifdef _DEBUG
+        SetDebugName(m_depthTex, "GDX.D3D11.DepthTexture");
+        SetDebugName(m_dsv, "GDX.D3D11.DepthDSV");
+#endif
         if (FAILED(hr)) { Debug::LogError("gdxwin32dx11contextfactory.cpp: CreateDepthStencilView failed"); return false; }
         return true;
     }
@@ -329,6 +390,45 @@ namespace
         m_swapChain->Present(vsync ? 1 : 0, 0);
     }
 
+    bool Win32DXGIContext::SetFullscreen(bool fullscreen)
+    {
+        if (!m_swapChain) return false;
+        if (m_fullscreen == fullscreen) return true;
+
+        // Vor dem Wechsel SwapChain-Ressourcen freigeben
+        ReleaseSwapChainResources();
+
+        const HRESULT hr = m_swapChain->SetFullscreenState(fullscreen ? TRUE : FALSE, nullptr);
+        if (FAILED(hr))
+        {
+            Debug::LogError("SetFullscreen: SetFullscreenState fehlgeschlagen hr=", (int)hr);
+            // SwapChain-Ressourcen wiederherstellen
+            CreateRenderTargetView();
+            CreateDepthBuffer(m_width, m_height);
+            return false;
+        }
+
+        m_fullscreen = fullscreen;
+
+        // Resize nach Wechsel um BackBuffer neu zu erstellen
+        DXGI_SWAP_CHAIN_DESC desc{};
+        m_swapChain->GetDesc(&desc);
+        m_swapChain->ResizeBuffers(0,
+            desc.BufferDesc.Width,
+            desc.BufferDesc.Height,
+            DXGI_FORMAT_UNKNOWN, 0);
+
+        m_width  = static_cast<int>(desc.BufferDesc.Width);
+        m_height = static_cast<int>(desc.BufferDesc.Height);
+
+        CreateRenderTargetView();
+        CreateDepthBuffer(m_width, m_height);
+
+        Debug::Log("SetFullscreen: ", fullscreen ? "ON" : "OFF",
+                   " ", m_width, "x", m_height);
+        return true;
+    }
+
     GDXDXGIDeviceInfo Win32DXGIContext::QueryDeviceInfo() const
     {
         GDXDXGIDeviceInfo info;
@@ -340,15 +440,61 @@ namespace
 
     void Win32DXGIContext::Destroy()
     {
+        if (m_context)
+        {
+            ID3D11ShaderResourceView* nullSRVs[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
+            ID3D11Buffer* nullCBs[D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT] = {};
+            ID3D11SamplerState* nullSamplers[D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT] = {};
+            ID3D11UnorderedAccessView* nullUAVs[D3D11_PS_CS_UAV_REGISTER_COUNT] = {};
+            UINT initialCounts[D3D11_PS_CS_UAV_REGISTER_COUNT] = {};
+
+            m_context->VSSetShader(nullptr, nullptr, 0);
+            m_context->PSSetShader(nullptr, nullptr, 0);
+            m_context->GSSetShader(nullptr, nullptr, 0);
+            m_context->HSSetShader(nullptr, nullptr, 0);
+            m_context->DSSetShader(nullptr, nullptr, 0);
+            m_context->CSSetShader(nullptr, nullptr, 0);
+
+            m_context->VSSetConstantBuffers(0, D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT, nullCBs);
+            m_context->PSSetConstantBuffers(0, D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT, nullCBs);
+            m_context->GSSetConstantBuffers(0, D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT, nullCBs);
+            m_context->HSSetConstantBuffers(0, D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT, nullCBs);
+            m_context->DSSetConstantBuffers(0, D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT, nullCBs);
+            m_context->CSSetConstantBuffers(0, D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT, nullCBs);
+
+            m_context->VSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, nullSRVs);
+            m_context->PSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, nullSRVs);
+            m_context->GSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, nullSRVs);
+            m_context->HSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, nullSRVs);
+            m_context->DSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, nullSRVs);
+            m_context->CSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, nullSRVs);
+
+            m_context->VSSetSamplers(0, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT, nullSamplers);
+            m_context->PSSetSamplers(0, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT, nullSamplers);
+            m_context->GSSetSamplers(0, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT, nullSamplers);
+            m_context->HSSetSamplers(0, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT, nullSamplers);
+            m_context->DSSetSamplers(0, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT, nullSamplers);
+            m_context->CSSetSamplers(0, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT, nullSamplers);
+
+            m_context->CSSetUnorderedAccessViews(0, D3D11_PS_CS_UAV_REGISTER_COUNT, nullUAVs, initialCounts);
+            m_context->OMSetRenderTargets(0, nullptr, nullptr);
+            m_context->ClearState();
+            m_context->Flush();
+        }
+
         if (m_swapChain) m_swapChain->SetFullscreenState(FALSE, nullptr);
 
         ReleaseSwapChainResources();
 
+#ifdef _DEBUG
+        ReportLiveObjects(m_device);
+#endif
+
         SafeRelease(m_dsState);
         SafeRelease(m_rasterizer);
+        SafeRelease(m_swapChain);
         SafeRelease(m_context);
         SafeRelease(m_device);
-        SafeRelease(m_swapChain);
     }
 }
 
@@ -448,7 +594,8 @@ GDXWin32DX11ContextFactory::Create(
         return nullptr;
     }
 
-    const bool borderless = nativeAccess.IsBorderless();
+    const bool borderless  = nativeAccess.IsBorderless();
+    const bool fullscreen  = nativeAccess.IsFullscreen();
 
     HWND hwnd = reinterpret_cast<HWND>(handles.hwnd);
 
@@ -483,7 +630,7 @@ GDXWin32DX11ContextFactory::Create(
     const int h = rc.bottom - rc.top;
 
     auto ctx = std::make_unique<Win32DXGIContext>();
-    if (!ctx->Create(hwnd, adapter, w, h, adapterInfo, borderless))
+    if (!ctx->Create(hwnd, adapter, w, h, adapterInfo, borderless, fullscreen))
     {
         adapter->Release();
         return nullptr;

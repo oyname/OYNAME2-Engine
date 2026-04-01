@@ -16,6 +16,7 @@ struct GDXRenderTargetResource
     uint32_t         height   = 0u;
     bool             ready    = false;
     GDXTextureFormat colorFormat = GDXTextureFormat::RGBA8_UNORM;
+    GDXResourceUsageDesc usageDesc{};
 
     // Farbausgabe als normale Engine-Textur nutzbar.
     TextureHandle exposedTexture      = TextureHandle::Invalid();

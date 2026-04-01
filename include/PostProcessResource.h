@@ -1,10 +1,142 @@
 #pragma once
 
 #include "Handle.h"
+#include "ShaderSourceType.h"
+#include "Core/GDXMath.h"
 
 #include <cstdint>
 #include <string>
 #include <vector>
+
+
+// ---------------------------------------------------------------------------
+// Fog
+// ---------------------------------------------------------------------------
+
+enum class FogMode : uint32_t
+{
+    LinearDepth = 0u,
+    ExpDepth    = 1u,
+    Exp2Depth   = 2u,
+};
+
+struct FogSettings
+{
+    bool     enabled           = false;
+    FogMode  mode              = FogMode::LinearDepth;
+
+    float    colorR            = 0.03f;
+    float    colorG            = 0.03f;
+    float    colorB            = 0.035f;
+
+    float    start             = 0.55f;   // LinearDepth: normalized raw scene depth [0..1]
+    float    end               = 0.98f;   // LinearDepth: normalized raw scene depth [0..1]
+    float    density           = 2.0f;    // Exp / Exp2: applied on linearized depth normalized by far plane
+    float    maxOpacity        = 0.75f;
+    float    power             = 1.0f;
+
+    bool     heightFogEnabled  = false;
+    float    heightStart       = 0.0f;    // world-space Y
+    float    heightEnd         = 1.0f;    // world-space Y
+    float    heightStrength    = 1.0f;
+};
+
+// Must match cbuffer FogParams in PostProcessDepthFogPS.hlsl exactly.
+struct alignas(16) FogParams
+{
+    float    colorR;
+    float    colorG;
+    float    colorB;
+    uint32_t mode;
+
+    float    start;
+    float    end;
+    float    density;
+    float    maxOpacity;
+
+    float    power;
+    float    heightStart;
+    float    heightEnd;
+    float    heightStrength;
+
+    float    cameraNearPlane;
+    float    cameraFarPlane;
+    float    projScaleX;
+    float    projScaleY;
+
+    uint32_t enabled;
+    uint32_t heightFogEnabled;
+    uint32_t cameraIsOrtho;
+    uint32_t pad0;
+
+    float    invView[16];
+};
+static_assert(sizeof(FogParams) == 144, "FogParams must be 144 bytes");
+
+
+
+// ---------------------------------------------------------------------------
+// Volumetric Fog
+// ---------------------------------------------------------------------------
+
+struct VolumetricFogSettings
+{
+    bool     enabled           = false;
+
+    float    colorR            = 0.80f;
+    float    colorG            = 0.85f;
+    float    colorB            = 1.00f;
+    float    density           = 0.045f;
+
+    float    anisotropy        = 0.25f;
+    float    startDistance     = 1.0f;
+    float    maxDistance       = 60.0f;
+    float    maxOpacity        = 0.85f;
+
+    float    baseHeight        = 0.0f;
+    float    heightFalloff     = 0.10f;
+    uint32_t stepCount         = 48u;
+    float    shadowStrength    = 1.0f;
+
+    float    lightIntensity    = 1.0f;
+    float    jitterStrength    = 1.0f;
+};
+
+// Must match cbuffer VolumetricFogParams in PostProcessVolumetricFogPS.hlsl exactly.
+struct alignas(16) VolumetricFogParams
+{
+    float    colorR;
+    float    colorG;
+    float    colorB;
+    float    density;
+
+    float    anisotropy;
+    float    startDistance;
+    float    maxDistance;
+    float    maxOpacity;
+
+    float    baseHeight;
+    float    heightFalloff;
+    uint32_t stepCount;
+    float    shadowStrength;
+
+    float    lightIntensity;
+    float    jitterStrength;
+    float    cameraNearPlane;
+    uint32_t cameraIsOrtho;
+
+    float    cameraFarPlane;
+    float    projScaleX;
+    float    projScaleY;
+    uint32_t cascadeCount;
+
+    float    cameraPos[4];
+    float    lightDir[4];
+    float    invView[16];
+    float    cascadeViewProj[4][16];
+    float    cascadeSplits[4];
+};
+static_assert(sizeof(VolumetricFogParams) == 448, "VolumetricFogParams must be 448 bytes");
 
 // ---------------------------------------------------------------------------
 // Tone Mapping
@@ -158,6 +290,7 @@ enum class PostProcessInputSemantic : uint8_t
     SceneDepth = 2,
     SceneNormals = 3,
     Custom = 4,
+    ShadowMap = 5,
 };
 
 struct PostProcessInputSlotDesc
@@ -190,6 +323,14 @@ struct PostProcessExecutionInputs
     float         cameraProjScaleY   = 1.0f;
     uint32_t      cameraIsOrtho      = 0u;
     uint32_t      depthDebugFlags    = 1u;
+    Float3        cameraPos          = { 0.0f, 0.0f, 0.0f };
+    float         _padCameraPos      = 0.0f;
+    Matrix4       invViewMatrix      = Matrix4::Identity();
+    Matrix4       shadowCascadeViewProj[4] = { Matrix4::Identity(), Matrix4::Identity(), Matrix4::Identity(), Matrix4::Identity() };
+    float         shadowCascadeSplits[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    uint32_t      shadowCascadeCount = 0u;
+    Float3        shadowLightDir     = { 0.0f, -1.0f, 0.0f };
+    float         _padShadowLightDir = 0.0f;
 
     void Reset()
     {
@@ -203,15 +344,44 @@ struct PostProcessExecutionInputs
         cameraProjScaleY   = 1.0f;
         cameraIsOrtho      = 0u;
         depthDebugFlags    = 1u;
+        cameraPos          = { 0.0f, 0.0f, 0.0f };
+        _padCameraPos      = 0.0f;
+        invViewMatrix      = Matrix4::Identity();
+        for (uint32_t i = 0u; i < 4u; ++i)
+        {
+            shadowCascadeViewProj[i] = Matrix4::Identity();
+            shadowCascadeSplits[i] = 0.0f;
+        }
+        shadowCascadeCount = 0u;
+        shadowLightDir     = { 0.0f, -1.0f, 0.0f };
+        _padShadowLightDir = 0.0f;
     }
+};
+
+enum class PostProcessRuntimeTextureSource : uint8_t
+{
+    SceneColorCurrent = 0,
+    OriginalSceneColorBranch = 1,
+    OriginalSceneColorFallback = 2,
+    SceneDepth = 3,
+    SceneNormals = 4,
+    CustomTexture = 5,
+    ShadowMap = 6,
+};
+
+struct PostProcessRuntimeTextureRef
+{
+    PostProcessRuntimeTextureSource source = PostProcessRuntimeTextureSource::SceneColorCurrent;
+    TextureHandle customTexture = TextureHandle::Invalid();
 };
 
 struct ResolvedPostProcessBinding
 {
-    std::wstring  name;
-    uint32_t      shaderRegister = 0u;
-    TextureHandle texture        = TextureHandle::Invalid();
-    bool          required       = true;
+    std::wstring                 name;
+    uint32_t                     shaderRegister = 0u;
+    PostProcessInputSemantic     semantic = PostProcessInputSemantic::SceneColor;
+    PostProcessRuntimeTextureRef textureRef{};
+    bool                         required = true;
 };
 
 inline std::vector<PostProcessInputSlot> BuildDefaultPostProcessInputs(
@@ -232,16 +402,36 @@ inline std::vector<PostProcessInputSlot> BuildDefaultPostProcessInputs(
 // ---------------------------------------------------------------------------
 // Post-Process Pass Descriptor
 // ---------------------------------------------------------------------------
+// PostProcessInsert — steuert wo ein neuer Pass in die Kette eingefügt wird.
+// ---------------------------------------------------------------------------
+enum class PostProcessInsert : uint8_t
+{
+    End,            // nach allem (default)
+    Front,          // ganz vorne
+    BeforeToneMap,  // vor ToneMapping — typisch für eigene Effekte
+    AfterToneMap,   // nach ToneMapping, vor FXAA
+    BeforeFXAA,     // direkt vor FXAA
+    AfterFXAA,      // nach FXAA
+};
 
 struct PostProcessPassDesc
 {
-    std::wstring vertexShaderFile;
-    std::wstring pixelShaderFile;
+    // Shader-Quelle — identisch zu ShaderSourceDesc in IGDXRenderBackend.h.
+    // HlslFilePath (default): vertexShaderFile/pixelShaderFile = Dateipfad
+    // GlslSource:             vertexShaderFile/pixelShaderFile = GLSL-Quelltext
+    // SpirvBinary:            vertexCode/pixelCode = SPIR-V Binärdaten
+    ShaderSourceType     sourceType       = ShaderSourceType::HlslFilePath;
+    std::wstring         vertexShaderFile;
+    std::wstring         pixelShaderFile;
+    std::vector<std::string> defines;     // Präprozessor-Defines (HLSL/GLSL)
+    std::vector<uint8_t> vertexCode;      // für SpirvBinary
+    std::vector<uint8_t> pixelCode;       // für SpirvBinary
+
     std::wstring debugName;
     uint32_t constantBufferBytes = 0u;
     bool enabled = true;
     bool captureSceneColorAsOriginal = false;
-    uint32_t originalSceneGroup = 0u; // 0 = shared/default, >0 = isolated branch capture group
+    uint32_t originalSceneGroup = 0u;
     std::vector<PostProcessInputSlotDesc> inputSlots;
 };
 

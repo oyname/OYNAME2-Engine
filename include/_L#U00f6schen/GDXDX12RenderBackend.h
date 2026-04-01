@@ -1,6 +1,7 @@
 #pragma once
 
 #include "IGDXRenderBackend.h"
+#include "GDXDescriptorSystem.h"
 
 class GDXDX12RenderBackend final : public IGDXRenderBackend
 {
@@ -8,13 +9,28 @@ public:
     GDXDX12RenderBackend() = default;
     ~GDXDX12RenderBackend() override = default;
 
-    bool Initialize(ResourceStore<GDXTextureResource, TextureTag>&) override { return false; }
-    void BeginFrame(const float[4]) override {}
+    bool Initialize(ResourceStore<GDXTextureResource, TextureTag>&) override
+    {
+        GDXDescriptorAllocatorDesc desc{};
+        desc.resourceHeap.heapType = GDXDescriptorHeapType::Resource;
+        desc.resourceHeap.persistentCapacity = 4096u;
+        desc.resourceHeap.frameTransientCapacity = 8192u;
+        desc.resourceHeap.framesInFlight = 3u;
+        desc.resourceHeap.shaderVisible = true;
+        desc.samplerHeap.heapType = GDXDescriptorHeapType::Sampler;
+        desc.samplerHeap.persistentCapacity = 256u;
+        desc.samplerHeap.frameTransientCapacity = 512u;
+        desc.samplerHeap.framesInFlight = 3u;
+        desc.samplerHeap.shaderVisible = true;
+        m_descriptorAllocator.Initialize(desc);
+        return false;
+    }
+    void BeginFrame(const float[4]) override { static uint32_t frameIndex = 0u; m_descriptorAllocator.BeginFrame(frameIndex++); }
     void Present(bool) override {}
     void Resize(int, int) override {}
     void Shutdown(ResourceStore<MaterialResource, MaterialTag>&,
                   ResourceStore<GDXShaderResource, ShaderTag>&,
-                  ResourceStore<GDXTextureResource, TextureTag>&) override {}
+                  ResourceStore<GDXTextureResource, TextureTag>&) override { m_descriptorAllocator.Shutdown(); }
 
     ShaderHandle UploadShader(ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
                               const ShaderSourceDesc&) override { (void)shaderStore; return ShaderHandle::Invalid(); }
@@ -51,9 +67,12 @@ public:
     bool ExecutePostProcessChain(const std::vector<PostProcessHandle>&, ResourceStore<PostProcessResource, PostProcessTag>&, ResourceStore<GDXTextureResource, TextureTag>&, ResourceStore<GDXRenderTargetResource, RenderTargetTag>*, const PostProcessExecutionInputs&, float, float, RenderTargetHandle = RenderTargetHandle::Invalid(), bool = true) override { return false; }
     void LoadIBL(const wchar_t*) override {}
     uint32_t GetDrawCallCount() const override { return 0u; }
+
+    const GDXDescriptorAllocator& GetDescriptorAllocator() const noexcept { return m_descriptorAllocator; }
     bool HasShadowResources() const override { return false; }
     const DefaultTextureSet& GetDefaultTextures() const override { return m_defaults; }
 
 private:
     DefaultTextureSet m_defaults{};
+    GDXDescriptorAllocator m_descriptorAllocator{};
 };

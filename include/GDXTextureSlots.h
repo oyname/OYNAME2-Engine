@@ -44,6 +44,12 @@ struct MaterialTextureLayer
 
 using MaterialTextureLayerArray = std::array<MaterialTextureLayer, static_cast<size_t>(MaterialTextureSlot::Count)>;
 
+constexpr bool IsMaterialTextureEnabled(const MaterialTextureLayerArray& layers, MaterialTextureSlot slot) noexcept
+{
+    const size_t idx = static_cast<size_t>(slot);
+    return idx < layers.size() && layers[idx].enabled && layers[idx].texture.IsValid();
+}
+
 constexpr ShaderResourceSemantic ToShaderResourceSemantic(MaterialTextureSlot slot) noexcept
 {
     switch (slot)
@@ -57,32 +63,22 @@ constexpr ShaderResourceSemantic ToShaderResourceSemantic(MaterialTextureSlot sl
     }
 }
 
-constexpr uint8_t BindingIndexForSemantic(ShaderResourceSemantic semantic) noexcept
+constexpr bool TryMapShaderSemanticToMaterialSlot(ShaderResourceSemantic semantic, MaterialTextureSlot& outSlot) noexcept
 {
     switch (semantic)
     {
-    case ShaderResourceSemantic::Albedo:   return 0u;
-    case ShaderResourceSemantic::Normal:   return 1u;
-    case ShaderResourceSemantic::ORM:      return 2u;
-    case ShaderResourceSemantic::Emissive: return 3u;
-    case ShaderResourceSemantic::Detail:   return 4u;
-    case ShaderResourceSemantic::ShadowMap:return 5u;
-    default:                               return 0u;
+    case ShaderResourceSemantic::Albedo:   outSlot = MaterialTextureSlot::Albedo;   return true;
+    case ShaderResourceSemantic::Normal:   outSlot = MaterialTextureSlot::Normal;   return true;
+    case ShaderResourceSemantic::ORM:      outSlot = MaterialTextureSlot::ORM;      return true;
+    case ShaderResourceSemantic::Emissive: outSlot = MaterialTextureSlot::Emissive; return true;
+    case ShaderResourceSemantic::Detail:   outSlot = MaterialTextureSlot::Detail;   return true;
+    case ShaderResourceSemantic::ShadowMap:
+    case ShaderResourceSemantic::Count:
+    default:
+        break;
     }
-}
-
-constexpr uint8_t DX11PixelShaderSlotForSemantic(ShaderResourceSemantic semantic) noexcept
-{
-    switch (semantic)
-    {
-    case ShaderResourceSemantic::Albedo:   return 0u;
-    case ShaderResourceSemantic::Normal:   return 1u;
-    case ShaderResourceSemantic::ORM:      return 2u;
-    case ShaderResourceSemantic::Emissive: return 3u;
-    case ShaderResourceSemantic::Detail:   return 4u;
-    case ShaderResourceSemantic::ShadowMap:return 16u;
-    default:                               return 0u;
-    }
+    outSlot = MaterialTextureSlot::Albedo;
+    return false;
 }
 
 constexpr MaterialTextureUVSet DefaultUVSetForSemantic(ShaderResourceSemantic semantic) noexcept

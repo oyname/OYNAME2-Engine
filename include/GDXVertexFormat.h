@@ -8,12 +8,6 @@
 
 // ---------------------------------------------------------------------------
 // GDXVertexFormat — explizite Beschreibung des CPU-/GPU-Vertex-Layouts.
-//
-// Bisher steuerte KROM fast alles nur über Bitflags. Das bleibt erhalten,
-// aber diese Schicht macht das Layout greifbar:
-//   - BasicMeshGenerator kann ein Zielformat anpeilen
-//   - ShaderLayout kann explizit sagen welche Streams gebraucht werden
-//   - spätere Backends (OpenGL/Vulkan/DX12) bekommen dieselbe Metadatenbasis
 // ---------------------------------------------------------------------------
 
 enum class GDXVertexSemantic : uint8_t
@@ -28,6 +22,14 @@ enum class GDXVertexSemantic : uint8_t
     BoneWeights,
 };
 
+enum class GDXVertexElementFormat : uint8_t
+{
+    Float2,
+    Float3,
+    Float4,
+    UInt4,
+};
+
 struct GDXVertexElementDesc
 {
     GDXVertexSemantic semantic = GDXVertexSemantic::Position;
@@ -36,6 +38,7 @@ struct GDXVertexElementDesc
     uint8_t componentCount = 0u;
     uint8_t componentSizeBytes = 0u;
     uint32_t requiredFlags = 0u;
+    GDXVertexElementFormat format = GDXVertexElementFormat::Float3;
 };
 
 struct GDXVertexFormatDesc
@@ -57,37 +60,41 @@ struct GDXVertexFormatDesc
 
 namespace GDXVertexFormat
 {
+    inline void AddElement(GDXVertexFormatDesc& desc,
+                           GDXVertexSemantic semantic,
+                           uint8_t semanticIndex,
+                           uint8_t componentCount,
+                           uint8_t componentSizeBytes,
+                           uint32_t requiredFlags,
+                           GDXVertexElementFormat format) noexcept
+    {
+        if (desc.elementCount >= desc.elements.size())
+            return;
+
+        auto& e = desc.elements[desc.elementCount];
+        e.semantic = semantic;
+        e.semanticIndex = semanticIndex;
+        e.streamIndex = static_cast<uint8_t>(desc.elementCount);
+        e.componentCount = componentCount;
+        e.componentSizeBytes = componentSizeBytes;
+        e.requiredFlags = requiredFlags;
+        e.format = format;
+        ++desc.elementCount;
+    }
+
     inline GDXVertexFormatDesc FromFlags(uint32_t flags) noexcept
     {
         GDXVertexFormatDesc desc{};
         desc.flags = flags;
 
-        auto add = [&](GDXVertexSemantic semantic, uint8_t semanticIndex,
-                       uint8_t componentCount, uint8_t componentSizeBytes,
-                       uint32_t requiredFlags)
-        {
-            auto& e = desc.elements[desc.elementCount++];
-            e.semantic = semantic;
-            e.semanticIndex = semanticIndex;
-            e.streamIndex = static_cast<uint8_t>(desc.elementCount - 1u);
-            e.componentCount = componentCount;
-            e.componentSizeBytes = componentSizeBytes;
-            e.requiredFlags = requiredFlags;
-        };
-
-        if (flags & GDX_VERTEX_POSITION)     add(GDXVertexSemantic::Position, 0, 3, 4, GDX_VERTEX_POSITION);
-        if (flags & GDX_VERTEX_NORMAL)       add(GDXVertexSemantic::Normal, 0, 3, 4, GDX_VERTEX_NORMAL);
-        if (flags & GDX_VERTEX_COLOR)        add(GDXVertexSemantic::Color, 0, 4, 4, GDX_VERTEX_COLOR);
-        if (flags & GDX_VERTEX_TEX1)         add(GDXVertexSemantic::TexCoord0, 0, 2, 4, GDX_VERTEX_TEX1);
-        if (flags & GDX_VERTEX_TEX2)         add(GDXVertexSemantic::TexCoord1, 1, 2, 4, GDX_VERTEX_TEX2);
-        if (flags & GDX_VERTEX_TANGENT)      add(GDXVertexSemantic::Tangent, 0, 4, 4, GDX_VERTEX_TANGENT);
-        if (flags & GDX_VERTEX_BONE_INDICES) add(GDXVertexSemantic::BoneIndices, 0, 4, 4, GDX_VERTEX_BONE_INDICES);
-        if (flags & GDX_VERTEX_BONE_WEIGHTS) add(GDXVertexSemantic::BoneWeights, 0, 4, 4, GDX_VERTEX_BONE_WEIGHTS);
+        if (flags & GDX_VERTEX_POSITION)     AddElement(desc, GDXVertexSemantic::Position, 0, 3, 4, GDX_VERTEX_POSITION, GDXVertexElementFormat::Float3);
+        if (flags & GDX_VERTEX_NORMAL)       AddElement(desc, GDXVertexSemantic::Normal, 0, 3, 4, GDX_VERTEX_NORMAL, GDXVertexElementFormat::Float3);
+        if (flags & GDX_VERTEX_COLOR)        AddElement(desc, GDXVertexSemantic::Color, 0, 4, 4, GDX_VERTEX_COLOR, GDXVertexElementFormat::Float4);
+        if (flags & GDX_VERTEX_TEX1)         AddElement(desc, GDXVertexSemantic::TexCoord0, 0, 2, 4, GDX_VERTEX_TEX1, GDXVertexElementFormat::Float2);
+        if (flags & GDX_VERTEX_TEX2)         AddElement(desc, GDXVertexSemantic::TexCoord1, 1, 2, 4, GDX_VERTEX_TEX2, GDXVertexElementFormat::Float2);
+        if (flags & GDX_VERTEX_TANGENT)      AddElement(desc, GDXVertexSemantic::Tangent, 0, 4, 4, GDX_VERTEX_TANGENT, GDXVertexElementFormat::Float4);
+        if (flags & GDX_VERTEX_BONE_INDICES) AddElement(desc, GDXVertexSemantic::BoneIndices, 0, 4, 4, GDX_VERTEX_BONE_INDICES, GDXVertexElementFormat::UInt4);
+        if (flags & GDX_VERTEX_BONE_WEIGHTS) AddElement(desc, GDXVertexSemantic::BoneWeights, 0, 4, 4, GDX_VERTEX_BONE_WEIGHTS, GDXVertexElementFormat::Float4);
         return desc;
-    }
-
-    inline GDXVertexFormatDesc FromSubmesh(const SubmeshData& submesh) noexcept
-    {
-        return FromFlags(submesh.ComputeVertexFlags());
     }
 }

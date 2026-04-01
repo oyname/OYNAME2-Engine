@@ -1,5 +1,6 @@
 #include "RenderGatherSystem.h"
 #include "Core/Debug.h"
+#include "MaterialSemanticLayout.h"
 
 #include <algorithm>
 #include <utility>
@@ -35,18 +36,21 @@ namespace
     ResourceBindingSet BuildResourceBindingSet(const MaterialResource& mat, MaterialHandle matHandle, const GDXShaderResource& shader)
     {
         ResourceBindingSet set;
+        const MaterialSemanticLayout materialLayout = MaterialSemanticLayout::BuildDefault();
 
         for (uint32_t i = 0; i < shader.layout.constantBufferCount; ++i)
         {
             const auto& src = shader.layout.constantBuffers[i];
             ConstantBufferBindingDesc cb{};
             cb.semantic = src.slot;
-            cb.vsRegister = src.vsRegister;
-            cb.psRegister = src.psRegister;
+            cb.bindingIndex = src.layoutBindingIndex;
+            cb.bindingGroup = src.bindingGroup;
+            cb.resourceClass = src.resourceClass;
+            cb.visibility = src.visibility;
             cb.materialHandle = (src.slot == GDXShaderConstantBufferSlot::Material) ? matHandle : MaterialHandle::Invalid();
             cb.enabled = (src.slot != GDXShaderConstantBufferSlot::Material) || matHandle.IsValid();
-            cb.scope = (src.slot == GDXShaderConstantBufferSlot::Frame) ? ResourceBindingScope::Pass :
-                       ((src.slot == GDXShaderConstantBufferSlot::Material) ? ResourceBindingScope::Material : ResourceBindingScope::Draw);
+            cb.required = true;
+            cb.scope = GDXBindingScopeForConstantBufferSlot(src.slot);
             set.AddConstantBufferBinding(cb);
         }
 
@@ -54,37 +58,12 @@ namespace
         {
             const auto& src = shader.layout.textureBindings[i];
             ShaderResourceBindingDesc desc{};
-            switch (src.semantic)
+            MaterialSemanticValidationResult validation{};
+            if (!materialLayout.BuildTextureBindingDesc(src, mat, desc, &validation))
             {
-            case GDXShaderTextureSemantic::Albedo:   desc.semantic = ShaderResourceSemantic::Albedo; break;
-            case GDXShaderTextureSemantic::Normal:   desc.semantic = ShaderResourceSemantic::Normal; break;
-            case GDXShaderTextureSemantic::ORM:      desc.semantic = ShaderResourceSemantic::ORM; break;
-            case GDXShaderTextureSemantic::Emissive: desc.semantic = ShaderResourceSemantic::Emissive; break;
-            case GDXShaderTextureSemantic::Detail:   desc.semantic = ShaderResourceSemantic::Detail; break;
-            case GDXShaderTextureSemantic::ShadowMap:
-                desc.semantic = ShaderResourceSemantic::ShadowMap;
-                desc.bindingIndex = src.shaderRegister;
-                desc.texture = TextureHandle::Invalid();
-                desc.uvSet = MaterialTextureUVSet::UV0;
-                desc.enabled = false;
-                desc.expectsSRGB = false;
-                desc.requiredState = ResourceState::ShaderRead;
-                desc.scope = ResourceBindingScope::Pass;
-                set.AddTextureBinding(desc);
+                Debug::LogError(GDX_SRC_LOC, "MaterialSemanticLayout: BuildTextureBindingDesc fehlgeschlagen.");
                 continue;
             }
-
-            const auto materialSlot = static_cast<MaterialTextureSlot>(static_cast<uint8_t>(desc.semantic));
-            const auto& layer = mat.Layer(materialSlot);
-            desc.bindingIndex = src.shaderRegister;
-            desc.texture = layer.texture;
-            desc.uvSet = (layer.uvSet == MaterialTextureUVSet::Auto)
-                ? DefaultUVSetForSemantic(desc.semantic)
-                : layer.uvSet;
-            desc.enabled = layer.enabled;
-            desc.expectsSRGB = layer.expectsSRGB;
-            desc.requiredState = ResourceState::ShaderRead;
-            desc.scope = (desc.semantic == ShaderResourceSemantic::ShadowMap) ? ResourceBindingScope::Pass : ResourceBindingScope::Material;
             set.AddTextureBinding(desc);
         }
 
@@ -143,7 +122,7 @@ namespace
             && cache.layerMask == renderable.layerMask
             && cache.castShadows == renderable.castShadows
             && cache.receiveShadows == renderable.receiveShadows
-            && cache.materialCpuDirtySnapshot == material.cpuDirty;
+            && cache.materialStateVersion == material.GetStateVersion();
     }
 
     bool BuildMainRenderCommand(const VisibleRenderCandidate& candidate,
@@ -196,16 +175,18 @@ namespace
             cache.pass = pass;
             cache.pipelineState = BuildPipelineStateDesc(pass, *mat);
             cache.bindings = BuildResourceBindingSet(*mat, renderable.material, *shaderRes);
-            cache.materialData = mat->data;
+            cache.materialParams = mat->GetParams();
+            cache.materialRenderPolicy = mat->GetRenderPolicy();
+            cache.materialTextureLayers = mat->GetTextureLayers();
             cache.transparent = outTransparent;
-            cache.materialSortID = mat->sortID;
+            cache.materialSortID = mat->GetSortID();
             cache.renderStateVersion = renderable.stateVersion;
             cache.visible = renderable.visible;
             cache.active = renderable.active;
             cache.layerMask = renderable.layerMask;
             cache.castShadows = renderable.castShadows;
             cache.receiveShadows = renderable.receiveShadows;
-            cache.materialCpuDirtySnapshot = mat->cpuDirty;
+            cache.materialStateVersion = mat->GetStateVersion();
             cache.valid = true;
         }
         else
@@ -235,8 +216,13 @@ namespace
             BuildResourceBindingScopeKey(cache.bindings, ResourceBindingScope::Material, cache.material.value),
             BuildResourceBindingScopeKey(cache.bindings, ResourceBindingScope::Draw, candidate.entity.value));
         outCmd.SetPipelineState(cache.pipelineState);
-        outCmd.materialData = cache.materialData;
+        outCmd.materialParams = cache.materialParams;
+        outCmd.materialRenderPolicy = cache.materialRenderPolicy;
+        outCmd.materialTextureLayers = cache.materialTextureLayers;
         outCmd.receiveShadows = renderable.receiveShadows;
+        outCmd.hasBounds         = candidate.hasBounds;
+        outCmd.worldBoundsCenter = candidate.worldBoundsCenter;
+        outCmd.worldBoundsRadius = candidate.worldBoundsRadius;
         outCmd.SetSortKey(cache.pass,
                           cache.shader.Index() & 0x0FFFu,
                           GDXPipelineStateKey::FromDesc(cache.pipelineState).value & 0x00FFu,
@@ -285,16 +271,18 @@ namespace
             cache.pass = RenderPass::Shadow;
             cache.pipelineState = BuildPipelineStateDesc(RenderPass::Shadow, *mat);
             cache.bindings = BuildResourceBindingSet(*mat, renderable.material, *shaderRes);
-            cache.materialData = mat->data;
+            cache.materialParams = mat->GetParams();
+            cache.materialRenderPolicy = mat->GetRenderPolicy();
+            cache.materialTextureLayers = mat->GetTextureLayers();
             cache.transparent = false;
-            cache.materialSortID = mat->sortID;
+            cache.materialSortID = mat->GetSortID();
             cache.renderStateVersion = renderable.stateVersion;
             cache.visible = renderable.visible;
             cache.active = renderable.active;
             cache.layerMask = renderable.layerMask;
             cache.castShadows = renderable.castShadows;
             cache.receiveShadows = renderable.receiveShadows;
-            cache.materialCpuDirtySnapshot = mat->cpuDirty;
+            cache.materialStateVersion = mat->GetStateVersion();
             cache.valid = true;
         }
 
@@ -318,8 +306,13 @@ namespace
             BuildResourceBindingScopeKey(cache.bindings, ResourceBindingScope::Material, cache.material.value),
             BuildResourceBindingScopeKey(cache.bindings, ResourceBindingScope::Draw, candidate.entity.value));
         outCmd.SetPipelineState(cache.pipelineState);
-        outCmd.materialData = cache.materialData;
+        outCmd.materialParams = cache.materialParams;
+        outCmd.materialRenderPolicy = cache.materialRenderPolicy;
+        outCmd.materialTextureLayers = cache.materialTextureLayers;
         outCmd.receiveShadows = true;
+        outCmd.hasBounds         = candidate.hasBounds;
+        outCmd.worldBoundsCenter = candidate.worldBoundsCenter;
+        outCmd.worldBoundsRadius = candidate.worldBoundsRadius;
         outCmd.SetSortKey(RenderPass::Shadow,
                           cache.shader.Index() & 0x0FFFu,
                           GDXPipelineStateKey::FromDesc(cache.pipelineState).value & 0x00FFu,

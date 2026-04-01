@@ -13,9 +13,12 @@
 #include <numeric>
 #include <string>
 #include <system_error>
+#include <set>
 #include <vector>
 
+#if !defined(KROM_SHIPPING)
 #pragma comment(lib, "d3dcompiler.lib")
+#endif
 
 // ---------------------------------------------------------------------------
 // Cache ABI version — bump wenn sich Compiler-Flags, Profile-Konventionen
@@ -66,6 +69,26 @@ namespace
         return dir;
     }
 
+    std::string WideToUtf8(const std::wstring& value)
+    {
+        if (value.empty()) return {};
+
+        const int bytes = WideCharToMultiByte(CP_UTF8, 0, value.c_str(), static_cast<int>(value.size()),
+                                              nullptr, 0, nullptr, nullptr);
+        if (bytes <= 0) return {};
+
+        std::string out(static_cast<size_t>(bytes), '\0');
+        const int written = WideCharToMultiByte(CP_UTF8, 0, value.c_str(), static_cast<int>(value.size()),
+                                                out.data(), bytes, nullptr, nullptr);
+        if (written <= 0) return {};
+        return out;
+    }
+
+    std::string PathToUtf8String(const std::filesystem::path& path)
+    {
+        return WideToUtf8(path.native());
+    }
+
     // -----------------------------------------------------------------------
     // FNV-1a 64-bit — schnell, kein externes Hash-Lib nötig
     // -----------------------------------------------------------------------
@@ -90,6 +113,33 @@ namespace
     //             + source-file-content + ABI-version
     // Sortierte Defines: gleiche Defines in beliebiger Reihenfolge → gleicher Key.
     // -----------------------------------------------------------------------
+    // Sammelt transitiv alle #include-Dateien eines Shaders (rekursiv, kein Loop-Schutz
+    // nötig — HLSL-Includes sind azyklisch per Konvention und #pragma once / Guards).
+    void CollectIncludes(const std::filesystem::path& file,
+                         std::set<std::filesystem::path>& visited)
+    {
+        std::error_code ec;
+        if (!std::filesystem::exists(file, ec)) return;
+        if (!visited.insert(std::filesystem::weakly_canonical(file, ec)).second) return;
+
+        std::ifstream f(file);
+        if (!f) return;
+
+        const std::filesystem::path dir = file.parent_path();
+        std::string line;
+        while (std::getline(f, line))
+        {
+            // Matcht: #include "..." (kein <system>-Include — die kommen nie vom Shader-Verzeichnis)
+            auto q1 = line.find('"');
+            if (line.find("#include") == std::string::npos || q1 == std::string::npos) continue;
+            auto q2 = line.find('"', q1 + 1);
+            if (q2 == std::string::npos) continue;
+            const std::string rel = line.substr(q1 + 1, q2 - q1 - 1);
+            const auto candidate = std::filesystem::weakly_canonical(dir / rel, ec);
+            CollectIncludes(candidate, visited);
+        }
+    }
+
     uint64_t BuildCacheKey(const std::filesystem::path& resolvedPath,
                            const char* entry,
                            const char* target,
@@ -99,10 +149,6 @@ namespace
 
         // ABI-Version
         h = FNV1a(&kCacheABIVersion, sizeof(kCacheABIVersion), h);
-
-        // Shader-Pfad (normalisiert, UTF-8)
-        const auto pathStr = resolvedPath.string();
-        h = FNV1a(pathStr.data(), pathStr.size(), h);
 
         // Einstiegspunkt + Profil
         h = FNV1aStr(entry ? entry : "", h);
@@ -114,12 +160,23 @@ namespace
         for (const auto& d : sortedDefines)
             h = FNV1aStr(d, h);
 
-        // Quell-Datei-Inhalt (inkl. Änderungen ohne #include-Transitiv)
-        std::ifstream f(resolvedPath, std::ios::binary);
-        if (f)
+        // Transitive Includes sammeln, sortiert hashen (Reihenfolge deterministisch)
+        std::set<std::filesystem::path> allFiles;
+        CollectIncludes(resolvedPath, allFiles);
+
+        for (const auto& p : allFiles)  // std::set ist sortiert
         {
-            std::vector<char> buf(std::istreambuf_iterator<char>(f), {});
-            h = FNV1a(buf.data(), buf.size(), h);
+            // Pfad in Hash (damit Umbenennen invalidiert)
+            const auto ps = p.string();
+            h = FNV1a(ps.data(), ps.size(), h);
+
+            // Dateiinhalt in Hash
+            std::ifstream f(p, std::ios::binary);
+            if (f)
+            {
+                std::vector<char> buf(std::istreambuf_iterator<char>(f), {});
+                h = FNV1a(buf.data(), buf.size(), h);
+            }
         }
 
         return h;
@@ -239,7 +296,14 @@ bool GDXDX11CompileShaderFromFile(const std::wstring& file,
         return true;
     }
 
-    // --- Cache miss: compile ---
+    // --- Cache miss ---
+#if defined(KROM_SHIPPING)
+    const std::string shaderNameUtf8 = PathToUtf8String(resolvedPath.filename());
+    Debug::LogError("Shader not in cache (shipping): ", shaderNameUtf8.c_str(),
+                    " [", entry, "/", target, "]");
+    g_stats.RecordFailure();
+    return false;
+#else
     const auto t0 = std::chrono::steady_clock::now();
 
     UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
@@ -265,9 +329,19 @@ bool GDXDX11CompileShaderFromFile(const std::wstring& file,
 
     if (FAILED(hr))
     {
-        if (errors)
+        if (errors && errors->GetBufferSize() > 0)
+        {
+            Debug::LogError(GDX_SRC_LOC,
+                L"HLSL compile error in: ", file.c_str(), L"\n",
+                static_cast<const char*>(errors->GetBufferPointer()));
             errors->Release();
-
+        }
+        else
+        {
+            Debug::LogError(GDX_SRC_LOC,
+                L"HLSL compile failed (no error blob): ", file.c_str(),
+                L"  HRESULT=0x", (unsigned long)hr);
+        }
         g_stats.RecordFailure();
         return false;
     }
@@ -282,6 +356,7 @@ bool GDXDX11CompileShaderFromFile(const std::wstring& file,
     g_stats.RecordMiss(pathLabel, ms);
 
     return true;
+#endif // KROM_SHIPPING
 }
 
 void GDXDX11LogShaderCacheStats()
@@ -310,3 +385,61 @@ void GDXDX11LogShaderCacheStats()
     }
     Debug::Log("=========================");
 }
+
+#if !defined(KROM_SHIPPING)
+uint32_t GDXDX11PrecompileAllShaders(const std::wstring& shaderDir)
+{
+    // Alle bekannten Shader-Einstiegspunkte — muss mit CreateVariant/PrewarmPostProcess übereinstimmen.
+    struct ShaderEntry { std::wstring file; const char* entry; const char* target; std::vector<std::string> defines; };
+
+    const std::vector<ShaderEntry> entries =
+    {
+        // Main VS-Varianten
+        { L"VertexShader.hlsl",            "main", "vs_5_0", {} },
+        { L"VertexShader.hlsl",            "main", "vs_5_0", {"HAS_VERTEX_COLOR"} },
+        { L"VertexShader.hlsl",            "main", "vs_5_0", {"HAS_SKINNING"} },
+        { L"VertexShader.hlsl",            "main", "vs_5_0", {"HAS_SKINNING", "HAS_VERTEX_COLOR"} },
+        // Main PS
+        { L"PixelShader.hlsl",             "main", "ps_5_0", {} },
+        // Shadow
+        { L"ShadowVertexShader.hlsl",      "main", "vs_5_0", {} },
+        { L"ShadowVertexShader.hlsl",      "main", "vs_5_0", {"ALPHA_TEST"} },
+        { L"ShadowVertexShader.hlsl",      "main", "vs_5_0", {"HAS_SKINNING"} },
+        { L"ShadowVertexShader.hlsl",      "main", "vs_5_0", {"HAS_SKINNING", "ALPHA_TEST"} },
+        { L"ShadowPixelShader.hlsl",       "main", "ps_5_0", {} },
+        { L"ShadowPixelShader.hlsl",       "main", "ps_5_0", {"ALPHA_TEST"} },
+        // Compute
+        { L"TileLightCullCS.hlsl",         "main", "cs_5_0", {} },
+        // Post-process
+        { L"PostProcessFullscreenVS.hlsl", "main", "vs_5_0", {} },
+        { L"PostProcessToneMappingPS.hlsl","main", "ps_5_0", {} },
+        { L"PostProcessFXAAPS.hlsl",       "main", "ps_5_0", {} },
+        { L"PostProcessBloomBrightPS.hlsl","main", "ps_5_0", {} },
+        { L"PostProcessBloomBlurPS.hlsl",  "main", "ps_5_0", {} },
+        { L"PostProcessBloomCompositePS.hlsl","main","ps_5_0",{} },
+        { L"PostProcessGTAOPS.hlsl",       "main", "ps_5_0", {} },
+        { L"PostProcessGTAOBlurPS.hlsl",   "main", "ps_5_0", {} },
+        { L"PostProcessGTAOCompositePS.hlsl","main","ps_5_0",{} },
+        { L"PostProcessDepthDebugPS.hlsl", "main", "ps_5_0", {} },
+        { L"PostProcessNormalDebugPS.hlsl","main", "ps_5_0", {} },
+        { L"PostProcessEdgeDebugPS.hlsl",  "main", "ps_5_0", {} },
+        { L"PostProcessDepthFogPS.hlsl",   "main", "ps_5_0", {} },
+        { L"PostProcessVolumetricFogPS.hlsl",   "main", "ps_5_0", {} },
+    };
+
+    uint32_t failures = 0u;
+    for (const auto& e : entries)
+    {
+        const std::wstring path = shaderDir + L"/" + e.file;
+        ID3DBlob* blob = nullptr;
+        if (!GDXDX11CompileShaderFromFile(path, e.entry, e.target, &blob, e.defines))
+            ++failures;
+        if (blob) blob->Release();
+    }
+
+    Debug::Log("GDXDX11PrecompileAllShaders: ", (uint32_t)entries.size(), " shaders, ",
+               failures, " failures.");
+    GDXDX11LogShaderCacheStats();
+    return failures;
+}
+#endif // KROM_SHIPPING

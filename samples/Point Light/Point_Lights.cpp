@@ -1,3 +1,5 @@
+#define KROM_SHIPPING
+
 #include "gidx.h"
 #include "GDXECSRenderer.h"
 #include "Components.h"
@@ -288,7 +290,7 @@ namespace
             Engine::_::renderer->SetGTAO(1280, 720, 0.1f, 100.0f, 0.8f, 10.0f, 0.5f, 0.5f);
         }
 
-        Engine::_::renderer->LoadIBL(L"..\\media\\sky.hdr");
+        //Engine::_::renderer->LoadIBL(L"..\\media\\sky.hdr");
 
 
         g_cubeMesh = Engine::Cube();

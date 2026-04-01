@@ -3,6 +3,8 @@
 //   HAS_SKINNING  — reads BLENDINDICES0/BLENDWEIGHT0, applies bone transforms
 //   ALPHA_TEST    — passes TEXCOORD0 to PS for alpha cutout
 
+#include "include/CBuffer_Cascade.hlsli"
+
 cbuffer EntityConstants : register(b0)
 {
     row_major float4x4 gWorld;
@@ -16,6 +18,12 @@ cbuffer FrameConstants : register(b1)
     row_major float4x4 gViewProj;
     float4             gCameraPos;
     row_major float4x4 gShadowViewProj;
+};
+
+cbuffer ShadowPassInfo : register(b2)
+{
+    uint  gCurrentCascade;
+    float3 _spPad;
 };
 
 #ifdef HAS_SKINNING
@@ -67,7 +75,7 @@ VS_OUTPUT main(VS_INPUT input)
     float4 worldPos = mul(float4(input.position, 1.0f), gWorld);
 #endif
 
-    o.position = mul(worldPos, gShadowViewProj);
+    o.position = mul(worldPos, gCascadeViewProj[gCurrentCascade]);
 
 #ifdef ALPHA_TEST
     o.texCoord = input.texCoord;

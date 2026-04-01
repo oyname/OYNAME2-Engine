@@ -1,104 +1,55 @@
 #pragma once
 #include "Handle.h"
 #include "GDXTextureSlots.h"
+#include "MaterialParams.h"
 
 #include <array>
+#include <cassert>
 #include <cstdint>
 #include "Core/GDXMath.h"
 
-struct MaterialData
-{
-    Float4 baseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-    Float4 specularColor = { 0.5f, 0.5f, 0.5f, 1.0f };
-    Float4 emissiveColor = { 0.0f, 0.0f, 0.0f, 1.0f };
-    Float4 uvTilingOffset = { 1.0f, 1.0f, 0.0f, 0.0f };
-    Float4 uvDetailTilingOffset  = { 1.0f, 1.0f, 0.0f, 0.0f };
-    Float4 uvNormalTilingOffset  = { 1.0f, 1.0f, 0.0f, 0.0f };
-    float metallic          = 0.0f;
-    float roughness         = 0.5f;
-    float normalScale       = 1.0f;
-    float occlusionStrength = 1.0f;
-    float shininess         = 32.0f;
-    float transparency      = 0.0f;
-    float alphaCutoff       = 0.5f;
-    float receiveShadows    = 1.0f;
-    float blendMode         = 0.0f;
-    float blendFactor       = 0.0f;
-    uint32_t flags          = 0u;
-    float    _pad0          = 0.0f;
-};
-static_assert(sizeof(MaterialData) == 144, "MaterialData muss 144 Byte sein (cbuffer-Anforderung)");
-
-enum class MaterialTextureBlendMode : uint32_t
-{
-    Multiply2x = 0u,
-    Multiply   = 1u,
-    Add        = 2u,
-    Lerp       = 3u,
-};
-
-enum MaterialFlags : uint32_t
-{
-    MF_NONE              = 0u,
-    MF_ALPHA_TEST        = 1u << 0,
-    MF_DOUBLE_SIDED      = 1u << 1,
-    MF_UNLIT             = 1u << 2,
-    MF_USE_NORMAL_MAP    = 1u << 3,
-    MF_USE_ORM_MAP       = 1u << 4,
-    MF_USE_EMISSIVE      = 1u << 5,
-    MF_TRANSPARENT       = 1u << 6,
-    MF_USE_OCCLUSION_MAP = 1u << 7,
-    MF_USE_ROUGHNESS_MAP = 1u << 8,
-    MF_USE_METALLIC_MAP  = 1u << 9,
-    MF_SHADING_PBR       = 1u << 10,
-    MF_USE_DETAIL_MAP    = 1u << 11,
-};
-
 enum class MaterialShadowCullMode : uint8_t
 {
-    Auto = 0, // folgt MF_DOUBLE_SIDED für Rückwärtskompatibilität
-    Back = 1, // Shadow-Pass cullt Backfaces
-    None = 2, // Shadow-Pass rendert beidseitig
+    Auto = 0,
+    Back = 1,
+    None = 2,
 };
 
 class MaterialResource
 {
 public:
-    MaterialData data;
-    ShaderHandle shader;
-
-    // Kanonischer Materialzustand: nur textureLayers wird vom Renderer gelesen.
-    MaterialTextureLayerArray textureLayers{};
-
-    uint32_t sortID = 0u;
-    bool  cpuDirty          = true;
-    MaterialShadowCullMode shadowCullMode = MaterialShadowCullMode::Auto;
-
     MaterialResource()
     {
         NormalizeTextureLayers();
     }
 
-    bool IsTransparent() const noexcept { return (data.flags & MF_TRANSPARENT)     != 0u; }
-    bool IsAlphaTest()   const noexcept { return (data.flags & MF_ALPHA_TEST)      != 0u; }
-    bool IsDoubleSided() const noexcept { return (data.flags & MF_DOUBLE_SIDED)    != 0u; }
-    bool IsUnlit()       const noexcept { return (data.flags & MF_UNLIT)           != 0u; }
-    bool UsesPBR()       const noexcept { return (data.flags & MF_SHADING_PBR)     != 0u; }
-    bool UsesDetailMap() const noexcept { return (data.flags & MF_USE_DETAIL_MAP)  != 0u; }
+    const MaterialParams& GetParams() const noexcept { return m_params; }
+    const MaterialRenderPolicy& GetRenderPolicy() const noexcept { return m_renderPolicy; }
+    const MaterialTextureLayerArray& GetTextureLayers() const noexcept { return m_textureLayers; }
+    ShaderHandle GetShader() const noexcept { return m_shader; }
+    void SetShader(ShaderHandle shader) noexcept { m_shader = shader; Touch(); }
+    uint32_t GetSortID() const noexcept { return m_sortID; }
+    void SetSortID(uint32_t sortID) noexcept { m_sortID = sortID; }
+    uint32_t GetStateVersion() const noexcept { return m_stateVersion; }
 
-    MaterialShadowCullMode GetShadowCullMode() const noexcept
-    {
-        return shadowCullMode;
-    }
+    bool IsTransparent() const noexcept { return m_renderPolicy.blendMode == BlendMode::AlphaBlend; }
+    bool IsAlphaTest() const noexcept { return m_renderPolicy.alphaTest; }
+    bool IsDoubleSided() const noexcept { return m_renderPolicy.doubleSided; }
+    bool IsUnlit() const noexcept { return m_params.unlit; }
+    bool UsesPBR() const noexcept { return m_params.shadingModel == MaterialShadingModel::PBR; }
+    bool UsesLegacyPhong() const noexcept { return m_params.shadingModel == MaterialShadingModel::Phong; }
+    bool UsesDetailMap() const noexcept { return HasTexture(MaterialTextureSlot::Detail); }
+    bool ReceivesShadows() const noexcept { return m_renderPolicy.receiveShadows; }
+    bool UsesEmissive() const noexcept { return HasTexture(MaterialTextureSlot::Emissive) || HasEmissiveColor(); }
 
-    void SetShadowCullMode(MaterialShadowCullMode mode) noexcept
-    {
-        shadowCullMode = mode;
-    }
+    MaterialShadingModel GetShadingModel() const noexcept { return m_params.shadingModel; }
+    MaterialDetailBlendMode GetDetailBlendMode() const noexcept { return m_params.detailBlendMode; }
+    MaterialShadowCullMode GetShadowCullMode() const noexcept { return m_shadowCullMode; }
+    BlendMode GetBlendMode() const noexcept { return m_renderPolicy.blendMode; }
 
     bool IsShadowDoubleSided() const noexcept
     {
-        switch (shadowCullMode)
+        switch (m_shadowCullMode)
         {
         case MaterialShadowCullMode::None: return true;
         case MaterialShadowCullMode::Back: return false;
@@ -107,33 +58,95 @@ public:
         }
     }
 
-    void SetFlag(MaterialFlags f, bool on) noexcept
+    void SetShadingModel(MaterialShadingModel model) noexcept { m_params.shadingModel = model; Touch(); }
+    void SetShadowCullMode(MaterialShadowCullMode mode) noexcept { m_shadowCullMode = mode; Touch(); }
+    void SetReceiveShadows(bool on) noexcept { m_renderPolicy.receiveShadows = on; Touch(); }
+    void SetTransparent(bool on) noexcept
     {
-        if (on) data.flags |=  static_cast<uint32_t>(f);
-        else    data.flags &= ~static_cast<uint32_t>(f);
-        cpuDirty = true;
+        m_renderPolicy.blendMode = on ? BlendMode::AlphaBlend : BlendMode::Opaque;
+        Touch();
     }
+    void SetAlphaTest(bool on) noexcept { m_renderPolicy.alphaTest = on; Touch(); }
+    void SetDoubleSided(bool on) noexcept { m_renderPolicy.doubleSided = on; Touch(); }
+    void SetBlendMode(BlendMode mode) noexcept { m_renderPolicy.blendMode = mode; Touch(); }
+    void SetUnlit(bool on) noexcept { m_params.unlit = on; Touch(); }
+    void SetBaseColor(float r, float g, float b, float a = 1.0f) noexcept { m_params.baseColor = { r, g, b, a }; Touch(); }
+    void SetMetallic(float v) noexcept { m_params.metallic = v; Touch(); }
+    void SetRoughness(float v) noexcept { m_params.roughness = v; Touch(); }
+    void SetNormalScale(float v) noexcept { m_params.normalScale = v; Touch(); }
+    void SetOcclusionStrength(float v) noexcept { m_params.occlusionStrength = v; Touch(); }
+
+    void SetLegacyPhong(float r, float g, float b, float shininess) noexcept
+    {
+        m_params.shadingModel = MaterialShadingModel::Phong;
+        m_params.legacyPhong.specularColor = { r, g, b, 1.0f };
+        m_params.legacyPhong.shininess = shininess;
+        Touch();
+    }
+
+    void SetOpacity(float v) noexcept
+    {
+        m_params.opacity = v;
+        Touch();
+    }
+    void SetAlphaCutoff(float v) noexcept { m_params.alphaCutoff = v; Touch(); }
+
+    void SetEmissiveColor(float r, float g, float b) noexcept
+    {
+        m_params.emissiveColor = { r, g, b, 1.0f };
+        Touch();
+    }
+
+    void SetTiling(float tx, float ty, float ox = 0.0f, float oy = 0.0f) noexcept
+    {
+        m_params.uvTilingOffset = { tx, ty, ox, oy };
+        Touch();
+    }
+
+    void SetTilingX(float tx) noexcept
+    {
+        m_params.uvTilingOffset.x = tx;
+        Touch();
+    }
+
+    void SetNormalTiling(float tx, float ty, float ox = 0.0f, float oy = 0.0f) noexcept
+    {
+        m_params.uvNormalTilingOffset = { tx, ty, ox, oy };
+        Touch();
+    }
+
+    void SetDetailTiling(float tx, float ty, float ox = 0.0f, float oy = 0.0f) noexcept
+    {
+        m_params.uvDetailTilingOffset = { tx, ty, ox, oy };
+        Touch();
+    }
+
+    void SetDetailBlendMode(MaterialDetailBlendMode mode) noexcept { m_params.detailBlendMode = mode; Touch(); }
+    void SetDetailBlendFactor(float factor) noexcept { m_params.blendFactor = factor; Touch(); }
 
     MaterialTextureLayer& Layer(MaterialTextureSlot slot) noexcept
     {
-        return textureLayers[static_cast<size_t>(slot)];
+        const size_t idx = static_cast<size_t>(slot);
+        assert(idx < m_textureLayers.size());
+        return m_textureLayers[idx];
     }
 
     const MaterialTextureLayer& Layer(MaterialTextureSlot slot) const noexcept
     {
-        return textureLayers[static_cast<size_t>(slot)];
+        const size_t idx = static_cast<size_t>(slot);
+        assert(idx < m_textureLayers.size());
+        return m_textureLayers[idx];
     }
 
-    void SetTexture(MaterialTextureSlot slot, TextureHandle texture, MaterialTextureUVSet uvSet = MaterialTextureUVSet::Auto) noexcept
+    void SetTexture(MaterialTextureSlot slot, TextureHandle texture,
+                    MaterialTextureUVSet uvSet = MaterialTextureUVSet::Auto) noexcept
     {
         auto& layer = Layer(slot);
         layer.texture = texture;
         layer.enabled = texture.IsValid();
         layer.uvSet = (uvSet == MaterialTextureUVSet::Auto) ? DefaultUVSetForSlot(slot) : uvSet;
         layer.expectsSRGB = DefaultExpectsSRGBForSlot(slot);
-
-        ApplyTextureFeatureFlag(slot, texture.IsValid());
-        cpuDirty = true;
+        Touch();
     }
 
     void ClearTexture(MaterialTextureSlot slot) noexcept
@@ -143,9 +156,7 @@ public:
         layer.enabled = false;
         layer.uvSet = DefaultUVSetForSlot(slot);
         layer.expectsSRGB = DefaultExpectsSRGBForSlot(slot);
-
-        ApplyTextureFeatureFlag(slot, false);
-        cpuDirty = true;
+        Touch();
     }
 
     bool HasTexture(MaterialTextureSlot slot) const noexcept
@@ -157,17 +168,15 @@ public:
     TextureHandle GetTexture(MaterialTextureSlot slot) const noexcept
     {
         const auto& layer = Layer(slot);
-        if (layer.enabled && layer.texture.IsValid())
-            return layer.texture;
-        return TextureHandle::Invalid();
+        return (layer.enabled && layer.texture.IsValid()) ? layer.texture : TextureHandle::Invalid();
     }
 
     bool HasConsistentTextureState() const noexcept
     {
-        for (size_t i = 0; i < textureLayers.size(); ++i)
+        for (size_t i = 0; i < m_textureLayers.size(); ++i)
         {
-            const auto& layer = textureLayers[i];
-            if (layer.enabled != layer.texture.IsValid())
+            const auto& l = m_textureLayers[i];
+            if (l.enabled != l.texture.IsValid())
                 return false;
         }
         return true;
@@ -175,67 +184,38 @@ public:
 
     void NormalizeTextureLayers() noexcept
     {
-        for (size_t i = 0; i < textureLayers.size(); ++i)
+        bool changed = false;
+        for (size_t i = 0; i < m_textureLayers.size(); ++i)
         {
-            auto& layer = textureLayers[i];
+            auto& layer = m_textureLayers[i];
             const auto slot = static_cast<MaterialTextureSlot>(i);
-            layer.enabled = layer.texture.IsValid();
+            const bool enabled = layer.texture.IsValid();
+            if (layer.enabled != enabled)
+            {
+                layer.enabled = enabled;
+                changed = true;
+            }
             if (layer.uvSet == MaterialTextureUVSet::Auto)
+            {
                 layer.uvSet = DefaultUVSetForSlot(slot);
-            layer.expectsSRGB = DefaultExpectsSRGBForSlot(slot);
+                changed = true;
+            }
+            const bool expectsSRGB = DefaultExpectsSRGBForSlot(slot);
+            if (layer.expectsSRGB != expectsSRGB)
+            {
+                layer.expectsSRGB = expectsSRGB;
+                changed = true;
+            }
         }
-    }
-
-    // Always use SetTiling/SetNormalTiling/SetDetailTiling instead of writing
-    // data.uvXxxTilingOffset directly — direct field writes bypass cpuDirty
-    // so the GPU cbuffer never gets the updated values.
-    void SetTiling(float tilingX, float tilingY, float offsetX = 0.0f, float offsetY = 0.0f) noexcept
-    {
-        data.uvTilingOffset = { tilingX, tilingY, offsetX, offsetY };
-        cpuDirty = true;
-    }
-
-    void SetNormalTiling(float tilingX, float tilingY, float offsetX = 0.0f, float offsetY = 0.0f) noexcept
-    {
-        data.uvNormalTilingOffset = { tilingX, tilingY, offsetX, offsetY };
-        cpuDirty = true;
-    }
-
-    void SetDetailTiling(float tilingX, float tilingY, float offsetX = 0.0f, float offsetY = 0.0f) noexcept
-    {
-        data.uvDetailTilingOffset = { tilingX, tilingY, offsetX, offsetY };
-        cpuDirty = true;
-    }
-
-    void SetDetailBlendMode(MaterialTextureBlendMode mode) noexcept
-    {
-        data.blendMode = static_cast<float>(static_cast<uint32_t>(mode));
-        cpuDirty = true;
-    }
-
-    MaterialTextureBlendMode GetDetailBlendMode() const noexcept
-    {
-        const uint32_t raw = static_cast<uint32_t>(data.blendMode + 0.5f);
-        switch (raw)
-        {
-        case 1u: return MaterialTextureBlendMode::Multiply;
-        case 2u: return MaterialTextureBlendMode::Add;
-        case 3u: return MaterialTextureBlendMode::Lerp;
-        case 0u:
-        default: return MaterialTextureBlendMode::Multiply2x;
-        }
-    }
-
-    void SetDetailBlendFactor(float factor) noexcept
-    {
-        data.blendFactor = factor;
-        cpuDirty = true;
+        if (changed)
+            Touch();
     }
 
     static MaterialResource FlatColor(float r, float g, float b, float a = 1.0f)
     {
         MaterialResource m;
-        m.data.baseColor = { r, g, b, a };
+        m.SetBaseColor(r, g, b, a);
+        m.SetShadingModel(MaterialShadingModel::PBR);
         return m;
     }
 
@@ -244,10 +224,6 @@ public:
         switch (slot)
         {
         case MaterialTextureSlot::Detail: return MaterialTextureUVSet::UV1;
-        case MaterialTextureSlot::Albedo:
-        case MaterialTextureSlot::Normal:
-        case MaterialTextureSlot::ORM:
-        case MaterialTextureSlot::Emissive:
         default: return MaterialTextureUVSet::UV0;
         }
     }
@@ -260,24 +236,25 @@ public:
         case MaterialTextureSlot::Emissive:
         case MaterialTextureSlot::Detail:
             return true;
-        case MaterialTextureSlot::Normal:
-        case MaterialTextureSlot::ORM:
         default:
             return false;
         }
     }
 
-private:
-    void ApplyTextureFeatureFlag(MaterialTextureSlot slot, bool enabled) noexcept
+    bool HasEmissiveColor() const noexcept
     {
-        switch (slot)
-        {
-        case MaterialTextureSlot::Normal:   SetFlag(MF_USE_NORMAL_MAP, enabled); break;
-        case MaterialTextureSlot::ORM:      SetFlag(MF_USE_ORM_MAP, enabled); break;
-        case MaterialTextureSlot::Emissive: SetFlag(MF_USE_EMISSIVE, enabled); break;
-        case MaterialTextureSlot::Detail:   SetFlag(MF_USE_DETAIL_MAP, enabled); break;
-        case MaterialTextureSlot::Albedo:
-        default: break;
-        }
+        const Float4& e = m_params.emissiveColor;
+        return (e.x != 0.0f) || (e.y != 0.0f) || (e.z != 0.0f);
     }
+
+private:
+    MaterialParams m_params{};
+    MaterialRenderPolicy m_renderPolicy{};
+    ShaderHandle m_shader{};
+    MaterialTextureLayerArray m_textureLayers{};
+    uint32_t m_sortID = 0u;
+    uint32_t m_stateVersion = 1u;
+    MaterialShadowCullMode m_shadowCullMode = MaterialShadowCullMode::Auto;
+
+    void Touch() noexcept { ++m_stateVersion; }
 };

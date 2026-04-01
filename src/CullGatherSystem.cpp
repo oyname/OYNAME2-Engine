@@ -1,5 +1,5 @@
 #include "CullGatherSystem.h"
-
+#include <algorithm>
 namespace CullGather
 {
 
@@ -20,6 +20,14 @@ void CullShadow(const Context& ctx, RFG::ViewPassData& view, JobSystem* js)
     view.shadowVisibleSet    = {};
     view.stats.shadowCulling = {};
     if (!view.prepared.shadowEnabled) return;
+
+    // Kein sichtbarer Receiver → Shadow-Pass vollständig überspringen.
+    const bool hasReceiver = std::any_of(
+        view.graphicsVisibleSet.candidates.begin(),
+        view.graphicsVisibleSet.candidates.end(),
+        [](const VisibleRenderCandidate& c){ return c.receiveShadows; });
+    if (!hasReceiver) return;
+
     ctx.culling->BuildVisibleSet(
         *ctx.registry, view.prepared.shadowView, view.shadowVisibleSet, js);
     view.stats.shadowCulling = view.shadowVisibleSet.stats;

@@ -1,5 +1,12 @@
 #include "ViewCullingSystem.h"
+#include "Math/Geometry/FrustumUtils.h"
 #include "Core/GDXMathOps.h"
+
+using FrustumUtils::ComputeMaxWorldScale;
+using FrustumUtils::BuildFrustumFromViewProj;
+using FrustumUtils::SphereInsideFrustum;
+using FrustumUtils::AABBInsideFrustum;
+using FrustumUtils::TransformAABB;
 
 #include "Components.h"
 #include "RenderComponents.h"
@@ -16,61 +23,6 @@ namespace
         Main = 0,
         Shadow = 1,
     };
-
-    float BasisLength(float x, float y, float z)
-    {
-        return std::sqrt(x * x + y * y + z * z);
-    }
-
-    float ComputeMaxWorldScale(const Matrix4& m)
-    {
-        const float sx = BasisLength(m._11, m._12, m._13);
-        const float sy = BasisLength(m._21, m._22, m._23);
-        const float sz = BasisLength(m._31, m._32, m._33);
-        return (std::max)({ sx, sy, sz, 1e-6f });
-    }
-
-    FrustumPlane NormalizePlane(const FrustumPlane& p)
-    {
-        const float len = std::sqrt(p.normal.x * p.normal.x + p.normal.y * p.normal.y + p.normal.z * p.normal.z);
-        if (len <= 1e-6f)
-            return p;
-
-        const float invLen = 1.0f / len;
-        FrustumPlane out = p;
-        out.normal.x *= invLen;
-        out.normal.y *= invLen;
-        out.normal.z *= invLen;
-        out.d *= invLen;
-        return out;
-    }
-
-    FrustumData BuildFrustumFromViewProj(const Matrix4& m)
-    {
-        FrustumData f{};
-        f.planes[0] = NormalizePlane({ { m._14 + m._11, m._24 + m._21, m._34 + m._31 }, m._44 + m._41 });
-        f.planes[1] = NormalizePlane({ { m._14 - m._11, m._24 - m._21, m._34 - m._31 }, m._44 - m._41 });
-        f.planes[2] = NormalizePlane({ { m._14 + m._12, m._24 + m._22, m._34 + m._32 }, m._44 + m._42 });
-        f.planes[3] = NormalizePlane({ { m._14 - m._12, m._24 - m._22, m._34 - m._32 }, m._44 - m._42 });
-        f.planes[4] = NormalizePlane({ { m._13, m._23, m._33 }, m._43 });
-        f.planes[5] = NormalizePlane({ { m._14 - m._13, m._24 - m._23, m._34 - m._33 }, m._44 - m._43 });
-        f.valid = true;
-        return f;
-    }
-
-    bool SphereInsideFrustum(const FrustumData& frustum, const Float3& center, float radius)
-    {
-        if (!frustum.valid)
-            return true;
-
-        for (const FrustumPlane& plane : frustum.planes)
-        {
-            const float dist = plane.normal.x * center.x + plane.normal.y * center.y + plane.normal.z * center.z + plane.d;
-            if (dist < -radius)
-                return false;
-        }
-        return true;
-    }
 
     bool PassesDistanceCull(const RenderBoundsComponent* bounds,
                             const Float3& center,
@@ -201,12 +153,29 @@ void ViewCullingSystem::BuildVisibleSet(Registry& registry,
                     {
                         candidate.hasBounds = true;
                         candidate.worldBoundsCenter = GDX::TransformPoint(bounds->localCenter, worlds[i].matrix);
-                        candidate.worldBoundsRadius = bounds->localSphereRadius * ComputeMaxWorldScale(worlds[i].matrix);
+                        candidate.worldBoundsRadius = bounds->localSphereRadius * bounds->boundsScale * ComputeMaxWorldScale(worlds[i].matrix);
 
-                        if (localView.enableFrustumCulling && !SphereInsideFrustum(localView.frustum, candidate.worldBoundsCenter, candidate.worldBoundsRadius))
+                        if (localView.enableFrustumCulling)
                         {
-                            chunk.stats.culledByFrustum++;
-                            continue;
+                            // Stufe 1 — Sphere (schnell, konservativ)
+                            if (!SphereInsideFrustum(localView.frustum, candidate.worldBoundsCenter, candidate.worldBoundsRadius))
+                            {
+                                chunk.stats.culledByFrustum++;
+                                continue;
+                            }
+
+                            // Stufe 2 — AABB (präziser, nur wenn Sphere nicht eindeutig raus)
+                            if (bounds->shape == RenderBoundsComponent::Shape::AABB)
+                            {
+                                Float3 worldMin, worldMax;
+                                TransformAABB(bounds->localAabbMin, bounds->localAabbMax,
+                                              worlds[i].matrix, worldMin, worldMax);
+                                if (!AABBInsideFrustum(localView.frustum, worldMin, worldMax))
+                                {
+                                    chunk.stats.culledByFrustum++;
+                                    continue;
+                                }
+                            }
                         }
 
                         if (!PassesDistanceCull(bounds, candidate.worldBoundsCenter, candidate.worldBoundsRadius, localView.frame, localView.enableDistanceCulling))

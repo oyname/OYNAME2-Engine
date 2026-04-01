@@ -74,14 +74,14 @@ namespace
             const auto& src = shader.layout.constantBuffers[i];
             ConstantBufferBindingDesc cb{};
             cb.semantic   = src.slot;
-            cb.vsRegister = src.vsRegister;
-            cb.psRegister = src.psRegister;
+            cb.bindingIndex = src.layoutBindingIndex;
+            cb.bindingGroup = src.bindingGroup;
+            cb.resourceClass = src.resourceClass;
+            cb.visibility = src.visibility;
             cb.materialHandle = MaterialHandle::Invalid();
             cb.enabled = (src.slot != GDXShaderConstantBufferSlot::Material);
-            cb.scope      = (src.slot == GDXShaderConstantBufferSlot::Frame)
-                          ? ResourceBindingScope::Pass
-                          : ((src.slot == GDXShaderConstantBufferSlot::Material)
-                             ? ResourceBindingScope::Material : ResourceBindingScope::Draw);
+            cb.required   = true;
+            cb.scope      = GDXBindingScopeForConstantBufferSlot(src.slot);
             set.AddConstantBufferBinding(cb);
         }
         for (uint32_t i = 0; i < shader.layout.textureBindingCount; ++i)
@@ -97,11 +97,14 @@ namespace
             case GDXShaderTextureSemantic::Detail:    desc.semantic = ShaderResourceSemantic::Detail;    break;
             case GDXShaderTextureSemantic::ShadowMap: desc.semantic = ShaderResourceSemantic::ShadowMap; break;
             }
-            desc.bindingIndex  = src.shaderRegister;
+            desc.bindingIndex  = src.layoutBindingIndex;
+            desc.bindingGroup  = src.bindingGroup;
+            desc.resourceClass = src.resourceClass;
+            desc.visibility    = src.visibility;
             desc.enabled       = false;
             desc.requiredState = ResourceState::ShaderRead;
-            desc.scope         = (desc.semantic == ShaderResourceSemantic::ShadowMap)
-                               ? ResourceBindingScope::Pass : ResourceBindingScope::Material;
+            desc.required      = false;
+            desc.scope         = GDXBindingScopeForTextureSemantic(desc.semantic);
             set.AddTextureBinding(desc);
         }
         return set;
@@ -178,8 +181,9 @@ bool GDXDebugCullingRenderer::EnsureResources(
     auto makeMat = [&](float r, float g, float b) -> MaterialHandle
     {
         MaterialResource mat = MaterialResource::FlatColor(r, g, b, 1.0f);
-        mat.data.flags = MF_UNLIT | MF_DOUBLE_SIDED;
-        mat.data.receiveShadows = 0.f;
+        mat.SetUnlit(true);
+        mat.SetDoubleSided(true);
+        mat.SetReceiveShadows(false);
         return createMat(std::move(mat));
     };
 
@@ -191,8 +195,9 @@ bool GDXDebugCullingRenderer::EnsureResources(
     auto makeFrustumMat = [&](float r, float g, float b) -> MaterialHandle
     {
         MaterialResource mat = MaterialResource::FlatColor(r, g, b, 1.0f);
-        mat.data.flags = MF_UNLIT | MF_DOUBLE_SIDED;
-        mat.data.receiveShadows = 0.f;
+        mat.SetUnlit(true);
+        mat.SetDoubleSided(true);
+        mat.SetReceiveShadows(false);
         return createMat(std::move(mat));
     };
     if (!m_mainFrustumMat.IsValid())   m_mainFrustumMat   = makeFrustumMat(1.0f, 1.0f, 1.0f);  // weiß
@@ -268,8 +273,9 @@ void GDXDebugCullingRenderer::AppendBounds(
     cmd.ownerEntity  = candidate.entity;
     cmd.pass         = RenderPass::Opaque;
     cmd.worldMatrix  = Matrix4::Identity();
-    cmd.materialData = matRes->data;
-    cmd.materialData.baseColor.w = 1.f;
+    cmd.materialParams = matRes->GetParams();
+    cmd.materialTextureLayers = matRes->GetTextureLayers();
+    cmd.materialParams.baseColor.w = 1.f;
 
     const ResourceBindingSet bindings = BuildDebugBindings(*matRes, *shaderRes);
     cmd.SetBindings(bindings,
@@ -327,8 +333,9 @@ void GDXDebugCullingRenderer::AppendFrustum(
     cmd.ownerEntity  = NULL_ENTITY;
     cmd.pass         = RenderPass::Opaque;
     cmd.worldMatrix  = Matrix4::Identity();
-    cmd.materialData = matRes->data;
-    cmd.materialData.baseColor = { 1.f, 1.f, 1.f, 1.f };
+    cmd.materialParams = matRes->GetParams();
+    cmd.materialTextureLayers = matRes->GetTextureLayers();
+    cmd.materialParams.baseColor = { 1.f, 1.f, 1.f, 1.f };
 
     const ResourceBindingSet bindings = BuildDebugBindings(*matRes, *shaderRes);
     cmd.SetBindings(bindings,

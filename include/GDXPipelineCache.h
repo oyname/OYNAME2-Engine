@@ -13,13 +13,20 @@ struct GDXGraphicsPipelineDesc
 {
     ShaderHandle shader = ShaderHandle::Invalid();
     GDXPipelineStateDesc state{};
+    uint64_t pipelineLayoutHash = 0ull;
+    uint32_t vertexFormatFlags = 0u;
     uint32_t colorFormat = 0u;
     uint32_t depthFormat = 0u;
 
     uint64_t MakeKey() const noexcept
     {
-        return (static_cast<uint64_t>(shader.value) << 32) |
-               static_cast<uint64_t>(GDXPipelineStateKey::FromDesc(state).value);
+        uint64_t key = (static_cast<uint64_t>(shader.value) << 32) |
+                       static_cast<uint64_t>(GDXPipelineStateKey::FromDesc(state).value);
+        key ^= (pipelineLayoutHash * 1099511628211ull);
+        key ^= (static_cast<uint64_t>(vertexFormatFlags) << 16);
+        key ^= (static_cast<uint64_t>(colorFormat) << 8);
+        key ^= static_cast<uint64_t>(depthFormat);
+        return key;
     }
 };
 
@@ -59,6 +66,8 @@ struct GDXDX11CachedShaderLayout
 {
     ShaderHandle shader = ShaderHandle::Invalid();
     GDXShaderLayout layout{};
+    GDXPipelineLayoutDesc pipelineLayout{};
+    uint64_t layoutHash = 0ull;
 };
 
 class GDXDX11ShaderLayoutCache
@@ -73,6 +82,10 @@ public:
         GDXDX11CachedShaderLayout cached{};
         cached.shader = shaderHandle;
         cached.layout = shader.layout;
+        cached.pipelineLayout = shader.pipelineLayout;
+        if (cached.pipelineLayout.groupLayoutCount == 0u)
+            cached.pipelineLayout = BuildPipelineLayoutFromShaderLayout(shader.layout);
+        cached.layoutHash = cached.pipelineLayout.BuildStableHash();
         auto [inserted, _] = m_cache.emplace(shaderHandle.value, cached);
         return inserted->second;
     }

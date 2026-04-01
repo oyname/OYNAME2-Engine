@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003" DefaultTargets="Build">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
       <Configuration>Debug</Configuration>
@@ -118,7 +118,7 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\samples\50_Point_Lights.cpp">
+    <ClCompile Include="..\samples\Point Light\Point_Lights.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClCompile>
@@ -136,11 +136,9 @@
     <ClCompile Include="..\src\GDXDX11RenderBackend.cpp" />
     <ClCompile Include="..\src\GDXDX11ShaderCompiler.cpp" />
     <ClCompile Include="..\src\GDXDX11TileLightCuller.cpp" />
-    <ClCompile Include="..\src\GDXDX12RenderBackend.cpp" />
     <ClCompile Include="..\src\GDXIBLBaker.cpp" />
     <ClCompile Include="..\src\GDXInput.cpp" />
     <ClCompile Include="..\src\GDXMathOps.cpp" />
-    <ClCompile Include="..\src\GDXOpenGLRenderBackend.cpp" />
     <ClCompile Include="..\src\GDXRenderFrameGraph.cpp" />
     <ClCompile Include="..\src\GDXSamplerCache.cpp" />
     <ClCompile Include="..\src\GDXShaderVariantCache.cpp" />
@@ -149,6 +147,8 @@
     <ClCompile Include="..\src\HierarchySystem.cpp" />
     <ClCompile Include="..\src\JobSystem.cpp" />
     <ClCompile Include="..\src\KROMEngine.cpp" />
+    <ClCompile Include="..\src\Particles\GDXDX11ParticleRenderer.cpp" />
+    <ClCompile Include="..\src\Particles\GDXParticleSystem.cpp" />
     <ClCompile Include="..\src\RenderPassBuilder.cpp" />
     <ClCompile Include="..\src\RenderViewPrep.cpp" />
     <ClCompile Include="..\src\TransformSystem.cpp" />
@@ -156,7 +156,6 @@
     <ClCompile Include="..\src\GDXECSRenderer.cpp" />
     <ClCompile Include="..\src\GDXDX11RenderExecutor.cpp" />
     <ClCompile Include="..\src\GDXWin32DX11ContextFactory.cpp" />
-    <ClCompile Include="..\src\GDXWin32OpenGLContextFactory.cpp" />
     <ClCompile Include="..\src\GDXWin32Platform.cpp" />
     <ClCompile Include="..\src\GDXWin32Window.cpp" />
     <ClCompile Include="..\src\ViewCullingSystem.cpp" />
@@ -180,6 +179,8 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClInclude>
+    <ClInclude Include="..\include\GDXDX11MaterialSerializer.h" />
+    <ClInclude Include="..\include\GDXDX11MaterialCBuffer.h" />
     <ClInclude Include="..\include\ECS\ECSTypes.h" />
     <ClInclude Include="..\include\ECS\Registry.h" />
     <ClInclude Include="..\include\Events.h" />
@@ -193,7 +194,6 @@
     <ClInclude Include="..\include\GDXDX11RenderExecutor.h" />
     <ClInclude Include="..\include\GDXDX11ShaderCompiler.h" />
     <ClInclude Include="..\include\GDXDX11TileLightCuller.h" />
-    <ClInclude Include="..\include\GDXDX12RenderBackend.h" />
     <ClInclude Include="..\include\GDXECSRenderer.h" />
     <ClInclude Include="..\include\GDXIBLBaker.h" />
     <ClInclude Include="..\include\GDXMathHelpers.h" />
@@ -203,7 +203,6 @@
     <ClInclude Include="..\include\GDXFrameTimer.h" />
     <ClInclude Include="..\include\GDXInput.h" />
     <ClInclude Include="..\include\GDXOpenGLIncludes.h" />
-    <ClInclude Include="..\include\GDXOpenGLRenderBackend.h" />
     <ClInclude Include="..\include\GDXPipelineState.h" />
     <ClInclude Include="..\include\GDXRenderTargetResource.h" />
     <ClInclude Include="..\include\GDXResourceBinding.h" />
@@ -217,7 +216,6 @@
     <ClInclude Include="..\include\GDXVertexFormat.h" />
     <ClInclude Include="..\include\GDXWin32DX11ContextFactory.h" />
     <ClInclude Include="..\include\GDXWin32NativeHandles.h" />
-    <ClInclude Include="..\include\GDXWin32OpenGLContextFactory.h" />
     <ClInclude Include="..\include\GDXWin32Platform.h" />
     <ClInclude Include="..\include\GDXWin32Window.h" />
     <ClInclude Include="..\include\gidx.h" />
@@ -232,10 +230,17 @@
     <ClInclude Include="..\include\IGDXWindow.h" />
     <ClInclude Include="..\include\ImageBuffer.h" />
     <ClInclude Include="..\include\KROMEngine.h" />
+    <ClInclude Include="..\include\MaterialParams.h" />
     <ClInclude Include="..\include\MaterialResource.h" />
+    <ClInclude Include="..\include\MaterialSemanticLayout.h" />
     <ClInclude Include="..\include\MeshAssetResource.h" />
     <ClInclude Include="..\include\MeshBoundsUtil.h" />
     <ClInclude Include="..\include\MeshUtilities.h" />
+    <ClInclude Include="..\include\Particles\GDXDX11ParticleRenderer.h" />
+    <ClInclude Include="..\include\Particles\GDXParticleEmitterSystem.h" />
+    <ClInclude Include="..\include\Particles\GDXParticleSystem.h" />
+    <ClInclude Include="..\include\Particles\GDXParticleTypes.h" />
+    <ClInclude Include="..\include\Particles\IGDXParticleRenderer.h" />
     <ClInclude Include="..\include\PostProcessResource.h" />
     <ClInclude Include="..\include\RenderCommand.h" />
     <ClInclude Include="..\include\RenderFramePipeline.h" />
@@ -362,6 +367,61 @@
       <FileType>Document</FileType>
     </Text>
   </ItemGroup>
+  <ItemGroup>
+    <Text Include="..\shader\ParticleVS.hlsl">
+      <FileType>Document</FileType>
+    </Text>
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
+  <ItemGroup>
+    <ClInclude Include="..\include\CollisionBodyComponent.h" />
+    <ClInclude Include="..\include\Core\JobSystem.h" />
+    <ClInclude Include="..\include\ECS\ComponentPool.h" />
+    <ClInclude Include="..\include\ECS\HierarchySystem.h" />
+    <ClInclude Include="..\include\ECS\TransformSystem.h" />
+    <ClInclude Include="..\include\FrustumUtils.h" />
+    <ClInclude Include="..\include\GDXBindingGroupData.h" />
+    <ClInclude Include="..\include\GDXDX11GpuResources.h" />
+    <ClInclude Include="..\include\GDXDX11ShaderProfile.h" />
+    <ClInclude Include="..\include\GDXDX11TextureSemanticMapping.h" />
+    <ClInclude Include="..\include\GDXDescriptorSystem.h" />
+    <ClInclude Include="..\include\GDXPassCommandList.h" />
+    <ClInclude Include="..\include\GDXPipelineCache.h" />
+    <ClInclude Include="..\include\GDXRecordedCommand.h" />
+    <ClInclude Include="..\include\GDXRenderBindingModel.h" />
+    <ClInclude Include="..\include\GDXResourceState.h" />
+    <ClInclude Include="..\include\GDXSamplerCache.h" />
+    <ClInclude Include="..\include\GDXShaderContracts.h" />
+    <ClInclude Include="..\include\Math\Geometry\Frustum.h" />
+    <ClInclude Include="..\include\Math\Geometry\FrustumUtils.h" />
+    <ClInclude Include="..\include\PostProcessBindingResolver.h" />
+    <ClInclude Include="..\include\RenderComponents.h" />
+    <ClInclude Include="..\include\ShaderSourceType.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="..\shader\OcclusionQueryVS.hlsl" />
+    <Text Include="..\shader\ParticlePS.hlsl" />
+    <Text Include="..\shader\PostProcessVolumetricFogPS.hlsl" />
+    <Text Include="..\shader\VertexShader_VertexColor.hlsl" />
+    <Text Include="..\shader\include\CBuffer_Cascade.hlsli" />
+    <Text Include="..\shader\include\CBuffer_Entity.hlsli" />
+    <Text Include="..\shader\include\CBuffer_Frame.hlsli" />
+    <Text Include="..\shader\include\CBuffer_Material.hlsli" />
+    <Text Include="..\shader\include\CBuffer_Skin.hlsli" />
+    <Text Include="..\shader\include\Common.hlsli" />
+    <Text Include="..\shader\include\Lighting.hlsli" />
+    <Text Include="..\shader\include\PostProcess.hlsli" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\samples\media\albedo.png" />
+    <None Include="..\samples\media\alpha_mask.png" />
+    <None Include="..\samples\media\bricks.bmp" />
+    <None Include="..\samples\media\engine.png" />
+    <None Include="..\samples\media\face.bmp" />
+    <None Include="..\samples\media\normal.png" />
+    <None Include="..\samples\media\orm.png" />
+    <None Include="..\samples\media\particles.png" />
+    <None Include="..\samples\media\studio.hdr" />
+  </ItemGroup>
 </Project>

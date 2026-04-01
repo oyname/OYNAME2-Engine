@@ -1,9 +1,11 @@
 #include "GDXDX11RenderExecutor.h"
+#include "GDXDX11TextureSemanticMapping.h"
 #include "GDXDX11GpuResources.h"
 #include "GDXVertexFlags.h"
 #include "SubmeshData.h"
 #include "Core/Debug.h"
 #include "GDXTextureSlots.h"
+#include "GDXDX11MaterialSerializer.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -38,13 +40,16 @@ static const char* ResourceStateName(ResourceState s)
 {
     switch (s)
     {
-    case ResourceState::Unknown:      return "Unknown";
-    case ResourceState::ShaderRead:   return "ShaderRead";
-    case ResourceState::RenderTarget: return "RenderTarget";
-    case ResourceState::DepthWrite:   return "DepthWrite";
-    case ResourceState::CopySource:   return "CopySource";
-    case ResourceState::CopyDest:     return "CopyDest";
-    case ResourceState::Present:      return "Present";
+    case ResourceState::Unknown:         return "Unknown";
+    case ResourceState::Common:          return "Common";
+    case ResourceState::ShaderRead:      return "ShaderRead";
+    case ResourceState::RenderTarget:    return "RenderTarget";
+    case ResourceState::DepthWrite:      return "DepthWrite";
+    case ResourceState::DepthRead:       return "DepthRead";
+    case ResourceState::UnorderedAccess: return "UnorderedAccess";
+    case ResourceState::CopySource:      return "CopySource";
+    case ResourceState::CopyDest:        return "CopyDest";
+    case ResourceState::Present:         return "Present";
     default:                          return "?";
     }
 }
@@ -142,10 +147,11 @@ bool GDXDX11RenderExecutor::Init(const InitParams& p)
     CreateConstantBuffers();
     m_textureStates.clear();
     ResetScopeCaches();
+    ResetCommandBindings();
     m_pipelineCache.Clear();
     m_layoutCache.Clear();
     m_lastAppliedPipelineKey = 0u;
-    return m_entityCB && m_frameCB;
+    return m_entityCB && m_frameCB && m_cascadeCB && m_shadowPassInfoCB;
 }
 
 void GDXDX11RenderExecutor::CreateConstantBuffers()
@@ -158,6 +164,8 @@ void GDXDX11RenderExecutor::CreateConstantBuffers()
         sizeof(Dx11SkinConstants), D3D11_BIND_CONSTANT_BUFFER, true);
     m_cascadeCB = CreateBuffer(m_device, nullptr,
         sizeof(Dx11CascadeConstants), D3D11_BIND_CONSTANT_BUFFER, true);
+    m_shadowPassInfoCB = CreateBuffer(m_device, nullptr,
+        sizeof(Dx11ShadowPassInfoConstants), D3D11_BIND_CONSTANT_BUFFER, true);
 }
 
 void GDXDX11RenderExecutor::Shutdown()
@@ -166,8 +174,10 @@ void GDXDX11RenderExecutor::Shutdown()
     if (m_frameCB) { m_frameCB->Release();  m_frameCB = nullptr; }
     if (m_skinCB) { m_skinCB->Release();   m_skinCB = nullptr; }
     if (m_cascadeCB) { m_cascadeCB->Release(); m_cascadeCB = nullptr; }
+    if (m_shadowPassInfoCB) { m_shadowPassInfoCB->Release(); m_shadowPassInfoCB = nullptr; }
     m_textureStates.clear();
     ResetScopeCaches();
+    ResetCommandBindings();
     m_pipelineCache.Clear();
     m_layoutCache.Clear();
     m_lastAppliedPipelineKey = 0u;
@@ -215,8 +225,26 @@ void GDXDX11RenderExecutor::UpdateCascadeConstants(const FrameData& frame)
         m_context->Unmap(m_cascadeCB, 0);
     }
 
-    // b5 PS-only — kein Konflikt mit b0..b4
+    // Main pass: Cascade-CB bleibt fuer den Pixel Shader auf b5 gebunden.
     m_context->PSSetConstantBuffers(5, 1, &m_cascadeCB);
+}
+
+void GDXDX11RenderExecutor::UpdateShadowPassInfo(uint32_t currentCascade)
+{
+    if (!m_shadowPassInfoCB) return;
+
+    Dx11ShadowPassInfoConstants sp = {};
+    sp.currentCascade = currentCascade;
+
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (SUCCEEDED(m_context->Map(m_shadowPassInfoCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+    {
+        std::memcpy(mapped.pData, &sp, sizeof(sp));
+        m_context->Unmap(m_shadowPassInfoCB, 0);
+    }
+
+    m_context->VSSetConstantBuffers(2, 1, &m_shadowPassInfoCB);
+    m_context->VSSetConstantBuffers(5, 1, &m_cascadeCB);
 }
 
 void GDXDX11RenderExecutor::BindFrameConstantsForShader(const GDXShaderResource& shader)
@@ -231,10 +259,12 @@ void GDXDX11RenderExecutor::BindFrameConstantsForShader(const GDXShaderResource&
             continue;
 
         ID3D11Buffer* buffer = m_frameCB;
-        if (cb.vsRegister != 255u)
-            m_context->VSSetConstantBuffers(cb.vsRegister, 1, &buffer);
-        if (cb.psRegister != 255u)
-            m_context->PSSetConstantBuffers(cb.psRegister, 1, &buffer);
+        const GDXDX11StageRegisterPair regs = GDXDX11RegistersForConstantBufferBinding(
+            cb.bindingGroup, cb.slot, cb.layoutBindingIndex, cb.visibility);
+        if (regs.vs != 255u)
+            m_context->VSSetConstantBuffers(regs.vs, 1, &buffer);
+        if (regs.ps != 255u)
+            m_context->PSSetConstantBuffers(regs.ps, 1, &buffer);
         break;
     }
 
@@ -255,12 +285,124 @@ void GDXDX11RenderExecutor::BindEntityConstantsForShader(const GDXShaderResource
             continue;
 
         ID3D11Buffer* buffer = m_entityCB;
-        if (cb.vsRegister != 255u)
-            m_context->VSSetConstantBuffers(cb.vsRegister, 1, &buffer);
-        if (cb.psRegister != 255u)
-            m_context->PSSetConstantBuffers(cb.psRegister, 1, &buffer);
+        const GDXDX11StageRegisterPair regs = GDXDX11RegistersForConstantBufferBinding(
+            cb.bindingGroup, cb.slot, cb.layoutBindingIndex, cb.visibility);
+        if (regs.vs != 255u)
+            m_context->VSSetConstantBuffers(regs.vs, 1, &buffer);
+        if (regs.ps != 255u)
+            m_context->PSSetConstantBuffers(regs.ps, 1, &buffer);
         return;
     }
+}
+
+
+bool GDXDX11RenderExecutor::BindPipelineCommand(
+    ShaderHandle shaderHandle,
+    ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
+    GDXDX11GpuRegistry& gpuRegistry,
+    ID3D11ShaderResourceView* shadowSRV,
+    bool shadowPass)
+{
+    GDXShaderResource* shader = shaderStore.Get(shaderHandle);
+    if (!shader || !shader->IsValid())
+        return false;
+
+    DX11ShaderGpu* sg = gpuRegistry.GetShader(shaderHandle);
+    if (!sg)
+        return false;
+
+    if (shaderHandle != m_boundShaderHandle)
+    {
+        const GDXShaderLayout& layout = GetCachedShaderLayout(shaderHandle, *shader);
+        const GDXPipelineLayoutDesc& pipelineLayout = GetCachedPipelineLayout(shaderHandle, *shader);
+
+        m_context->VSSetShader(sg->vertexShader, nullptr, 0u);
+        m_context->PSSetShader(sg->pixelShader, nullptr, 0u);
+        m_context->IASetInputLayout(sg->inputLayout);
+        BindFrameConstantsForShader(*shader);
+        BindEntityConstantsForShader(*shader);
+
+        for (uint32_t i = 0; i < layout.textureBindingCount; ++i)
+        {
+            if (layout.textureBindings[i].semantic != GDXShaderTextureSemantic::ShadowMap)
+                continue;
+
+            ID3D11ShaderResourceView* boundShadow = shadowPass ? nullptr : shadowSRV;
+            const GDXShaderTextureBinding* resolvedShadow = pipelineLayout.FindTextureBinding(
+                layout.textureBindings[i].bindingGroup,
+                layout.textureBindings[i].layoutBindingIndex);
+            if (resolvedShadow)
+            {
+                const UINT slot = GDXDX11PixelShaderRegisterForTextureBinding(*resolvedShadow);
+                m_context->PSSetShaderResources(slot, 1u, &boundShadow);
+            }
+            break;
+        }
+
+        m_boundShaderHandle = shaderHandle;
+    }
+
+    m_lastShader = shaderHandle;
+    return true;
+}
+
+bool GDXDX11RenderExecutor::BindVertexBufferCommand(
+    MeshHandle mesh,
+    uint32_t submeshIndex,
+    uint32_t vertexFlags,
+    GDXDX11GpuRegistry& gpuRegistry)
+{
+    m_boundMeshGpu = gpuRegistry.GetMesh(mesh, submeshIndex);
+    if (!m_boundMeshGpu || !m_boundMeshGpu->ready)
+        return false;
+
+    return BindVertexStreams(*m_boundMeshGpu, vertexFlags);
+}
+
+bool GDXDX11RenderExecutor::BindIndexBufferCommand(
+    MeshHandle mesh,
+    uint32_t submeshIndex,
+    GDXDX11GpuRegistry& gpuRegistry)
+{
+    if (!m_boundMeshGpu)
+        m_boundMeshGpu = gpuRegistry.GetMesh(mesh, submeshIndex);
+
+    if (!m_boundMeshGpu || !m_boundMeshGpu->ready)
+        return false;
+
+    if (!m_boundMeshGpu->indexBuffer)
+        return false;
+
+    m_context->IASetIndexBuffer(m_boundMeshGpu->indexBuffer, DXGI_FORMAT_R32_UINT, 0u);
+    return true;
+}
+
+void GDXDX11RenderExecutor::DrawCommand(uint32_t vertexCount, uint32_t vertexStart)
+{
+    if (!m_context || vertexCount == 0u)
+        return;
+
+    m_context->Draw(vertexCount, vertexStart);
+    ++m_drawCalls;
+}
+
+void GDXDX11RenderExecutor::DrawIndexedCommand(uint32_t indexCount, uint32_t startIndex, int32_t baseVertex)
+{
+    if (!m_context || !m_boundMeshGpu)
+        return;
+
+    const uint32_t finalIndexCount = (indexCount != 0u) ? indexCount : m_boundMeshGpu->indexCount;
+    if (finalIndexCount == 0u || !m_boundMeshGpu->indexBuffer)
+        return;
+
+    m_context->DrawIndexed(finalIndexCount, startIndex, baseVertex);
+    ++m_drawCalls;
+}
+
+void GDXDX11RenderExecutor::ResetCommandBindings()
+{
+    m_boundMeshGpu = nullptr;
+    m_boundShaderHandle = ShaderHandle::Invalid();
 }
 
 // ---------------------------------------------------------------------------
@@ -305,177 +447,522 @@ bool GDXDX11RenderExecutor::BindVertexStreams(const DX11MeshGpu& gpu, uint32_t f
 }
 
 // ---------------------------------------------------------------------------
-// BindTexturesForScope — setzt vorbereitete Textur-Bindings nach Scope.
+// BindTexturesForGroup — setzt vorbereitete semantische Textur-Bindings der aufgezeichneten Binding-Group.
 // Pass/Material werden nur bei Scope-Wechsel erneut gesetzt, Draw pro Draw.
 // ShadowMap wird hier nicht gesetzt, weil sie vom Pass-/Shaderpfad kommt.
 // ---------------------------------------------------------------------------
-void GDXDX11RenderExecutor::BindTexturesForScope(
-    const ResourceBindingSet& bindings,
+ID3D11ShaderResourceView* GDXDX11RenderExecutor::ResolveTextureSRVForBinding(
+    const GDXRecordedTextureBinding& binding,
+    GDXDX11GpuRegistry& gpuRegistry,
+    ID3D11ShaderResourceView* shadowSRV,
+    TextureHandle defaultWhite,
+    TextureHandle defaultNormal,
+    TextureHandle defaultORM,
+    TextureHandle defaultBlack)
+{
+    TextureHandle texHandle = TextureHandle::Invalid();
+    switch (binding.semantic)
+    {
+    case ShaderResourceSemantic::Albedo:
+        texHandle = (binding.enabled && binding.texture.IsValid()) ? binding.texture : defaultWhite;
+        break;
+    case ShaderResourceSemantic::Normal:
+        texHandle = (binding.enabled && binding.texture.IsValid()) ? binding.texture : defaultNormal;
+        break;
+    case ShaderResourceSemantic::ORM:
+        texHandle = (binding.enabled && binding.texture.IsValid()) ? binding.texture : defaultORM;
+        break;
+    case ShaderResourceSemantic::Emissive:
+        texHandle = (binding.enabled && binding.texture.IsValid()) ? binding.texture : defaultBlack;
+        break;
+    case ShaderResourceSemantic::Detail:
+        texHandle = (binding.enabled && binding.texture.IsValid()) ? binding.texture : defaultWhite;
+        break;
+    case ShaderResourceSemantic::ShadowMap:
+        return shadowSRV;
+    default:
+        return nullptr;
+    }
+
+    if (texHandle.IsValid())
+        ValidateShaderReadState(texHandle, "ResolveTextureSRVForBinding");
+
+    if (DX11TextureGpu* gpu = gpuRegistry.GetTexture(texHandle))
+        return gpu->srv;
+
+    return nullptr;
+}
+
+ID3D11Buffer* GDXDX11RenderExecutor::ResolveConstantBufferForBinding(
+    const GDXRecordedConstantBufferBinding& binding,
+    const GDXRecordedDrawItem& item,
+    GDXDX11GpuRegistry& gpuRegistry,
+    bool applyReceiveShadowOverride)
+{
+    ID3D11Buffer* cb = nullptr;
+    switch (binding.semantic)
+    {
+    case GDXShaderConstantBufferSlot::Frame:
+        cb = m_frameCB;
+        break;
+    case GDXShaderConstantBufferSlot::Entity:
+        cb = m_entityCB;
+        break;
+    case GDXShaderConstantBufferSlot::Skin:
+        cb = m_skinCB;
+        break;
+    case GDXShaderConstantBufferSlot::Material:
+        if (binding.materialHandle.IsValid())
+        {
+            if (DX11MaterialGpu* matGpu = gpuRegistry.GetMaterial(binding.materialHandle))
+                cb = matGpu->constantBuffer;
+        }
+        break;
+    default:
+        break;
+    }
+
+    if (binding.semantic == GDXShaderConstantBufferSlot::Material && cb)
+    {
+        MaterialCBuffer drawData = ToGPU(item.materialParams, item.materialRenderPolicy, item.materialTextureLayers);
+        if (applyReceiveShadowOverride)
+        {
+            constexpr uint32_t kReceiveShadowsBit = (1u << 12);
+            const bool materialReceive = (drawData.gFlags & kReceiveShadowsBit) != 0u;
+            if (materialReceive && !item.receiveShadows)
+                drawData.gFlags &= ~kReceiveShadowsBit;
+        }
+
+        D3D11_MAPPED_SUBRESOURCE m = {};
+        if (SUCCEEDED(m_context->Map(cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)))
+        {
+            std::memcpy(m.pData, &drawData, sizeof(MaterialCBuffer));
+            m_context->Unmap(cb, 0);
+        }
+    }
+
+    return cb;
+}
+
+void GDXDX11RenderExecutor::BindTextureBinding(
+    const GDXPipelineLayoutDesc& pipelineLayout,
+    const GDXRecordedTextureBinding& binding,
     ResourceStore<GDXTextureResource, TextureTag>& texStore,
     GDXDX11GpuRegistry& gpuRegistry,
+    ID3D11ShaderResourceView* shadowSRV,
+    TextureHandle defaultWhite,
+    TextureHandle defaultNormal,
+    TextureHandle defaultORM,
+    TextureHandle defaultBlack)
+{
+    (void)texStore;
+    const GDXShaderTextureBinding* resolvedBinding = pipelineLayout.FindTextureBinding(binding.bindingGroup, binding.bindingIndex);
+    if (!resolvedBinding)
+        return;
+
+    ID3D11ShaderResourceView* srv = ResolveTextureSRVForBinding(
+        binding, gpuRegistry, shadowSRV, defaultWhite, defaultNormal, defaultORM, defaultBlack);
+
+    const UINT slot = GDXDX11PixelShaderRegisterForTextureBinding(*resolvedBinding);
+    if (HasStageVisibility(resolvedBinding->visibility, GDXShaderStageVisibility::Pixel))
+        m_context->PSSetShaderResources(slot, 1, &srv);
+}
+
+void GDXDX11RenderExecutor::BindConstantBufferBinding(
+    const GDXPipelineLayoutDesc& pipelineLayout,
+    const GDXRecordedConstantBufferBinding& binding,
+    const GDXRecordedDrawItem& item,
+    GDXDX11GpuRegistry& gpuRegistry,
+    bool applyReceiveShadowOverride)
+{
+    if (!binding.enabled)
+        return;
+
+    const GDXShaderConstantBufferBinding* resolvedBinding =
+        pipelineLayout.FindConstantBufferBinding(binding.bindingGroup, binding.bindingIndex);
+    if (!resolvedBinding)
+        return;
+
+    ID3D11Buffer* cb = ResolveConstantBufferForBinding(binding, item, gpuRegistry, applyReceiveShadowOverride);
+
+    const GDXDX11StageRegisterPair regs = GDXDX11RegistersForConstantBufferBinding(
+        resolvedBinding->bindingGroup, resolvedBinding->slot, resolvedBinding->layoutBindingIndex, resolvedBinding->visibility);
+    if (regs.vs != 255u && HasStageVisibility(resolvedBinding->visibility, GDXShaderStageVisibility::Vertex))
+        m_context->VSSetConstantBuffers(regs.vs, 1, &cb);
+    if (regs.ps != 255u && HasStageVisibility(resolvedBinding->visibility, GDXShaderStageVisibility::Pixel))
+        m_context->PSSetConstantBuffers(regs.ps, 1, &cb);
+}
+
+void GDXDX11RenderExecutor::BindBindingGroup(
+    const GDXPipelineLayoutDesc& pipelineLayout,
+    const GDXRecordedDrawItem& item,
+    const GDXRecordedBindingGroupData& bindings,
+    ResourceStore<GDXTextureResource, TextureTag>& texStore,
+    GDXDX11GpuRegistry& gpuRegistry,
+    ID3D11ShaderResourceView* shadowSRV,
     TextureHandle defaultWhite,
     TextureHandle defaultNormal,
     TextureHandle defaultORM,
     TextureHandle defaultBlack,
-    ResourceBindingScope scope)
+    bool applyReceiveShadowOverride)
 {
     for (uint32_t i = 0; i < bindings.textureCount; ++i)
-    {
-        const auto& binding = bindings.textures[i];
-        if (binding.scope != scope)
-            continue;
+        BindTextureBinding(pipelineLayout, bindings.textures[i], texStore, gpuRegistry, shadowSRV, defaultWhite, defaultNormal, defaultORM, defaultBlack);
 
-        TextureHandle texHandle = TextureHandle::Invalid();
-        switch (binding.semantic)
-        {
-        case ShaderResourceSemantic::Albedo:
-            texHandle = (binding.enabled && binding.texture.IsValid()) ? binding.texture : defaultWhite;
-            break;
-        case ShaderResourceSemantic::Normal:
-            texHandle = (binding.enabled && binding.texture.IsValid()) ? binding.texture : defaultNormal;
-            break;
-        case ShaderResourceSemantic::ORM:
-            texHandle = (binding.enabled && binding.texture.IsValid()) ? binding.texture : defaultORM;
-            break;
-        case ShaderResourceSemantic::Emissive:
-            texHandle = (binding.enabled && binding.texture.IsValid()) ? binding.texture : defaultBlack;
-            break;
-        case ShaderResourceSemantic::Detail:
-            texHandle = (binding.enabled && binding.texture.IsValid()) ? binding.texture : defaultWhite;
-            break;
-        case ShaderResourceSemantic::ShadowMap:
-            continue;
-        default:
-            continue;
-        }
-
-        if (texHandle.IsValid())
-            ValidateShaderReadState(texHandle, "BindTexturesForScope layout");
-
-        ID3D11ShaderResourceView* srv = nullptr;
-        if (DX11TextureGpu* gpu = gpuRegistry.GetTexture(texHandle))
-            srv = gpu->srv;
-
-        const UINT slot = binding.bindingIndex;
-        m_context->PSSetShaderResources(slot, 1, &srv);
-    }
+    for (uint32_t i = 0; i < bindings.constantBufferCount; ++i)
+        BindConstantBufferBinding(pipelineLayout, bindings.constantBuffers[i], item, gpuRegistry, applyReceiveShadowOverride);
 }
 
-void GDXDX11RenderExecutor::BindConstantBuffersForScope(
-    const ResourceBindingSet& bindings,
-    const RenderCommand& cmd,
+void GDXDX11RenderExecutor::ApplyBindingsForGroup(
+    const GDXPipelineLayoutDesc& pipelineLayout,
+    const GDXRecordedDrawItem& item,
+    const GDXRecordedBindingGroupData& groupData,
+    ResourceStore<GDXTextureResource, TextureTag>& texStore,
     GDXDX11GpuRegistry& gpuRegistry,
     ResourceBindingScope scope,
     bool applyReceiveShadowOverride)
 {
+    if (!groupData.HasAnyEnabledBinding())
+    {
+        m_bindingCache.Invalidate(scope);
+        return;
+    }
+
+    const uint64_t scopeKey = item.GetBindingsKeyForScope(scope);
+    if (scopeKey != 0ull && !m_bindingCache.ShouldApply(scope, scopeKey))
+        return;
+
+    BindBindingGroup(pipelineLayout, item, groupData, texStore, gpuRegistry, nullptr,
+        defaultWhiteTex, defaultNormalTex, defaultORMTex, defaultBlackTex, applyReceiveShadowOverride);
+
+    if (scopeKey != 0ull)
+        m_bindingCache.MarkApplied(scope, scopeKey);
+}
+
+bool GDXDX11RenderExecutor::ValidateBindingGroupForLayout(
+    const GDXPipelineLayoutDesc& pipelineLayout,
+    const GDXRecordedBindingGroupData& bindings) const noexcept
+{
+    if (!pipelineLayout.IsValid())
+        return false;
+
+    const GDXBindingGroupLayoutDesc* groupLayout = pipelineLayout.FindGroupLayout(bindings.bindingGroup);
+    if (!groupLayout)
+        return false;
+
+    if (bindings.scope != GDXBindingScopeFromGroup(bindings.bindingGroup))
+        return false;
+
+    for (uint32_t i = 0; i < bindings.textureCount; ++i)
+    {
+        const auto& binding = bindings.textures[i];
+        if (binding.bindingGroup != bindings.bindingGroup)
+            return false;
+        if (GDXBindingScopeFromGroup(binding.bindingGroup) != bindings.scope)
+            return false;
+        if (!binding.enabled)
+        {
+            if (binding.required && groupLayout->IsBindingRequired(binding.bindingIndex, GDXBoundResourceClass::Texture))
+                return false;
+            continue;
+        }
+
+        const GDXShaderTextureBinding* resolved = pipelineLayout.FindTextureBinding(binding.bindingGroup, binding.bindingIndex);
+        if (!resolved)
+            return false;
+        if (!groupLayout->HasBinding(binding.bindingIndex, GDXBoundResourceClass::Texture))
+            return false;
+        if (resolved->resourceClass != binding.resourceClass || resolved->resourceClass != GDXBoundResourceClass::Texture)
+            return false;
+        if (resolved->visibility == GDXShaderStageVisibility::None)
+            return false;
+    }
+
     for (uint32_t i = 0; i < bindings.constantBufferCount; ++i)
     {
         const auto& binding = bindings.constantBuffers[i];
-        if (!binding.enabled || binding.scope != scope)
+        if (binding.bindingGroup != bindings.bindingGroup)
+            return false;
+        if (GDXBindingScopeFromGroup(binding.bindingGroup) != bindings.scope)
+            return false;
+        if (!binding.enabled)
+        {
+            if (binding.required && groupLayout->IsBindingRequired(binding.bindingIndex, GDXBoundResourceClass::ConstantBuffer))
+                return false;
+            continue;
+        }
+
+        const GDXShaderConstantBufferBinding* resolved = pipelineLayout.FindConstantBufferBinding(binding.bindingGroup, binding.bindingIndex);
+        if (!resolved)
+            return false;
+        if (!groupLayout->HasBinding(binding.bindingIndex, GDXBoundResourceClass::ConstantBuffer))
+            return false;
+        if (resolved->resourceClass != binding.resourceClass || resolved->resourceClass != GDXBoundResourceClass::ConstantBuffer)
+            return false;
+        if (resolved->visibility == GDXShaderStageVisibility::None)
+            return false;
+    }
+
+    return true;
+}
+
+void GDXDX11RenderExecutor::BindResolvedBindingGroup(
+    const GDXPipelineLayoutDesc& pipelineLayout,
+    const GDXRecordedBindingGroupData& bindings,
+    const std::array<ID3D11ShaderResourceView*, GDXRecordedBindingGroupData::MaxTextureBindings>& explicitSrvs,
+    ID3D11Buffer* externalConstantBuffer)
+{
+    if (!ValidateBindingGroupForLayout(pipelineLayout, bindings))
+        return;
+
+    for (uint32_t i = 0; i < bindings.textureCount; ++i)
+    {
+        const GDXRecordedTextureBinding& binding = bindings.textures[i];
+        const GDXShaderTextureBinding* resolvedBinding =
+            pipelineLayout.FindTextureBinding(binding.bindingGroup, binding.bindingIndex);
+        if (!resolvedBinding)
             continue;
 
-        ID3D11Buffer* cb = nullptr;
-        switch (binding.semantic)
-        {
-        case GDXShaderConstantBufferSlot::Frame:
-            cb = m_frameCB;
-            break;
-        case GDXShaderConstantBufferSlot::Entity:
-            cb = m_entityCB;
-            break;
-        case GDXShaderConstantBufferSlot::Skin:
-            cb = m_skinCB;
-            break;
-        case GDXShaderConstantBufferSlot::Material:
-            if (binding.materialHandle.IsValid())
-            {
-                if (DX11MaterialGpu* matGpu = gpuRegistry.GetMaterial(binding.materialHandle))
-                    cb = matGpu->constantBuffer;
-            }
-            break;
-        default:
-            break;
-        }
+        ID3D11ShaderResourceView* srv = nullptr;
+        if (binding.bindingIndex < explicitSrvs.size())
+            srv = explicitSrvs[binding.bindingIndex];
 
-        if (binding.semantic == GDXShaderConstantBufferSlot::Material)
-        {
-            // Always re-upload material data — the buffer is DYNAMIC/WRITE_DISCARD
-            // so Map/Unmap is cheap.  The scope binding-cache only tracks whether
-            // the buffer POINTER and register need re-binding; it does not track
-            // whether materialData CONTENTS have changed (e.g. uvTilingOffset,
-            // normalScale, roughness).  Skipping the upload here would silently
-            // show stale values whenever the user changes material parameters
-            // without triggering a texture or shader change.
-            MaterialData drawData = cmd.materialData;
-            if (applyReceiveShadowOverride)
-            {
-                const bool materialReceive = (drawData.receiveShadows > 0.5f);
-                drawData.receiveShadows = (materialReceive && cmd.receiveShadows) ? 1.0f : 0.0f;
-            }
+        const UINT slot = GDXDX11PixelShaderRegisterForTextureBinding(*resolvedBinding);
+        if (HasStageVisibility(resolvedBinding->visibility, GDXShaderStageVisibility::Pixel))
+            m_context->PSSetShaderResources(slot, 1u, &srv);
+    }
 
-            if (cb)
-            {
-                D3D11_MAPPED_SUBRESOURCE m = {};
-                if (SUCCEEDED(m_context->Map(cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)))
-                {
-                    std::memcpy(m.pData, &drawData, sizeof(MaterialData));
-                    m_context->Unmap(cb, 0);
-                }
-            }
-        }
+    for (uint32_t i = 0; i < bindings.constantBufferCount; ++i)
+    {
+        const GDXRecordedConstantBufferBinding& binding = bindings.constantBuffers[i];
+        const GDXShaderConstantBufferBinding* resolvedBinding =
+            pipelineLayout.FindConstantBufferBinding(binding.bindingGroup, binding.bindingIndex);
+        if (!resolvedBinding)
+            continue;
 
-        if (binding.vsRegister != 255u)
-            m_context->VSSetConstantBuffers(binding.vsRegister, 1, &cb);
-        if (binding.psRegister != 255u)
-            m_context->PSSetConstantBuffers(binding.psRegister, 1, &cb);
+        ID3D11Buffer* cb = externalConstantBuffer;
+        const GDXDX11StageRegisterPair regs = GDXDX11RegistersForConstantBufferBinding(
+            resolvedBinding->bindingGroup, resolvedBinding->slot, resolvedBinding->layoutBindingIndex, resolvedBinding->visibility);
+        if (regs.vs != 255u && HasStageVisibility(resolvedBinding->visibility, GDXShaderStageVisibility::Vertex))
+            m_context->VSSetConstantBuffers(regs.vs, 1u, &cb);
+        if (regs.ps != 255u && HasStageVisibility(resolvedBinding->visibility, GDXShaderStageVisibility::Pixel))
+            m_context->PSSetConstantBuffers(regs.ps, 1u, &cb);
     }
 }
 
-
-
-void GDXDX11RenderExecutor::ApplyScopedBindings(
-    const RenderCommand& cmd,
+void GDXDX11RenderExecutor::BindExplicitPassResources(
+    const GDXPipelineLayoutDesc& pipelineLayout,
+    const GDXRecordedDrawItem& item,
     ResourceStore<GDXTextureResource, TextureTag>& texStore,
     GDXDX11GpuRegistry& gpuRegistry,
-    bool applyReceiveShadowOverride)
+    ID3D11ShaderResourceView* shadowSRV)
 {
-    const ResourceBindingSet& bindings = cmd.GetEffectiveBindings();
+    const uint64_t scopeKey = item.passBindingsKey;
+    if (scopeKey != 0ull && !m_bindingCache.ShouldApply(ResourceBindingScope::Pass, scopeKey))
+        return;
 
-    auto applyScope = [&](ResourceBindingScope scope, bool receiveShadowOverride)
+    BindBindingGroup(pipelineLayout, item, item.passBindings, texStore, gpuRegistry, shadowSRV,
+        defaultWhiteTex, defaultNormalTex, defaultORMTex, defaultBlackTex, false);
+
+    if (scopeKey != 0ull)
+        m_bindingCache.MarkApplied(ResourceBindingScope::Pass, scopeKey);
+}
+
+void GDXDX11RenderExecutor::BuildRecordedStreamFromQueue(const ICommandList& queue, GDXRecordedCommandStream& outStream)
+{
+    outStream.Clear();
+
+    const auto& commands = queue.GetCommands();
+    outStream.drawItems.reserve(commands.size());
+    outStream.commands.reserve(commands.size() * 5u);
+
+    for (const RenderCommand& cmd : commands)
     {
-        if (!cmd.HasBindingsForScope(scope))
+        GDXRecordedDrawItem item = GDXRecordedDrawItem::FromRenderCommand(cmd);
+        item.passBuildDesc = BuildDescriptorSetBuildDesc(item.resourceBindings, ResourceBindingScope::Pass);
+        item.materialBuildDesc = BuildDescriptorSetBuildDesc(item.resourceBindings, ResourceBindingScope::Material);
+        item.drawBuildDesc = BuildDescriptorSetBuildDesc(item.resourceBindings, ResourceBindingScope::Draw);
+
+        item.passBindings = BuildRecordedBindingGroupData(item.passBuildDesc);
+        item.materialBindings = BuildRecordedBindingGroupData(item.materialBuildDesc);
+        item.drawBindings = BuildRecordedBindingGroupData(item.drawBuildDesc);
+
+        if (!GDXValidateDescriptorSetBuildDesc(item.passBuildDesc) || !GDXValidateBindingGroupData(item.passBindings))
+            Debug::LogWarning(GDX_SRC_LOC, "Recorded pass binding group/layout data is inconsistent.");
+        if (!GDXValidateDescriptorSetBuildDesc(item.materialBuildDesc) || !GDXValidateBindingGroupData(item.materialBindings))
+            Debug::LogWarning(GDX_SRC_LOC, "Recorded material binding group/layout data is inconsistent.");
+        if (!GDXValidateDescriptorSetBuildDesc(item.drawBuildDesc) || !GDXValidateBindingGroupData(item.drawBindings))
+            Debug::LogWarning(GDX_SRC_LOC, "Recorded draw binding group/layout data is inconsistent.");
+
+        const uint32_t drawIndex = outStream.AddDrawItem(item);
+        outStream.AddOp(GDXRecordedOpType::SetPipeline, drawIndex);
+        outStream.AddOp(GDXRecordedOpType::BindPassResources, drawIndex);
+        outStream.AddOp(GDXRecordedOpType::BindMaterialResources, drawIndex);
+        outStream.AddOp(GDXRecordedOpType::BindDrawResources, drawIndex);
+        outStream.AddOp(GDXRecordedOpType::DrawMesh, drawIndex);
+    }
+}
+
+void GDXDX11RenderExecutor::ExecuteRecordedStream(
+    Registry& registry,
+    const GDXRecordedCommandStream& stream,
+    ResourceStore<MeshAssetResource,  MeshTag>& meshStore,
+    ResourceStore<MaterialResource,   MaterialTag>& matStore,
+    ResourceStore<GDXShaderResource,  ShaderTag>& shaderStore,
+    ResourceStore<GDXTextureResource, TextureTag>& texStore,
+    GDXDX11GpuRegistry& gpuRegistry,
+    ID3D11ShaderResourceView* shadowSRV,
+    bool shadowPass)
+{
+    (void)matStore;
+
+    m_drawCalls = 0u;
+    m_lastShader = ShaderHandle::Invalid();
+    m_lastAppliedPipelineKey = 0u;
+    ResetScopeCaches();
+
+    const GDXRecordedDrawItem* currentItem = nullptr;
+    const GDXShaderResource* currentShader = nullptr;
+    DX11MeshGpu* currentMeshGpu = nullptr;
+
+    auto bindShaderState = [&](const GDXRecordedDrawItem& item) -> bool
+    {
+        GDXShaderResource* shader = shaderStore.Get(item.shader);
+        if (!shader || !shader->IsValid())
+            return false;
+
+        currentShader = shader;
+        if (item.shader != m_lastShader)
         {
-            m_bindingCache.Invalidate(scope);
-            return;
+            const GDXShaderLayout& layout = GetCachedShaderLayout(item.shader, *shader);
+            const GDXPipelineLayoutDesc& pipelineLayout = GetCachedPipelineLayout(item.shader, *shader);
+            if (DX11ShaderGpu* sg = gpuRegistry.GetShader(item.shader))
+            {
+                m_context->VSSetShader(sg->vertexShader, nullptr, 0);
+                m_context->PSSetShader(sg->pixelShader, nullptr, 0);
+                m_context->IASetInputLayout(sg->inputLayout);
+            }
+            BindFrameConstantsForShader(*shader);
+            for (uint32_t i = 0; i < layout.textureBindingCount; ++i)
+            {
+                if (layout.textureBindings[i].semantic == GDXShaderTextureSemantic::ShadowMap)
+                {
+                    ID3D11ShaderResourceView* boundShadow = shadowPass ? nullptr : shadowSRV;
+                    const GDXShaderTextureBinding* resolvedShadow = pipelineLayout.FindTextureBinding(layout.textureBindings[i].bindingGroup,
+                                                                                                       layout.textureBindings[i].layoutBindingIndex);
+                    if (resolvedShadow)
+                    {
+                        const UINT slot = GDXDX11PixelShaderRegisterForTextureBinding(*resolvedShadow);
+                        m_context->PSSetShaderResources(slot, 1, &boundShadow);
+                    }
+                    break;
+                }
+            }
+            m_lastShader = item.shader;
+            m_lastAppliedPipelineKey = 0u;
+            ResetScopeCaches();
         }
 
-        const uint64_t scopeKey = cmd.GetEffectiveBindingsKeyForScope(scope);
-        const bool cacheHit = m_bindingCache.ShouldApply(scope, scopeKey) == false;
-
-        // Material textures must be rebound defensively.
-        // The recent scoped binding cache can otherwise leave t0..t4 stale/null
-        // when external code cleared SRVs or when the cache considers the state
-        // identical although the pixel shader needs a fresh bind. Correctness first.
-        const bool mustBindTextures = (!cacheHit) || (scope == ResourceBindingScope::Material);
-        if (mustBindTextures)
-        {
-            BindTexturesForScope(bindings, texStore, gpuRegistry, defaultWhiteTex, defaultNormalTex, defaultORMTex, defaultBlackTex, scope);
-            // For non-Material cbuffers: only bind when cache misses.
-        }
-
-        // Material cbuffer data (uvTilingOffset, roughness, normalScale, etc.) must
-        // always be uploaded — the scope key does NOT hash materialData contents,
-        // only texture handles and buffer pointers.  A cache hit means the GPU-side
-        // register binding is still valid, but the constant data may have changed.
-        BindConstantBuffersForScope(bindings, cmd, gpuRegistry, scope, receiveShadowOverride);
-
-        if (!cacheHit)
-            m_bindingCache.MarkApplied(scope, scopeKey);
+        currentMeshGpu = gpuRegistry.GetMesh(item.mesh, item.submeshIndex);
+        currentItem = &item;
+        return currentMeshGpu && currentMeshGpu->ready && currentMeshGpu->positionBuffer;
     };
 
-    applyScope(ResourceBindingScope::Pass, false);
-    applyScope(ResourceBindingScope::Material, false);
-    applyScope(ResourceBindingScope::Draw, applyReceiveShadowOverride);
+    for (const GDXRecordedResourceTransition& t : stream.preTransitions)
+    {
+        if (t.kind == GDXRecordedResourceKind::Texture)
+            TransitionTexture(t.texture, t.before, t.after, "RecordedPreTransition");
+    }
+
+    for (const GDXRecordedCommand& cmd : stream.commands)
+    {
+        if (cmd.type == GDXRecordedOpType::Transition)
+        {
+            if (cmd.transition.kind == GDXRecordedResourceKind::Texture)
+                TransitionTexture(cmd.transition.texture, cmd.transition.before, cmd.transition.after, "RecordedTransition");
+            continue;
+        }
+
+        if (cmd.drawItemIndex >= stream.drawItems.size())
+            continue;
+
+        const GDXRecordedDrawItem& item = stream.drawItems[cmd.drawItemIndex];
+
+        switch (cmd.type)
+        {
+        case GDXRecordedOpType::SetPipeline:
+            if (!bindShaderState(item))
+            {
+                currentItem = nullptr;
+                currentShader = nullptr;
+                currentMeshGpu = nullptr;
+                break;
+            }
+            BindSkinningPalette(registry, item, *currentShader);
+            ApplyPipelineState(item);
+            ApplyPrimitiveTopology(item);
+            break;
+
+        case GDXRecordedOpType::BindPassResources:
+            if (currentItem == &item && currentShader)
+                BindExplicitPassResources(GetCachedPipelineLayout(item.shader, *currentShader), item, texStore, gpuRegistry, shadowPass ? nullptr : shadowSRV);
+            break;
+
+        case GDXRecordedOpType::BindMaterialResources:
+            if (currentItem == &item && currentShader)
+                ApplyBindingsForGroup(GetCachedPipelineLayout(item.shader, *currentShader), item, item.materialBindings, texStore, gpuRegistry, ResourceBindingScope::Material, false);
+            break;
+
+        case GDXRecordedOpType::BindDrawResources:
+            if (currentItem == &item && currentShader)
+            {
+                ApplyBindingsForGroup(GetCachedPipelineLayout(item.shader, *currentShader), item, item.drawBindings, texStore, gpuRegistry, ResourceBindingScope::Draw, !shadowPass);
+
+                Dx11EntityConstants ec = {};
+                std::memcpy(ec.worldMatrix, &item.worldMatrix, 64);
+
+                DirectX::XMMATRIX w = GDXMathHelpers::LoadMatrix4(item.worldMatrix);
+                DirectX::XMMATRIX wIT = shadowPass
+                    ? DirectX::XMMatrixIdentity()
+                    : DirectX::XMMatrixTranspose(DirectX::XMMatrixInverse(nullptr, w));
+                Matrix4 witF;
+                GDXMathHelpers::StoreMatrix4(witF, wIT);
+                std::memcpy(ec.worldInverseTranspose, &witF, 64);
+
+                D3D11_MAPPED_SUBRESOURCE mapped = {};
+                if (SUCCEEDED(m_context->Map(m_entityCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+                {
+                    std::memcpy(mapped.pData, &ec, sizeof(ec));
+                    m_context->Unmap(m_entityCB, 0);
+                }
+                BindEntityConstantsForShader(*currentShader);
+            }
+            break;
+
+        case GDXRecordedOpType::DrawMesh:
+            if (currentItem != &item || !currentShader || !currentMeshGpu)
+                break;
+            if (!BindVertexStreams(*currentMeshGpu, currentShader->vertexFlags))
+                break;
+            if (currentMeshGpu->indexBuffer)
+            {
+                m_context->IASetIndexBuffer(currentMeshGpu->indexBuffer, DXGI_FORMAT_R32_UINT, 0u);
+                m_context->DrawIndexed(currentMeshGpu->indexCount, 0u, 0);
+            }
+            else
+            {
+                m_context->Draw(currentMeshGpu->vertexCount, 0u);
+            }
+            ++m_drawCalls;
+            break;
+        }
+    }
+
+    for (const GDXRecordedResourceTransition& t : stream.postTransitions)
+    {
+        if (t.kind == GDXRecordedResourceKind::Texture)
+            TransitionTexture(t.texture, t.before, t.after, "RecordedPostTransition");
+    }
 }
 
 void GDXDX11RenderExecutor::ResetScopeCaches()
@@ -488,13 +975,18 @@ const GDXShaderLayout& GDXDX11RenderExecutor::GetCachedShaderLayout(ShaderHandle
     return m_layoutCache.GetOrCreate(shaderHandle, shader).layout;
 }
 
+const GDXPipelineLayoutDesc& GDXDX11RenderExecutor::GetCachedPipelineLayout(ShaderHandle shaderHandle, const GDXShaderResource& shader)
+{
+    return m_layoutCache.GetOrCreate(shaderHandle, shader).pipelineLayout;
+}
+
 // ---------------------------------------------------------------------------
 // BindSkinningPalette — immer direkt auf VS b4 binden (Engine-Invariante).
 // Kein Binding-Lookup — der ist fehleranfällig wenn der Skinned-Shader über
 // CreateShader ohne Layout-Skin-Eintrag geladen wird.
 void GDXDX11RenderExecutor::BindSkinningPalette(
     Registry& registry,
-    const RenderCommand& cmd,
+    const GDXRecordedDrawItem& item,
     const GDXShaderResource& shader)
 {
     if (!shader.supportsSkinning || !m_skinCB)
@@ -507,9 +999,9 @@ void GDXDX11RenderExecutor::BindSkinningPalette(
         std::memcpy(sc.boneMatrices[i], &ident, 64);
     }
 
-    if (cmd.ownerEntity != NULL_ENTITY)
+    if (item.ownerEntity != NULL_ENTITY)
     {
-        auto* skin = registry.Get<SkinComponent>(cmd.ownerEntity);
+        auto* skin = registry.Get<SkinComponent>(item.ownerEntity);
         if (skin && skin->enabled)
         {
             const uint32_t count = static_cast<uint32_t>(
@@ -532,11 +1024,11 @@ void GDXDX11RenderExecutor::BindSkinningPalette(
     m_context->VSSetConstantBuffers(4u, 1, &m_skinCB);
 }
 
-void GDXDX11RenderExecutor::ApplyPipelineState(const RenderCommand& cmd)
+void GDXDX11RenderExecutor::ApplyPipelineState(const GDXRecordedDrawItem& item)
 {
     GDXGraphicsPipelineDesc pipelineDesc{};
-    pipelineDesc.shader = cmd.shader;
-    pipelineDesc.state = cmd.GetEffectivePipelineState();
+    pipelineDesc.shader = item.shader;
+    pipelineDesc.state = item.pipelineState;
 
     const auto& cached = m_pipelineCache.GetOrCreate(pipelineDesc);
     if (cached.stateKey.value == m_lastAppliedPipelineKey)
@@ -564,11 +1056,11 @@ void GDXDX11RenderExecutor::ApplyPipelineState(const RenderCommand& cmd)
     m_lastAppliedPipelineKey = cached.stateKey.value;
 }
 
-void GDXDX11RenderExecutor::ApplyPrimitiveTopology(const RenderCommand& cmd)
+void GDXDX11RenderExecutor::ApplyPrimitiveTopology(const GDXRecordedDrawItem& item)
 {
     D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 
-    switch (cmd.GetEffectivePipelineState().topology)
+    switch (item.pipelineState.topology)
     {
     case GDXPrimitiveTopology::TriangleList:
     default:
@@ -648,80 +1140,9 @@ void GDXDX11RenderExecutor::ExecuteShadowQueue(
     ResourceStore<GDXTextureResource, TextureTag>& texStore,
     GDXDX11GpuRegistry& gpuRegistry)
 {
-    m_drawCalls = 0u;
-    m_lastShader = ShaderHandle::Invalid();
-    m_lastAppliedPipelineKey = 0u;
-    ResetScopeCaches();
-
-    const auto& commands = queue.GetCommands();
-    for (const RenderCommand& cmd : commands)
-    {
-        MeshAssetResource* mesh = meshStore.Get(cmd.mesh);
-        GDXShaderResource* shader = shaderStore.Get(cmd.shader);
-
-        if (!mesh || !shader || !shader->IsValid())      continue;
-        DX11MeshGpu* gpuPtr = gpuRegistry.GetMesh(cmd.mesh, cmd.submeshIndex);
-        if (!gpuPtr || !gpuPtr->ready || !gpuPtr->positionBuffer) continue;
-        DX11MeshGpu& gpu = *gpuPtr;
-
-        if (cmd.shader != m_lastShader)
-        {
-            const GDXShaderLayout& layout = GetCachedShaderLayout(cmd.shader, *shader);
-            if (DX11ShaderGpu* sg = gpuRegistry.GetShader(cmd.shader))
-            {
-                m_context->VSSetShader(sg->vertexShader, nullptr, 0);
-                m_context->PSSetShader(sg->pixelShader, nullptr, 0);
-                m_context->IASetInputLayout(sg->inputLayout);
-            }
-            BindFrameConstantsForShader(*shader);
-            for (uint32_t i = 0; i < layout.textureBindingCount; ++i)
-            {
-                if (layout.textureBindings[i].semantic == GDXShaderTextureSemantic::ShadowMap)
-                {
-                    ID3D11ShaderResourceView* nullShadow = nullptr;
-                    const UINT slot = layout.textureBindings[i].shaderRegister;
-                    m_context->PSSetShaderResources(slot, 1, &nullShadow);
-                    break;
-                }
-            }
-            m_lastShader = cmd.shader;
-            m_lastAppliedPipelineKey = 0u;
-            ResetScopeCaches();
-        }
-
-        BindSkinningPalette(registry, cmd, *shader);
-
-        ApplyScopedBindings(cmd, texStore, gpuRegistry, false);
-
-        {
-            Dx11EntityConstants ec = {};
-            std::memcpy(ec.worldMatrix, &cmd.worldMatrix, 64);
-
-            D3D11_MAPPED_SUBRESOURCE mapped = {};
-            if (SUCCEEDED(m_context->Map(m_entityCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
-            {
-                std::memcpy(mapped.pData, &ec, sizeof(ec));
-                m_context->Unmap(m_entityCB, 0);
-            }
-            BindEntityConstantsForShader(*shader);
-        }
-
-        ApplyPipelineState(cmd);
-        ApplyPrimitiveTopology(cmd);
-
-        if (!BindVertexStreams(gpu, shader->vertexFlags)) continue;
-
-        if (gpu.indexBuffer)
-        {
-            m_context->IASetIndexBuffer(gpu.indexBuffer, DXGI_FORMAT_R32_UINT, 0u);
-            m_context->DrawIndexed(gpu.indexCount, 0u, 0);
-        }
-        else
-        {
-            m_context->Draw(gpu.vertexCount, 0u);
-        }
-        ++m_drawCalls;
-    }
+    GDXRecordedCommandStream stream{};
+    BuildRecordedStreamFromQueue(queue, stream);
+    ExecuteRecordedStream(registry, stream, meshStore, matStore, shaderStore, texStore, gpuRegistry, nullptr, true);
 }
 
 // ---------------------------------------------------------------------------
@@ -737,94 +1158,9 @@ void GDXDX11RenderExecutor::ExecuteQueue(
     GDXDX11GpuRegistry& gpuRegistry,
     ID3D11ShaderResourceView* shadowSRV)
 {
-    m_drawCalls = 0u;
-    m_lastShader = ShaderHandle::Invalid();
-    m_lastAppliedPipelineKey = 0u;
-    ResetScopeCaches();
-
-    ID3D11ShaderResourceView* globalShadowSRV = shadowSRV;
-
-    const auto& commands = queue.GetCommands();
-    for (const RenderCommand& cmd : commands)
-    {
-        MeshAssetResource* mesh = meshStore.Get(cmd.mesh);
-        GDXShaderResource* shader = shaderStore.Get(cmd.shader);
-
-        if (!mesh || !shader || !shader->IsValid()) continue;
-        DX11MeshGpu* gpuPtr = gpuRegistry.GetMesh(cmd.mesh, cmd.submeshIndex);
-        if (!gpuPtr || !gpuPtr->ready || !gpuPtr->positionBuffer) continue;
-        DX11MeshGpu& gpu = *gpuPtr;
-
-        // --- Shader (State-Batching) ----------------------------------------
-        if (cmd.shader != m_lastShader)
-        {
-            const GDXShaderLayout& layout = GetCachedShaderLayout(cmd.shader, *shader);
-            if (DX11ShaderGpu* sg = gpuRegistry.GetShader(cmd.shader))
-            {
-                m_context->VSSetShader(sg->vertexShader, nullptr, 0);
-                m_context->PSSetShader(sg->pixelShader, nullptr, 0);
-                m_context->IASetInputLayout(sg->inputLayout);
-            }
-            BindFrameConstantsForShader(*shader);
-            for (uint32_t i = 0; i < layout.textureBindingCount; ++i)
-            {
-                if (layout.textureBindings[i].semantic == GDXShaderTextureSemantic::ShadowMap)
-                {
-                    const UINT slot = layout.textureBindings[i].shaderRegister;
-                    m_context->PSSetShaderResources(slot, 1, &globalShadowSRV);
-                    break;
-                }
-            }
-            m_lastShader = cmd.shader;
-            m_lastAppliedPipelineKey = 0u;
-            ResetScopeCaches();
-        }
-
-        BindSkinningPalette(registry, cmd, *shader);
-
-        // --- Scoped Bindings -----------------------------------------------
-        ApplyScopedBindings(cmd, texStore, gpuRegistry, true);
-
-        // --- Entity cbuffer b0 ----------------------------------------------
-        {
-            Dx11EntityConstants ec = {};
-            std::memcpy(ec.worldMatrix, &cmd.worldMatrix, 64);
-
-            DirectX::XMMATRIX w = GDXMathHelpers::LoadMatrix4(cmd.worldMatrix);
-            DirectX::XMMATRIX wIT = DirectX::XMMatrixTranspose(
-                DirectX::XMMatrixInverse(nullptr, w));
-            Matrix4 witF;
-            GDXMathHelpers::StoreMatrix4(witF, wIT);
-            std::memcpy(ec.worldInverseTranspose, &witF, 64);
-
-            D3D11_MAPPED_SUBRESOURCE mapped = {};
-            if (SUCCEEDED(m_context->Map(m_entityCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
-            {
-                std::memcpy(mapped.pData, &ec, sizeof(ec));
-                m_context->Unmap(m_entityCB, 0);
-            }
-            BindEntityConstantsForShader(*shader);
-        }
-
-        ApplyPipelineState(cmd);
-        ApplyPrimitiveTopology(cmd);
-
-        // --- Vertex Streams --------------------------------------------------
-        if (!BindVertexStreams(gpu, shader->vertexFlags)) continue;
-
-        // --- Draw -----------------------------------------------------------
-        if (gpu.indexBuffer)
-        {
-            m_context->IASetIndexBuffer(
-                gpu.indexBuffer, DXGI_FORMAT_R32_UINT, 0u);
-            m_context->DrawIndexed(gpu.indexCount, 0u, 0);
-        }
-        else
-        {
-            m_context->Draw(gpu.vertexCount, 0u);
-        }
-        ++m_drawCalls;
-    }
+    GDXRecordedCommandStream stream{};
+    BuildRecordedStreamFromQueue(queue, stream);
+    ExecuteRecordedStream(registry, stream, meshStore, matStore, shaderStore, texStore, gpuRegistry, shadowSRV, false);
 }
 
 

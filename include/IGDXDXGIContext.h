@@ -50,6 +50,8 @@ public:
     virtual void             Present(bool vsync)     = 0;
     virtual void             Resize(int w, int h)    = 0;
     virtual GDXDXGIDeviceInfo QueryDeviceInfo() const = 0;
+    virtual bool             SetFullscreen(bool fullscreen) = 0;
+    virtual bool             IsFullscreen()    const = 0;
 
     // Expose raw COM pointers for renderer draw calls.
     // Returned pointers are non-owning — lifetime is managed by the context.

@@ -16,27 +16,6 @@ void GDXShaderVariantCache::Init(IGDXRenderBackend* backend,
     m_shaderStore = shaderStore;
 }
 
-bool GDXShaderVariantCache::LoadDefaults()
-{
-    ShaderVariantKey mainKey{};
-    mainKey.pass         = ShaderPassType::Main;
-    mainKey.vertexFlags  = GDX_VERTEX_DEFAULT;
-    mainKey.features     = SVF_NONE;
-    m_defaultShader = CreateVariant(mainKey);
-    if (!m_defaultShader.IsValid()) return false;
-
-    ShaderVariantKey shadowKey{};
-    shadowKey.pass        = ShaderPassType::Shadow;
-    shadowKey.vertexFlags = GDX_VERTEX_POSITION;
-    shadowKey.features    = SVF_NONE;
-    m_shadowShader = CreateVariant(shadowKey);
-
-    if (!m_shadowShader.IsValid())
-        Debug::Log("GDXShaderVariantCache: Kein Shadow-Shader gefunden — Shadow Pass deaktiviert.");
-
-    return true;
-}
-
 ShaderHandle GDXShaderVariantCache::LoadShader(
     const std::wstring& vsFile, const std::wstring& psFile, uint32_t vertexFlags)
 {
@@ -53,8 +32,8 @@ ShaderHandle GDXShaderVariantCache::LoadShader(
 ShaderHandle GDXShaderVariantCache::Resolve(
     RenderPass pass, const SubmeshData& submesh, const MaterialResource& mat)
 {
-    if (pass != RenderPass::Shadow && mat.shader.IsValid())
-        return mat.shader;
+    if (pass != RenderPass::Shadow && mat.GetShader().IsValid())
+        return mat.GetShader();
 
     const ShaderVariantKey key = NormalizeKey(BuildKey(pass, submesh, mat));
     auto it = m_cache.find(key);
@@ -88,8 +67,8 @@ ShaderVariantKey GDXShaderVariantCache::BuildKey(
         key.features |= SVF_VERTEX_COLOR;
     if (mat.IsAlphaTest())   key.features |= SVF_ALPHA_TEST;
     if (mat.IsTransparent()) key.features |= SVF_TRANSPARENT;
-    if (mat.data.flags & MF_USE_NORMAL_MAP) key.features |= SVF_NORMAL_MAP;
-    if (mat.data.flags & MF_UNLIT)          key.features |= SVF_UNLIT;
+    if (mat.HasTexture(MaterialTextureSlot::Normal)) key.features |= SVF_NORMAL_MAP;
+    if (mat.IsUnlit())        key.features |= SVF_UNLIT;
 
     return key;
 }
@@ -119,16 +98,15 @@ ShaderHandle GDXShaderVariantCache::CreateVariant(const ShaderVariantKey& rawKey
 
     if (key.pass == ShaderPassType::Main)
     {
-        psFile = L"PixelShader.hlsl";
-        if      (skinned && vertexColor) vsFile = L"VertexShader_SkinnedVertexColor.hlsl";
-        else if (skinned)                vsFile = L"VertexShader_Skinned.hlsl";
-        else if (vertexColor)            vsFile = L"VertexShader_VertexColor.hlsl";
-        else                             vsFile = L"VertexShader.hlsl";
+        vsFile = m_config.mainVS;
+        psFile = m_config.mainPS;
+        if (vertexColor) defines.push_back("HAS_VERTEX_COLOR");
+        if (skinned)     defines.push_back("HAS_SKINNING");
     }
     else
     {
-        vsFile = L"ShadowVertexShader.hlsl";
-        psFile = L"ShadowPixelShader.hlsl";
+        vsFile = m_config.shadowVS;
+        psFile = m_config.shadowPS;
 
         if (skinned)
         {
@@ -153,7 +131,8 @@ ShaderHandle GDXShaderVariantCache::CreateVariant(const ShaderVariantKey& rawKey
 
     if (!m_backend || !m_shaderStore) return ShaderHandle::Invalid();
     ShaderSourceDesc desc = ShaderSourceDesc::FromHlslFiles(vsFile, psFile, vertexFlags, layout, debugName);
-    desc.defines = std::move(defines);
+    if (auto* stage = desc.VertexStage()) stage->defines = defines;
+    if (auto* stage = desc.PixelStage()) stage->defines = defines;
     ShaderHandle handle = m_backend->UploadShader(*m_shaderStore, desc);
     if (!handle.IsValid()) return ShaderHandle::Invalid();
 

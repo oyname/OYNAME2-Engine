@@ -5,6 +5,7 @@
 #include "GDXIBLBaker.h"
 #include "IGDXDXGIContext.h"
 #include "GDXDX11RenderExecutor.h"
+#include "GDXPassCommandList.h"
 #include "GDXDX11LightSystem.h"
 #include "GDXSamplerCache.h"
 #include "GDXDX11TileLightCuller.h"
@@ -12,6 +13,9 @@
 #include "ResourceStore.h"
 #include "GDXRenderTargetResource.h"
 #include "PostProcessResource.h"
+#include "Particles/GDXDX11ParticleRenderer.h"
+#include "Particles/GDXParticleSystem.h"
+#include "Particles/IGDXParticleRenderer.h"  // ParticleRenderContext
 
 #include <memory>
 #include <unordered_map>
@@ -36,6 +40,8 @@ public:
     void BeginFrame(const float clearColor[4]) override;
     void Present(bool vsync) override;
     void Resize(int w, int h) override;
+    bool SetFullscreen(bool fullscreen) override;
+    bool IsFullscreen() const override;
     void Shutdown(ResourceStore<MaterialResource, MaterialTag>& matStore,
                   ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
                   ResourceStore<GDXTextureResource, TextureTag>& texStore) override;
@@ -86,6 +92,9 @@ public:
         ResourceStore<GDXShaderResource,  ShaderTag>&    shaderStore,
         ResourceStore<GDXTextureResource, TextureTag>&   texStore) override;
 
+    bool InitParticleRenderer(TextureHandle atlasTexture) override;
+    void QueueParticles(const GDXParticleSystem* system, const ParticleRenderContext& ctx) override;
+
 
     PostProcessHandle CreatePostProcessPass(ResourceStore<PostProcessResource, PostProcessTag>& postStore,
                                             const PostProcessPassDesc& desc) override;
@@ -103,6 +112,13 @@ public:
 
     uint32_t GetDrawCallCount() const override;
     bool HasShadowResources() const override;
+
+    bool SupportsOcclusionCulling() const override { return true; }
+    void SubmitOcclusionQueries(
+        const std::vector<VisibleRenderCandidate>& candidates,
+        ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+        const FrameData& frame) override;
+    void CollectOcclusionResults(std::unordered_set<EntityID>& outVisible) override;
     bool SupportsTextureFormat(GDXTextureFormat format) const override;
     const DefaultTextureSet& GetDefaultTextures() const override;
 
@@ -130,6 +146,17 @@ public:
 private:
 
     bool CreateRenderStates();
+    void BuildGraphicsPassCommands(const BackendRenderPassDesc& passDesc, GDXPassCommandList& outCommands) const;
+    void BuildShadowPassCommands(uint32_t cascadeIndex, GDXPassCommandList& outCommands) const;
+    void BuildPostProcessPassCommands(const GDXPassBeginDesc& beginDesc, GDXPassCommandList& outCommands) const;
+    void ExecutePassCommandList(
+        const GDXPassCommandList& commandList,
+        ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore = nullptr,
+        ResourceStore<MeshAssetResource, MeshTag>* meshStore = nullptr,
+        ResourceStore<GDXShaderResource, ShaderTag>* shaderStore = nullptr,
+        ResourceStore<GDXTextureResource, TextureTag>* texStore = nullptr,
+        ID3D11ShaderResourceView* shadowSRV = nullptr,
+        bool shadowPass = false);
     struct DX11PostProcessSurfacePair
     {
         DX11PostProcessSurfaceGpu ping;
@@ -156,6 +183,27 @@ private:
     GDXShadowMap    m_shadowMap;
     GDXDX11LightSystem  m_lightSystem;
     GDXDX11TileLightCuller  m_tileCuller;
+
+    // Occlusion Queries — One-Frame-Delay Ping-Pong
+    struct OcclusionEntry
+    {
+        EntityID          entity;
+        ID3D11Query*      query   = nullptr;
+    };
+    std::vector<OcclusionEntry> m_occlusionPending;
+    std::vector<OcclusionEntry> m_occlusionReady;
+    bool m_occlusionEnabled = false;
+
+    // Occlusion Draw-Ressourcen (AABB-Box per SV_VertexID)
+    ID3D11VertexShader* m_occlusionVS      = nullptr;
+    ID3D11VertexShader* m_fullscreenVS     = nullptr;  // geteilt von allen PostProcess-Passes
+    ID3D11Buffer*       m_occlusionBoxCB   = nullptr;  // OcclusionBox cbuffer
+    ID3D11DepthStencilState* m_occlusionDSS = nullptr; // depth test, no write
+    ID3D11RasterizerState*   m_occlusionRS  = nullptr; // no cull
+    ID3D11BlendState*        m_occlusionBS  = nullptr; // color write off
+
+    bool EnsureOcclusionResources();
+    void ReleaseOcclusionResources();
     ID3D11ComputeShader* m_tileLightCullCS = nullptr;
     uint32_t        m_shadowMapSize = 2048u;
 
@@ -182,4 +230,10 @@ private:
 
     DX11PostProcessSurfacePair m_mainPostProcessSurfaces;
     std::unordered_map<RenderTargetHandle, DX11PostProcessSurfacePair> m_rttPostProcessSurfaces;
+
+    TextureHandle           m_particleAtlas = TextureHandle::Invalid();
+    GDXDX11ParticleRenderer m_particleRenderer;
+    const GDXParticleSystem* m_queuedParticleSystem = nullptr;
+    ParticleRenderContext    m_queuedParticleCtx    = {};
+    bool                    m_particlesReady = false;
 };

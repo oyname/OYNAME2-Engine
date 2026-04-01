@@ -1,4 +1,5 @@
 #include "GDXECSRenderer.h"
+#include "MaterialSemanticLayout.h"
 #include "GDXDX11RenderBackend.h"
 #include "GDXDX11ShaderCompiler.h"
 #include "CameraSystem.h"
@@ -27,6 +28,7 @@ namespace
         SR_STATS         = 1ull << 4,
         SR_MAIN_VIEW     = 1ull << 5,
         SR_RTT_VIEWS     = 1ull << 6,
+        SR_PARTICLES     = 1ull << 7,
     };
 
     void CleanupStaleRttPostProcessTargets(
@@ -228,6 +230,23 @@ GDXECSRenderer::~GDXECSRenderer()
     Shutdown();
 }
 
+bool GDXECSRenderer::InitParticleRenderer(TextureHandle atlasTexture)
+{
+    m_particlesRenderReady = m_backend ? m_backend->InitParticleRenderer(atlasTexture) : false;
+    return m_particlesRenderReady;
+}
+
+void GDXECSRenderer::SetParticleSystem(GDXParticleSystem* ps)
+{
+    m_particleSystemPtr = ps;
+}
+
+void GDXECSRenderer::QueueParticles(const GDXParticleSystem* system, const ParticleRenderContext& ctx)
+{
+    if (m_backend)
+        m_backend->QueueParticles(system, ctx);
+}
+
 bool GDXECSRenderer::Initialize()
 {
     if (!m_backend) return false;
@@ -239,25 +258,24 @@ bool GDXECSRenderer::Initialize()
     m_defaultORMTex    = defaults.orm;
     m_defaultBlackTex  = defaults.black;
 
-    if (!LoadDefaultShaders()) return false;
+    // ShaderCache initialisieren
+    m_shaderCache.Init(m_backend.get(), &m_shaderStore);
 
-    // Neutral IBL fallback — ensures t17/t18/t19 are always bound for PBR shading.
-    // Users override this with LoadIBL(path) for a real environment map.
+    // Standard-Shader laden — identisch zu dem was der User machen würde
+    const ShaderPathConfig& cfg = m_shaderCache.GetConfig();
+    m_defaultShader = CreateShader(cfg.mainVS, cfg.mainPS, cfg.mainFlags);
+    if (!m_defaultShader.IsValid()) return false;
+
+    m_shadowShader = CreateShader(cfg.shadowVS, cfg.shadowPS, cfg.shadowFlags);
+
+    // Neutral IBL fallback
     m_backend->LoadIBL(nullptr);
 
     m_shadowResourcesAvailable = m_backend->HasShadowResources();
     m_freeCamera.AttachRegistry(&m_registry);
-    PrewarmPostProcessShaders();
+    // PostProcess-Shader werden lazy geladen wenn der User
+    // SetToneMapping / SetBloom / SetFXAA / SetGTAO aufruft.
     m_initialized = true;
-    return true;
-}
-
-bool GDXECSRenderer::LoadDefaultShaders()
-{
-    m_shaderCache.Init(m_backend.get(), &m_shaderStore);
-    if (!m_shaderCache.LoadDefaults()) return false;
-    m_defaultShader = m_shaderCache.DefaultShader();
-    m_shadowShader  = m_shaderCache.ShadowShader();
     return true;
 }
 
@@ -384,6 +402,21 @@ void GDXECSRenderer::PrewarmPostProcessShaders()
         };
         m_bloomCompositePass = CreatePostProcessPass(desc);
     }
+    if (!m_volumetricFogPass.IsValid())
+    {
+        PostProcessPassDesc desc{};
+        desc.vertexShaderFile    = L"PostProcessFullscreenVS.hlsl";
+        desc.pixelShaderFile     = L"PostProcessVolumetricFogPS.hlsl";
+        desc.debugName           = L"VolumetricFog_prewarm";
+        desc.constantBufferBytes = sizeof(VolumetricFogParams);
+        desc.enabled             = false;
+        desc.inputSlots = {
+            { L"SceneColor", 0u, PostProcessInputSemantic::SceneColor, true },
+            { L"SceneDepth", 1u, PostProcessInputSemantic::SceneDepth, true },
+            { L"ShadowMap",  2u, PostProcessInputSemantic::ShadowMap, false }
+        };
+        m_volumetricFogPass = CreatePostProcessPass(desc);
+    }
     EnsureGTAOPassesCreated();
 }
 
@@ -460,10 +493,26 @@ MaterialHandle GDXECSRenderer::CreateMaterial(MaterialResource mat)
     if (!mat.HasConsistentTextureState())
         Debug::LogWarning(GDX_SRC_LOC, "CreateMaterial: inkonsistenter textureLayers-Zustand erkannt");
     mat.NormalizeTextureLayers();
+
+    const MaterialSemanticLayout materialLayout = MaterialSemanticLayout::BuildDefault();
+    MaterialSemanticValidationResult materialValidation{};
+    if (!materialLayout.ValidateMaterial(mat, &materialValidation))
+        Debug::LogWarning(GDX_SRC_LOC, "CreateMaterial: MaterialSemanticLayout-Validierung fehlgeschlagen.");
+
+    if (mat.GetShader().IsValid())
+    {
+        if (const GDXShaderResource* shader = m_shaderStore.Get(mat.GetShader()))
+        {
+            MaterialSemanticValidationResult shaderValidation{};
+            if (!materialLayout.ValidateShaderCompatibility(shader->layout, mat, &shaderValidation))
+                Debug::LogWarning(GDX_SRC_LOC, "CreateMaterial: autoritativer Material-/Shader-Vertrag fehlgeschlagen.");
+        }
+    }
+
     MaterialHandle h = m_matStore.Add(std::move(mat));
     if (auto* r = m_matStore.Get(h))
     {
-        r->sortID = h.Index();
+        r->SetSortID(h.Index());
         if (m_backend) m_backend->UploadMaterial(h, *r);
     }
     return h;
@@ -482,11 +531,62 @@ TextureHandle GDXECSRenderer::GetRenderTargetTexture(RenderTargetHandle h)
     return m_defaultWhiteTex;
 }
 
-PostProcessHandle GDXECSRenderer::CreatePostProcessPass(const PostProcessPassDesc& desc)
+PostProcessHandle GDXECSRenderer::CreatePostProcessPass(
+    const PostProcessPassDesc& desc, PostProcessInsert position)
 {
     if (!m_backend) return PostProcessHandle::Invalid();
     PostProcessHandle h = m_backend->CreatePostProcessPass(m_postProcessStore, desc);
-    if (h.IsValid()) m_postProcessPassOrder.push_back(h);
+    if (!h.IsValid()) return h;
+
+    auto& order = m_postProcessPassOrder;
+
+    auto insertBefore = [&](PostProcessHandle anchor) -> bool
+    {
+        auto it = std::find(order.begin(), order.end(), anchor);
+        if (it != order.end()) { order.insert(it, h); return true; }
+        return false;
+    };
+
+    switch (position)
+    {
+    case PostProcessInsert::Front:
+        order.insert(order.begin(), h);
+        break;
+
+    case PostProcessInsert::BeforeToneMap:
+        if (!insertBefore(m_toneMappingPass))
+            order.push_back(h);
+        break;
+
+    case PostProcessInsert::AfterToneMap:
+        if (m_toneMappingPass.IsValid())
+        {
+            auto it = std::find(order.begin(), order.end(), m_toneMappingPass);
+            if (it != order.end()) { order.insert(std::next(it), h); break; }
+        }
+        order.push_back(h);
+        break;
+
+    case PostProcessInsert::BeforeFXAA:
+        if (!insertBefore(m_fxaaPass))
+            order.push_back(h);
+        break;
+
+    case PostProcessInsert::AfterFXAA:
+        if (m_fxaaPass.IsValid())
+        {
+            auto it = std::find(order.begin(), order.end(), m_fxaaPass);
+            if (it != order.end()) { order.insert(std::next(it), h); break; }
+        }
+        order.push_back(h);
+        break;
+
+    case PostProcessInsert::End:
+    default:
+        order.push_back(h);
+        break;
+    }
+
     return h;
 }
 
@@ -547,7 +647,8 @@ void GDXECSRenderer::ClearPostProcessPasses()
     m_gtaoPass           = PostProcessHandle::Invalid();
     m_gtaoBlurPass       = PostProcessHandle::Invalid();
     m_gtaoCompositePass  = PostProcessHandle::Invalid();
-    m_depthFogTestPass   = PostProcessHandle::Invalid();
+    m_fogPass            = PostProcessHandle::Invalid();
+    m_volumetricFogPass  = PostProcessHandle::Invalid();
     m_toneMappingPass    = PostProcessHandle::Invalid();
     m_toneMappingMode    = ToneMappingMode::None;
     m_fxaaPass           = PostProcessHandle::Invalid();
@@ -1035,58 +1136,179 @@ void GDXECSRenderer::DisableGTAO()
 }
 
 
-void GDXECSRenderer::SetDepthFogTest(bool enabled)
+void GDXECSRenderer::SetFog(const FogSettings& settings)
 {
-    if (enabled)
+    m_fogSettings = settings;
+
+    if (!settings.enabled)
     {
-        if (!m_depthFogTestPass.IsValid())
+        DisableFog();
+        return;
+    }
+
+    if (!m_fogPass.IsValid())
+    {
+        PostProcessPassDesc desc{};
+        desc.vertexShaderFile    = L"PostProcessFullscreenVS.hlsl";
+        desc.pixelShaderFile     = L"PostProcessDepthFogPS.hlsl";
+        desc.debugName           = L"Fog";
+        desc.constantBufferBytes = sizeof(FogParams);
+        desc.enabled             = true;
+        desc.inputSlots =
         {
-            PostProcessPassDesc desc{};
-            desc.vertexShaderFile    = L"PostProcessFullscreenVS.hlsl";
-            desc.pixelShaderFile     = L"PostProcessDepthFogPS.hlsl";
-            desc.debugName           = L"DepthFogTest";
-            desc.constantBufferBytes = sizeof(GTAOCompositeParams);
-            desc.enabled             = true;
-            desc.inputSlots =
-            {
-                { L"SceneColor", 0u, PostProcessInputSemantic::SceneColor, true },
-                { L"SceneDepth", 1u, PostProcessInputSemantic::SceneDepth, true }
-            };
-            m_depthFogTestPass = CreatePostProcessPass(desc);
-        }
+            { L"SceneColor", 0u, PostProcessInputSemantic::SceneColor, true },
+            { L"SceneDepth", 1u, PostProcessInputSemantic::SceneDepth, true }
+        };
+        m_fogPass = CreatePostProcessPass(desc);
+    }
 
-        if (!m_depthFogTestPass.IsValid())
-            return;
+    if (!m_fogPass.IsValid())
+        return;
 
-        SetPostProcessEnabled(m_depthFogTestPass, true);
+    FogParams params{};
+    params.colorR           = settings.colorR;
+    params.colorG           = settings.colorG;
+    params.colorB           = settings.colorB;
+    params.mode             = static_cast<uint32_t>(settings.mode);
+    params.start            = settings.start;
+    params.end              = settings.end;
+    params.density          = settings.density;
+    params.maxOpacity       = settings.maxOpacity;
+    params.power            = settings.power;
+    params.heightStart      = settings.heightStart;
+    params.heightEnd        = settings.heightEnd;
+    params.heightStrength   = settings.heightStrength;
+    params.cameraNearPlane  = 0.1f;
+    params.cameraFarPlane   = 1000.0f;
+    params.projScaleX       = 1.0f;
+    params.projScaleY       = 1.0f;
+    params.enabled          = settings.enabled ? 1u : 0u;
+    params.heightFogEnabled = settings.heightFogEnabled ? 1u : 0u;
+    params.cameraIsOrtho    = 0u;
 
-        auto& order = m_postProcessPassOrder;
-        auto fogIt = std::find(order.begin(), order.end(), m_depthFogTestPass);
-        if (fogIt != order.end())
-        {
-            PostProcessHandle fog = *fogIt;
-            order.erase(fogIt);
+    SetPostProcessEnabled(m_fogPass, true);
+    SetPostProcessConstants(m_fogPass, &params, sizeof(params));
 
-            auto tmIt = std::find(order.begin(), order.end(), m_toneMappingPass);
-            if (tmIt != order.end())
-            {
-                order.insert(tmIt, fog);
-            }
-            else
-            {
-                auto fxaaIt = std::find(order.begin(), order.end(), m_fxaaPass);
-                if (fxaaIt != order.end())
-                    order.insert(fxaaIt, fog);
-                else
-                    order.push_back(fog);
-            }
-        }
+    auto& order = m_postProcessPassOrder;
+    auto fogIt = std::find(order.begin(), order.end(), m_fogPass);
+    if (fogIt != order.end())
+        order.erase(fogIt);
+
+    auto tmIt = std::find(order.begin(), order.end(), m_toneMappingPass);
+    if (tmIt != order.end())
+    {
+        order.insert(tmIt, m_fogPass);
     }
     else
     {
-        if (m_depthFogTestPass.IsValid())
-            SetPostProcessEnabled(m_depthFogTestPass, false);
+        auto fxaaIt = std::find(order.begin(), order.end(), m_fxaaPass);
+        if (fxaaIt != order.end())
+            order.insert(fxaaIt, m_fogPass);
+        else
+            order.push_back(m_fogPass);
     }
+}
+
+void GDXECSRenderer::DisableFog()
+{
+    m_fogSettings.enabled = false;
+    if (m_fogPass.IsValid())
+        SetPostProcessEnabled(m_fogPass, false);
+}
+
+void GDXECSRenderer::SetDepthFogTest(bool enabled)
+{
+    if (!enabled)
+    {
+        DisableFog();
+        return;
+    }
+
+    FogSettings settings{};
+    settings.enabled = true;
+    settings.mode = FogMode::LinearDepth;
+    settings.colorR = 0.62f;
+    settings.colorG = 0.68f;
+    settings.colorB = 0.78f;
+    settings.start = 0.55f;
+    settings.end = 0.98f;
+    settings.density = 2.0f;
+    settings.maxOpacity = 0.75f;
+    settings.power = 1.0f;
+    settings.heightFogEnabled = false;
+    settings.heightStart = 0.0f;
+    settings.heightEnd = 1.0f;
+    settings.heightStrength = 1.0f;
+    SetFog(settings);
+}
+
+
+void GDXECSRenderer::SetVolumetricFog(const VolumetricFogSettings& settings)
+{
+    m_volumetricFogSettings = settings;
+
+    if (!settings.enabled)
+    {
+        DisableVolumetricFog();
+        return;
+    }
+
+    if (!m_volumetricFogPass.IsValid())
+    {
+        PostProcessPassDesc desc{};
+        desc.vertexShaderFile    = L"PostProcessFullscreenVS.hlsl";
+        desc.pixelShaderFile     = L"PostProcessVolumetricFogPS.hlsl";
+        desc.debugName           = L"VolumetricFog";
+        desc.constantBufferBytes = sizeof(VolumetricFogParams);
+        desc.enabled             = true;
+        desc.inputSlots =
+        {
+            { L"SceneColor", 0u, PostProcessInputSemantic::SceneColor, true },
+            { L"SceneDepth", 1u, PostProcessInputSemantic::SceneDepth, true },
+            { L"ShadowMap",  2u, PostProcessInputSemantic::ShadowMap, false }
+        };
+        m_volumetricFogPass = CreatePostProcessPass(desc);
+    }
+
+    if (!m_volumetricFogPass.IsValid())
+        return;
+
+    VolumetricFogParams params{};
+    params.colorR         = settings.colorR;
+    params.colorG         = settings.colorG;
+    params.colorB         = settings.colorB;
+    params.density        = settings.density;
+    params.anisotropy     = settings.anisotropy;
+    params.startDistance  = settings.startDistance;
+    params.maxDistance    = settings.maxDistance;
+    params.maxOpacity     = settings.maxOpacity;
+    params.baseHeight     = settings.baseHeight;
+    params.heightFalloff  = settings.heightFalloff;
+    params.stepCount      = settings.stepCount;
+    params.shadowStrength = settings.shadowStrength;
+    params.lightIntensity = settings.lightIntensity;
+    params.jitterStrength = settings.jitterStrength;
+
+    SetPostProcessEnabled(m_volumetricFogPass, true);
+    SetPostProcessConstants(m_volumetricFogPass, &params, sizeof(params));
+
+    auto& order = m_postProcessPassOrder;
+    auto it = std::find(order.begin(), order.end(), m_volumetricFogPass);
+    if (it != order.end())
+        order.erase(it);
+
+    auto tmIt = std::find(order.begin(), order.end(), m_toneMappingPass);
+    if (tmIt != order.end())
+        order.insert(tmIt, m_volumetricFogPass);
+    else
+        order.push_back(m_volumetricFogPass);
+}
+
+void GDXECSRenderer::DisableVolumetricFog()
+{
+    m_volumetricFogSettings.enabled = false;
+    if (m_volumetricFogPass.IsValid())
+        SetPostProcessEnabled(m_volumetricFogPass, false);
 }
 
 void GDXECSRenderer::SetShadowMapSize(uint32_t size)
@@ -1099,7 +1321,30 @@ bool GDXECSRenderer::SupportsTextureFormat(GDXTextureFormat format) const
     return m_backend ? m_backend->SupportsTextureFormat(format) : false;
 }
 
+bool GDXECSRenderer::SupportsOcclusionCulling() const
+{
+    return m_backend ? m_backend->SupportsOcclusionCulling() : false;
+}
 
+bool GDXECSRenderer::SetFullscreen(bool fullscreen)
+{
+    return m_backend ? m_backend->SetFullscreen(fullscreen) : false;
+}
+
+bool GDXECSRenderer::IsFullscreen() const
+{
+    return m_backend ? m_backend->IsFullscreen() : false;
+}
+
+void GDXECSRenderer::SetOcclusionCulling(bool enabled)
+{
+    if (enabled && !SupportsOcclusionCulling())
+    {
+        Debug::LogWarning(GDX_SRC_LOC, L"SetOcclusionCulling: Backend unterstuetzt keine Occlusion Queries.");
+        return;
+    }
+    m_occlusionCullingEnabled = enabled;
+}
 
 void GDXECSRenderer::SetClearColor(float r, float g, float b, float a)
 {
@@ -1191,6 +1436,13 @@ void GDXECSRenderer::BeginFrame()
         m_texStore,
         m_rttPostProcessTargets);
 
+    // Occlusion Query Ergebnisse vom letzten Frame einsammeln
+    if (m_occlusionCullingEnabled && m_backend)
+    {
+        m_occlusionVisible.clear();
+        m_backend->CollectOcclusionResults(m_occlusionVisible);
+    }
+
     m_framePhase = RenderFramePhase::UpdateWrite;
     m_currentFrameIndex = (m_currentFrameIndex + 1u) % GDXMaxFramesInFlight;
     m_persistentFrameState.ApplyTo(m_frameData);
@@ -1220,6 +1472,7 @@ void GDXECSRenderer::BeginFrame()
 
 void GDXECSRenderer::Tick(float dt)
 {
+    m_lastDeltaTime = dt;
     if (m_tickCallback) m_tickCallback(dt);
 }
 
@@ -1244,6 +1497,32 @@ void GDXECSRenderer::EndFrame()
     m_systemScheduler.AddTask({ "Transform",
         0ull, SR_TRANSFORM,
         [this]() { m_transformSystem.Update(m_registry, &m_jobSystem); } });
+
+    // ---- Particles ----
+    m_systemScheduler.AddTask({ "Particles",
+        SR_TRANSFORM, SR_PARTICLES,
+        [this]()
+        {
+            if (!m_particleSystemPtr)
+                return;
+
+            Matrix4 viewProj = Matrix4::Identity();
+            m_particleEmitterSystem.Update(
+                m_registry,
+                m_cameraSystem,
+                *m_particleSystemPtr,
+                m_lastDeltaTime,
+                &viewProj);
+
+            if (m_particlesRenderReady)
+            {
+                ParticleRenderContext ctx;
+                ctx.viewProj  = viewProj;
+                ctx.camRight  = m_particleSystemPtr->GetCamRight();
+                ctx.camUp     = m_particleSystemPtr->GetCamUp();
+                QueueParticles(m_particleSystemPtr, ctx);
+            }
+        } });
 
     // ---- Scene Extraction ----
     m_systemScheduler.AddTask({ "Capture Frame Snapshot",
@@ -1289,6 +1568,26 @@ void GDXECSRenderer::EndFrame()
             CullGather::CullGatherMainView(
                 m_frameDispatch.cullGather,
                 m_renderPipeline.mainView);
+
+            // Occlusion-Ergebnisse vom letzten Frame anwenden:
+            // Entities die letzten Frame verdeckt waren aus dem VisibleSet entfernen.
+            // Erster Frame: m_occlusionVisible ist leer → alle bleiben drin (konservativ).
+            if (m_occlusionCullingEnabled && !m_occlusionVisible.empty())
+            {
+                auto& candidates = m_renderPipeline.mainView.graphicsVisibleSet.candidates;
+                const size_t before = candidates.size();
+                candidates.erase(
+                    std::remove_if(candidates.begin(), candidates.end(),
+                        [this](const VisibleRenderCandidate& c)
+                        {
+                            return c.hasBounds &&
+                                   m_occlusionVisible.find(c.entity) == m_occlusionVisible.end();
+                        }),
+                    candidates.end());
+                const size_t culled = before - candidates.size();
+                if (culled > 0u)
+                    m_renderPipeline.mainView.stats.graphicsCulling.culledByFrustum += static_cast<uint32_t>(culled);
+            }
         } });
 
     // ---- Queue Finalization ----
@@ -1342,6 +1641,13 @@ void GDXECSRenderer::EndFrame()
                     m_renderPipeline.mainView.execute.alphaQueue.Count()) : 0u;
             m_renderPipeline.mainView.stats.lightCount =
                 m_renderPipeline.mainView.execute.frame.lightCount;
+
+            // Occlusion Queries für nächsten Frame abschicken
+            if (m_occlusionCullingEnabled && m_backend)
+                m_backend->SubmitOcclusionQueries(
+                    m_renderPipeline.mainView.graphicsVisibleSet.candidates,
+                    m_meshStore,
+                    m_renderPipeline.mainView.execute.frame);
 
             UpdatePreparedMainViewFrameTransient(m_renderPipeline.mainView);
             AggregatePreparedFrameStats(m_renderPipeline.mainView, m_renderPipeline.rttViews);

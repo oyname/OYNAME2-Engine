@@ -5,6 +5,7 @@
 #include "FrameData.h"
 #include "Components.h"
 #include "RenderComponents.h"
+#include "Math/Geometry/Frustum.h"
 
 #include <vector>
 #include <cstdint>
@@ -14,18 +15,6 @@ enum class RenderViewType : uint8_t
     Main = 0,
     Shadow = 1,
     RenderTarget = 2,
-};
-
-struct FrustumPlane
-{
-    Float3 normal = { 0.0f, 0.0f, 1.0f };
-    float d = 0.0f;
-};
-
-struct FrustumData
-{
-    FrustumPlane planes[6]{};
-    bool valid = false;
 };
 
 struct RenderViewData

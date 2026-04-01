@@ -124,7 +124,9 @@ struct DX11MeshGpu
 };
 
 // ---------------------------------------------------------------------------
-// Material — nur der cbuffer
+// Material — persistenter DX11-CBuffer-Speicher.
+// Inhalt wird im Executor pro Draw/Pass geschrieben; UploadMaterial erzeugt
+// nur den Buffer und serialisiert keine Materialdaten mehr.
 // ---------------------------------------------------------------------------
 struct DX11MaterialGpu
 {

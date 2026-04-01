@@ -29,7 +29,8 @@ struct PSIn
 // Green channel luma — Unity and UE4 both use this approximation for speed.
 float Luma(float3 c)
 {
-    return c.g * (0.587 / 0.299) * 0.5 + c.r * 0.5;
+    //return c.g * (0.587 / 0.299) * 0.5 + c.r * 0.5; //Das ist nicht die korrekte FXAA-Formel. 
+    return dot(c, float3(0.299, 0.587, 0.114));
 }
 // (exact: dot(c, float3(0.299, 0.587, 0.114)) — identical shape, green-biased version is cheaper)
 

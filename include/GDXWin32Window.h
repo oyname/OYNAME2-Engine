@@ -24,12 +24,14 @@ public:
     int         GetWidth()    const override;
     int         GetHeight()   const override;
     bool        GetBorderless() const override;
+    bool        GetFullscreen() const override { return m_desc.fullscreen; }
     const char* GetTitle()    const override;
     void        SetTitle(const char* title) override;
 
     // IGDXWin32NativeAccess
     bool QueryNativeHandles(GDXWin32NativeHandles& outHandles) const override;
     bool IsBorderless() const override { return m_borderless; }
+    bool IsFullscreen()  const override { return m_desc.fullscreen; }
 
 private:
     static long long __stdcall StaticWndProc(

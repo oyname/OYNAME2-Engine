@@ -35,8 +35,11 @@
 #include "RenderPassBuilder.h"
 #include "CullGatherSystem.h"
 #include "FrameDispatch.h"
+#include "Particles/GDXParticleEmitterSystem.h"  // GDXParticleSystem included transitively
+// GDXParticleSystem is user-owned; engine holds a non-owning pointer.
 
 #include <unordered_map>
+#include <unordered_set>
 #include <memory>
 #include <string>
 #include <functional>
@@ -52,6 +55,8 @@ public:
     void BeginFrame() override;
     void EndFrame() override;
     void Resize(int w, int h) override;
+    bool SetFullscreen(bool fullscreen);
+    bool IsFullscreen() const;
     void Shutdown() override;
 
     using TickFn = std::function<void(float)>;
@@ -79,6 +84,28 @@ public:
     MaterialHandle CreateMaterial(MaterialResource mat);
 
     ShaderHandle   GetDefaultShader() const { return m_defaultShader; }
+
+    GDXShaderVariantCache&       GetShaderCache()       { return m_shaderCache; }
+    const GDXShaderVariantCache& GetShaderCache() const { return m_shaderCache; }
+
+    // Konfiguriert welche Shader-Dateien + Flags als Engine-Default verwendet werden.
+    // Muss vor Initialize() aufgerufen werden.
+    void SetShaderConfig(const ShaderPathConfig& config) { m_shaderCache.SetConfig(config); }
+
+    bool SupportsOcclusionCulling() const;
+
+    // -- Particles ---------------------------------------------------------
+    // GPU-side renderer init — call once after Engine::Graphics().
+    // The particle system itself is user-owned and passed via SetParticleSystem().
+    bool InitParticleRenderer(TextureHandle atlasTexture);
+
+    // Register a user-owned GDXParticleSystem with the engine.
+    // The engine stores a non-owning pointer; lifetime is the caller's responsibility.
+    // Call with nullptr to detach.
+    void SetParticleSystem(GDXParticleSystem* ps);
+
+    void QueueParticles(const GDXParticleSystem* system, const ParticleRenderContext& ctx);
+    void SetOcclusionCulling(bool enabled);
     void SetShadowMapSize(uint32_t size);
     bool SupportsTextureFormat(GDXTextureFormat format) const;
 
@@ -97,7 +124,8 @@ public:
                                           GDXTextureFormat colorFormat = GDXTextureFormat::RGBA8_UNORM);
     TextureHandle      GetRenderTargetTexture(RenderTargetHandle h);
 
-    PostProcessHandle  CreatePostProcessPass(const PostProcessPassDesc& desc);
+    PostProcessHandle  CreatePostProcessPass(const PostProcessPassDesc& desc,
+                                             PostProcessInsert position = PostProcessInsert::End);
     bool               SetPostProcessConstants(PostProcessHandle h, const void* data, uint32_t size);
     bool               SetPostProcessEnabled(PostProcessHandle h, bool enabled);
     // Setzt eine Textur für einen Custom-Slot eines Passes (Stufe E).
@@ -150,7 +178,11 @@ public:
                                float intensity    = 1.0f,
                                float power        = 1.5f);
     void               DisableGTAO();
+    void               SetFog(const FogSettings& settings);
+    void               DisableFog();
     void               SetDepthFogTest(bool enabled);
+    void               SetVolumetricFog(const VolumetricFogSettings& settings);
+    void               DisableVolumetricFog();
 
 private:
     bool               EnsureGTAOPassesCreated();
@@ -203,7 +235,6 @@ private:
         ExecuteSubmit  = 4,
     };
 
-    bool LoadDefaultShaders();
     ShaderHandle LoadShaderInternal(const std::wstring& vsFile,
         const std::wstring& psFile,
         uint32_t vertexFlags,
@@ -274,6 +305,8 @@ private:
     FreeCamera              m_freeCamera;
     bool       m_initialized = false;
     bool       m_shadowResourcesAvailable = false;
+    bool       m_occlusionCullingEnabled = false;
+    std::unordered_set<EntityID> m_occlusionVisible;
 
     FrameContextRing m_frameContexts{};
     std::array<FrameTransientResources, GDXMaxFramesInFlight> m_frameTransients{};
@@ -281,6 +314,10 @@ private:
     uint64_t m_frameNumber       = 0ull;
 
     TickFn m_tickCallback;
+    float  m_lastDeltaTime = 0.0f;
+    bool   m_particlesRenderReady = false;
+    GDXParticleSystem*       m_particleSystemPtr     = nullptr;  // user-owned, non-owning
+    GDXParticleEmitterSystem m_particleEmitterSystem;
 
     std::vector<PostProcessHandle> m_postProcessPassOrder;
     RenderTargetHandle m_mainScenePostProcessTarget = RenderTargetHandle::Invalid();
@@ -298,7 +335,10 @@ private:
     PostProcessHandle  m_gtaoPass                    = PostProcessHandle::Invalid();
     PostProcessHandle  m_gtaoBlurPass                = PostProcessHandle::Invalid();
     PostProcessHandle  m_gtaoCompositePass           = PostProcessHandle::Invalid();
-    PostProcessHandle  m_depthFogTestPass            = PostProcessHandle::Invalid();
+    PostProcessHandle  m_fogPass                     = PostProcessHandle::Invalid();
+    FogSettings        m_fogSettings{};
+    PostProcessHandle  m_volumetricFogPass           = PostProcessHandle::Invalid();
+    VolumetricFogSettings m_volumetricFogSettings{};
 
     JobSystem        m_jobSystem;
     SystemScheduler  m_systemScheduler;

@@ -34,7 +34,7 @@ public:
         m_last = now;
 
         // Schutz gegen kaputte Ausreißer nach Breakpoints / Alt-Tab / Hänger.
-        m_deltaTime = std::min(m_deltaTime, 0.25f);
+        m_deltaTime = (std::min)(m_deltaTime, 0.25f);
         if (m_deltaTime < 0.0f)
             m_deltaTime = 0.0f;
 

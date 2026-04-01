@@ -8,5 +8,6 @@ struct WindowDesc
     int         height     = 720;
     std::string title      = "GDX";
     bool        resizable  = true;
-    bool        borderless = true; 
+    bool        borderless = true;
+    bool        fullscreen = false;  
 };

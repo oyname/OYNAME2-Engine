@@ -1,7 +1,8 @@
 #pragma once
 #include "GDXVertexFlags.h"
 #include "ShaderVariant.h"
-#include "GDXShaderLayout.h"
+#include "GDXShaderContracts.h"
+#include <array>
 #include <cstdint>
 #include <string>
 
@@ -15,6 +16,11 @@ struct GDXShaderResource
 {
     uint32_t         vertexFlags       = GDX_VERTEX_DEFAULT;
     GDXShaderLayout  layout;
+    GDXPipelineLayoutDesc pipelineLayout;
+    GDXVertexFormatDesc expectedVertexFormat;
+    GDXShaderSourceAssetDesc sourceAsset;
+    std::array<GDXShaderArtifactDesc, 2> artifacts{};
+    uint32_t         artifactCount      = 0u;
     ShaderPassType   passType          = ShaderPassType::Main;
     uint32_t         variantFeatures   = SVF_NONE;
     bool             supportsSkinning  = false;
@@ -23,6 +29,20 @@ struct GDXShaderResource
     std::wstring     debugName;
 
     bool IsValid() const noexcept { return ready; }
+
+    void SetInterfaceContract(const GDXShaderInterfaceContract& contract) noexcept
+    {
+        layout = contract.shaderLayout;
+        pipelineLayout = contract.pipelineLayout;
+        expectedVertexFormat = contract.vertexFormat;
+    }
+
+    void AddArtifact(const GDXShaderArtifactDesc& artifact) noexcept
+    {
+        if (artifactCount >= artifacts.size())
+            return;
+        artifacts[artifactCount++] = artifact;
+    }
 
     GDXShaderResource() = default;
     GDXShaderResource(const GDXShaderResource&)            = delete;

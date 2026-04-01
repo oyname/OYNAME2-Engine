@@ -3,7 +3,7 @@
 #include "Handle.h"
 #include "GDXTextureSlots.h"
 #include "GDXResourceState.h"
-#include "GDXShaderLayout.h"
+#include "GDXRenderBindingModel.h"
 
 #include <array>
 #include <cstdint>
@@ -15,27 +15,78 @@ enum class ResourceBindingScope : uint8_t
     Draw = 2,
 };
 
+inline constexpr GDXBindingGroup GDXBindingGroupFromScope(ResourceBindingScope scope) noexcept
+{
+    switch (scope)
+    {
+    case ResourceBindingScope::Pass:     return GDXBindingGroup::Pass;
+    case ResourceBindingScope::Material: return GDXBindingGroup::Material;
+    case ResourceBindingScope::Draw:     return GDXBindingGroup::Draw;
+    default:                             return GDXBindingGroup::Material;
+    }
+}
+
+inline constexpr ResourceBindingScope GDXBindingScopeFromGroup(GDXBindingGroup group) noexcept
+{
+    switch (group)
+    {
+    case GDXBindingGroup::Pass:     return ResourceBindingScope::Pass;
+    case GDXBindingGroup::Material: return ResourceBindingScope::Material;
+    case GDXBindingGroup::Draw:     return ResourceBindingScope::Draw;
+    default:                        return ResourceBindingScope::Material;
+    }
+}
+
+inline constexpr ResourceBindingScope GDXBindingScopeForConstantBufferSlot(GDXShaderConstantBufferSlot slot) noexcept
+{
+    switch (slot)
+    {
+    case GDXShaderConstantBufferSlot::Frame:
+    case GDXShaderConstantBufferSlot::Pass:     return ResourceBindingScope::Pass;
+    case GDXShaderConstantBufferSlot::Material: return ResourceBindingScope::Material;
+    case GDXShaderConstantBufferSlot::Entity:
+    case GDXShaderConstantBufferSlot::Skin:
+    case GDXShaderConstantBufferSlot::Light:
+    default:                                    return ResourceBindingScope::Draw;
+    }
+}
+
+inline constexpr ResourceBindingScope GDXBindingScopeForTextureSemantic(ShaderResourceSemantic semantic) noexcept
+{
+    return (semantic == ShaderResourceSemantic::ShadowMap)
+        ? ResourceBindingScope::Pass
+        : ResourceBindingScope::Material;
+}
+
+
 struct ShaderResourceBindingDesc
 {
     ShaderResourceSemantic semantic = ShaderResourceSemantic::Albedo;
-    uint8_t bindingIndex = 0u;
+    uint32_t bindingIndex = 0u;
+    GDXBindingGroup bindingGroup = GDXBindingGroup::Material;
+    GDXBoundResourceClass resourceClass = GDXBoundResourceClass::Texture;
+    GDXShaderStageVisibility visibility = GDXShaderStageVisibility::Pixel;
     TextureHandle texture = TextureHandle::Invalid();
     MaterialTextureUVSet uvSet = MaterialTextureUVSet::UV0;
     bool enabled = false;
     bool expectsSRGB = false;
     ResourceState requiredState = ResourceState::ShaderRead;
+    bool required = true;
     ResourceBindingScope scope = ResourceBindingScope::Material;
 };
 
 struct ConstantBufferBindingDesc
 {
     GDXShaderConstantBufferSlot semantic   = GDXShaderConstantBufferSlot::Entity;
-    uint8_t                     vsRegister = 255u;
-    uint8_t                     psRegister = 255u;
+    uint32_t                    bindingIndex = 0u;
+    GDXBindingGroup              bindingGroup = GDXBindingGroup::Draw;
+    GDXBoundResourceClass        resourceClass = GDXBoundResourceClass::ConstantBuffer;
+    GDXShaderStageVisibility     visibility = GDXShaderStageVisibility::AllGraphics;
     // Material-CB wird vom Backend über materialHandle aufgelöst.
     // Für alle anderen Slots (Entity, Frame, Skin) hält das Backend die CBs intern.
     MaterialHandle              materialHandle = MaterialHandle::Invalid();
     bool                        enabled    = false;
+    bool                        required   = true;
     ResourceBindingScope        scope      = ResourceBindingScope::Draw;
 };
 
@@ -137,11 +188,15 @@ inline uint64_t BuildResourceBindingScopeKey(const ResourceBindingSet& set,
         HashResourceBindingValue(hash, 0x54584eull);
         HashResourceBindingValue(hash, static_cast<uint64_t>(binding.semantic));
         HashResourceBindingValue(hash, static_cast<uint64_t>(binding.bindingIndex));
+        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.bindingGroup));
+        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.resourceClass));
+        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.visibility));
         HashResourceBindingValue(hash, static_cast<uint64_t>(binding.texture.value));
         HashResourceBindingValue(hash, static_cast<uint64_t>(binding.uvSet));
         HashResourceBindingValue(hash, static_cast<uint64_t>(binding.enabled ? 1u : 0u));
         HashResourceBindingValue(hash, static_cast<uint64_t>(binding.expectsSRGB ? 1u : 0u));
         HashResourceBindingValue(hash, static_cast<uint64_t>(binding.requiredState));
+        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.required ? 1u : 0u));
     }
 
     for (uint32_t i = 0; i < set.constantBufferCount; ++i)
@@ -152,9 +207,12 @@ inline uint64_t BuildResourceBindingScopeKey(const ResourceBindingSet& set,
 
         HashResourceBindingValue(hash, 0x43425546ull);
         HashResourceBindingValue(hash, static_cast<uint64_t>(binding.semantic));
-        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.vsRegister));
-        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.psRegister));
+        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.bindingIndex));
+        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.bindingGroup));
+        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.resourceClass));
+        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.visibility));
         HashResourceBindingValue(hash, static_cast<uint64_t>(binding.enabled ? 1u : 0u));
+        HashResourceBindingValue(hash, static_cast<uint64_t>(binding.required ? 1u : 0u));
     }
 
     return hash;

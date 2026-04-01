@@ -30,4 +30,5 @@ public:
     // been successfully created yet (HWND is null).
     virtual bool QueryNativeHandles(GDXWin32NativeHandles& outHandles) const = 0;
     virtual bool IsBorderless() const = 0;
+    virtual bool IsFullscreen() const = 0;
 };

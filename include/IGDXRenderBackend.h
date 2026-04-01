@@ -13,77 +13,19 @@
 #include "PostProcessResource.h"
 #include "BackendRenderPassDesc.h"
 #include "ICommandList.h"
+#include "ECS/ECSTypes.h"
+class GDXParticleSystem;  // forward-decl — backend never owns the system
+struct ParticleRenderContext;
 
 #include <cstdint>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
-// ---------------------------------------------------------------------------
-// ShaderSourceDesc — backend-neutraler Shader-Deskriptor.
-//
-// sourceType bestimmt wie vertexCode/pixelCode interpretiert werden:
-//   HlslFilePath   DX11: vertexCode/pixelCode = UTF-16 encoded Dateipfad
-//   HlslSource     DX11: vertexCode/pixelCode = HLSL-Quelltext als UTF-8
-//   SpirvBinary    Vulkan: kompiliertes SPIR-V
-//   GlslSource     OpenGL: GLSL-Quelltext als UTF-8
-//
-// Das Frontend erzeugt den Desc, das Backend wertet sourceType aus.
-// ---------------------------------------------------------------------------
-enum class ShaderSourceType : uint8_t
-{
-    HlslFilePath  = 0,   // vertexCode/pixelCode = UTF-16 Dateipfad-Bytes
-    HlslSource    = 1,   // vertexCode/pixelCode = HLSL UTF-8 Quelltext
-    SpirvBinary   = 2,   // vertexCode/pixelCode = SPIR-V Binärdaten
-    GlslSource    = 3,   // vertexCode/pixelCode = GLSL UTF-8 Quelltext
-};
+// Forward declarations — vollständige Definition in RenderViewData.h
+struct VisibleRenderCandidate;
 
-
-struct ShaderSourceDesc
-{
-    ShaderSourceType          sourceType   = ShaderSourceType::HlslFilePath;
-    std::vector<uint8_t>      vertexCode;   // Quelltext, Pfad oder Binary
-    std::vector<uint8_t>      pixelCode;
-    GDXShaderLayout           layout;
-    uint32_t                  vertexFlags  = GDX_VERTEX_DEFAULT;
-    std::wstring              debugName;
-    std::vector<std::string>  defines;      // Präprozessor-Defines (Name-only → "1")
-
-    // Hilfsmethode: Dateipfad-Desc aus wstring (DX11/HLSL Standardfall)
-    static ShaderSourceDesc FromHlslFiles(
-        const std::wstring& vsPath,
-        const std::wstring& psPath,
-        uint32_t            vertexFlags,
-        const GDXShaderLayout& layout,
-        const std::wstring& debugName = L"")
-    {
-        ShaderSourceDesc d;
-        d.sourceType  = ShaderSourceType::HlslFilePath;
-        d.vertexFlags = vertexFlags;
-        d.layout      = layout;
-        d.debugName   = debugName.empty() ? vsPath + L" / " + psPath : debugName;
-        d.vertexCode.assign(
-            reinterpret_cast<const uint8_t*>(vsPath.data()),
-            reinterpret_cast<const uint8_t*>(vsPath.data() + vsPath.size()));
-        d.pixelCode.assign(
-            reinterpret_cast<const uint8_t*>(psPath.data()),
-            reinterpret_cast<const uint8_t*>(psPath.data() + psPath.size()));
-        return d;
-    }
-
-    std::wstring VertexFilePath() const
-    {
-        return std::wstring(
-            reinterpret_cast<const wchar_t*>(vertexCode.data()),
-            vertexCode.size() / sizeof(wchar_t));
-    }
-
-    std::wstring PixelFilePath() const
-    {
-        return std::wstring(
-            reinterpret_cast<const wchar_t*>(pixelCode.data()),
-            pixelCode.size() / sizeof(wchar_t));
-    }
-};
+#include "GDXShaderContracts.h"
 
 // ---------------------------------------------------------------------------
 // IGDXRenderBackend — backend-neutrales Render-Interface.
@@ -109,6 +51,8 @@ public:
     virtual void BeginFrame(const float clearColor[4]) = 0;
     virtual void Present(bool vsync) = 0;
     virtual void Resize(int w, int h) = 0;
+    virtual bool SetFullscreen(bool fullscreen) { (void)fullscreen; return false; }
+    virtual bool IsFullscreen() const { return false; }
     virtual void Shutdown(
         ResourceStore<MaterialResource,   MaterialTag>&   matStore,
         ResourceStore<GDXShaderResource,  ShaderTag>&     shaderStore,
@@ -165,6 +109,20 @@ public:
         ResourceStore<MaterialResource,            MaterialTag>&       matStore,
         ResourceStore<GDXShaderResource,           ShaderTag>&         shaderStore,
         ResourceStore<GDXTextureResource,          TextureTag>&        texStore) = 0;
+
+    // -- Particles ---------------------------------------------------------
+    // Init GPU-side renderer only. The particle system is user-owned;
+    // the engine holds a non-owning pointer via GDXECSRenderer::SetParticleSystem().
+    virtual bool InitParticleRenderer(TextureHandle atlasTexture)
+    {
+        (void)atlasTexture;
+        return false;
+    }
+
+    virtual void QueueParticles(const GDXParticleSystem* system, const ParticleRenderContext& ctx)
+    {
+        (void)system; (void)ctx;
+    }
 
     // -- Post processing ----------------------------------------------------
     virtual PostProcessHandle CreatePostProcessPass(
@@ -238,6 +196,28 @@ public:
 
     virtual bool SupportsTextureFormat(GDXTextureFormat format) const { (void)format; return true; }
     virtual void SetShadowMapSize(uint32_t size) { (void)size; }
+
+    // -- Occlusion Culling --------------------------------------------------
+    // Gibt false zurück wenn das Backend keine Occlusion Queries implementiert.
+    virtual bool SupportsOcclusionCulling() const { return false; }
+
+    // Schickt Occlusion Queries für alle Kandidaten ab (AABB gegen Depth Buffer).
+    // Wird nach dem Haupt-Render-Pass aufgerufen.
+    // results: Entity-Liste die im nächsten Frame sichtbar war (One-Frame-Delay).
+    virtual void SubmitOcclusionQueries(
+        const std::vector<VisibleRenderCandidate>& candidates,
+        ResourceStore<MeshAssetResource, MeshTag>& meshStore,
+        const FrameData& frame)
+    {
+        (void)candidates; (void)meshStore; (void)frame;
+    }
+
+    // Liest Ergebnisse vom letzten Frame. Gibt Menge der sichtbaren EntityIDs zurück.
+    // Aufruf am Anfang des nächsten Frames vor BuildVisibleSet.
+    virtual void CollectOcclusionResults(std::unordered_set<EntityID>& outVisible)
+    {
+        (void)outVisible;
+    }
 
     virtual uint32_t GetDrawCallCount() const = 0;
     virtual bool HasShadowResources() const = 0;

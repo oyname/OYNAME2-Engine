@@ -88,6 +88,7 @@ struct RenderBoundsComponent
     Shape        shape           = Shape::Sphere;
     Float3 localCenter     = { 0.0f, 0.0f, 0.0f };
     float        localSphereRadius = 0.5f;
+    float        boundsScale       = 1.0f;  // Multiplikator für animierte/große Objekte
 
     Float3 localAabbMin = { -0.5f, -0.5f, -0.5f };
     float        _pad0 = 0.0f;
@@ -151,7 +152,14 @@ struct RenderBoundsComponent
             }
         }
         radius = std::sqrt(radius);
-        return MakeSphere(center, radius);
+        RenderBoundsComponent b{};
+        b.shape             = Shape::AABB;
+        b.localCenter       = center;
+        b.localAabbMin      = bMin;
+        b.localAabbMax      = bMax;
+        b.localSphereRadius = radius;  // Sphere als konservativer Fallback
+        b.valid             = radius > 0.0f;
+        return b;
     }
 };
 
