@@ -1,4 +1,4 @@
-[KROM Engine](https://github.com/oyname/oyname.github.io/blob/main/oynameengine_logo.png)
+![KROM Engine](https://github.com/oyname/oyname.github.io/blob/main/oynameengine_logo.png)
 
 ![KROM Engine Screenshot](https://github.com/oyname/oyname.github.io/blob/main/oyname_image3.png)
 
