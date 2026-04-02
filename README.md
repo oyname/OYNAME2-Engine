@@ -1,6 +1,6 @@
 # KROM Engine
 
-![KROM Engine Screenshot]([https://github.com/oyname/oyname.github.io/blob/main/oyname_image3.png])
+![KROM Engine Screenshot](https://github.com/oyname/oyname.github.io/blob/main/oyname_image3.png)
 
 **KROM Engine** is a custom 3D engine written in **C++** and currently uses **DirectX 11** as its rendering backend.
 
