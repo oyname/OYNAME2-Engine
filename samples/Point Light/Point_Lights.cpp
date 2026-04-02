@@ -150,14 +150,14 @@ namespace
 
         const std::array<std::array<float, 3>, 8> spherePos =
         { {
-            { -2.5f, 0.7f,  1.0f },
-            {  2.4f, 0.7f,  1.3f },
-            { -3.2f, 0.7f,  4.2f },
-            {  3.0f, 0.7f,  4.6f },
-            { -1.2f, 0.7f,  6.0f },
-            {  1.4f, 0.7f,  6.4f },
-            { -4.4f, 0.7f,  7.8f },
-            {  4.2f, 0.7f,  8.0f }
+            { -2.5f, 0.55f,  1.0f },
+            {  2.4f, 0.55f,  1.3f },
+            { -3.2f, 0.55f,  4.2f },
+            {  3.0f, 0.55f,  4.6f },
+            { -1.2f, 0.55f,  6.0f },
+            {  1.4f, 0.55f,  6.4f },
+            { -4.4f, 0.55f,  7.8f },
+            {  4.2f, 0.55f,  8.0f }
         } };
 
         for (size_t i = 0; i < spherePos.size(); ++i)
@@ -283,10 +283,6 @@ namespace
                 2.2f);            // strength
             Engine::_::renderer->SetToneMapping(ToneMappingMode::ACES, 0.25f);
             Engine::_::renderer->SetFXAA(1280, 720);
-            Engine::_::renderer->SetDepthDebugView(false);
-            Engine::_::renderer->SetNormalDebugView(false);
-            //Engine::_::renderer->SetEdgeDebugView(true, 1280, 720, 250.0f, 4.0f, true, false); // Nur Depth-Kanten
-            //Engine::_::renderer->SetEdgeDebugView(true, 1280, 720, 250.0f, 4.0f, false, true); // Nur Normal-Kanten
             Engine::_::renderer->SetGTAO(1280, 720, 0.1f, 100.0f, 0.8f, 10.0f, 0.5f, 0.5f);
         }
 

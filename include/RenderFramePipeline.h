@@ -51,6 +51,17 @@ const char* FGResourceLifetimeToString(FGResourceLifetime lifetime);
 const char* FGResourceKindToString(FGResourceKind kind);
 const char* FGResourceFormatToString(GDXTextureFormat format);
 
+enum class FGResourceStateSource : uint8_t
+{
+    Unknown = 0,
+    TransientCommon,
+    BackbufferPresent,
+    ImportedFirstUse,
+    InferredFallback,
+};
+
+const char* FGResourceStateSourceToString(FGResourceStateSource source);
+
 enum class FGShadowResourcePolicy : uint8_t
 {
     LocalPerView = 0,
@@ -75,6 +86,7 @@ struct FGResourceDesc
     uint32_t           lastUseNode  = FG_INVALID_NODE;
     ResourceState      plannedInitialState = ResourceState::Unknown;
     ResourceState      plannedFinalState = ResourceState::Unknown;
+    FGResourceStateSource plannedInitialStateSource = FGResourceStateSource::Unknown;
     bool               externalOutput = false; // marks resources that are consumed outside the graph (swapchain, RTT targets, etc.)
 
     bool IsImported() const { return lifetime == FGResourceLifetime::Imported; }
@@ -481,6 +493,21 @@ struct FrameGraph
         d.height = height;
         d.format = format;
         resources.push_back(d);
+        return id;
+    }
+
+    FGResourceID RegisterGraphOwnedResource(
+        TextureHandle tex,
+        RenderTargetHandle rt,
+        const char* name,
+        FGResourceKind kind,
+        uint32_t width = 0u,
+        uint32_t height = 0u,
+        GDXTextureFormat format = GDXTextureFormat::Unknown,
+        bool externalOutput = false)
+    {
+        const FGResourceID id = RegisterTransientResource(tex, rt, name, kind, width, height, format);
+        resources[id].externalOutput = externalOutput;
         return id;
     }
 

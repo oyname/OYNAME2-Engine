@@ -223,6 +223,19 @@ const char* FGResourceFormatToString(GDXTextureFormat format)
     }
 }
 
+const char* FGResourceStateSourceToString(FGResourceStateSource source)
+{
+    switch (source)
+    {
+    case FGResourceStateSource::Unknown:          return "Unknown";
+    case FGResourceStateSource::TransientCommon:  return "TransientCommon";
+    case FGResourceStateSource::BackbufferPresent:return "BackbufferPresent";
+    case FGResourceStateSource::ImportedFirstUse: return "ImportedFirstUse";
+    case FGResourceStateSource::InferredFallback: return "InferredFallback";
+    default:                                      return "InvalidStateSource";
+    }
+}
+
 const char* FGShadowResourcePolicyToString(FGShadowResourcePolicy policy)
 {
     switch (policy)
@@ -490,7 +503,7 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
         pipeline.mainView.execute.presentation.postProcess.sceneTexture.IsValid();
 
     const FGResourceID mainSceneID = hasPostProcess
-        ? pipeline.frameGraph.RegisterImportedResource(
+        ? pipeline.frameGraph.RegisterGraphOwnedResource(
             pipeline.mainView.execute.presentation.postProcess.sceneTexture,
             ctx.mainScenePostProcessTarget, "MainSceneColor", FGResourceKind::RenderTarget,
             mainSceneWidth, mainSceneHeight, mainSceneFormat)
@@ -498,7 +511,7 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
 
     const FGResourceID mainSceneDepthID =
         (hasPostProcess && mainSceneRt && mainSceneRt->ready && mainSceneRt->exposedDepthTexture.IsValid())
-        ? pipeline.frameGraph.RegisterImportedResource(
+        ? pipeline.frameGraph.RegisterGraphOwnedResource(
             mainSceneRt->exposedDepthTexture,
             RenderTargetHandle::Invalid(), "MainSceneDepth", FGResourceKind::Depth,
             mainSceneWidth, mainSceneHeight, GDXTextureFormat::D24_UNORM_S8_UINT)
@@ -506,7 +519,7 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
 
     const FGResourceID mainSceneNormalsID =
         (hasPostProcess && mainSceneRt && mainSceneRt->ready && mainSceneRt->exposedNormalsTexture.IsValid())
-        ? pipeline.frameGraph.RegisterImportedResource(
+        ? pipeline.frameGraph.RegisterGraphOwnedResource(
             mainSceneRt->exposedNormalsTexture,
             RenderTargetHandle::Invalid(), "MainSceneNormals", FGResourceKind::RenderTarget,
             mainSceneWidth, mainSceneHeight, GDXTextureFormat::RGBA8_UNORM)
@@ -537,7 +550,7 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
             ctx.rtStore ? ctx.rtStore->Get(rttHandle) : nullptr;
         if (!rt || !rt->ready) continue;
 
-        rttColorIDs[i] = pipeline.frameGraph.RegisterImportedResource(
+        rttColorIDs[i] = pipeline.frameGraph.RegisterGraphOwnedResource(
             TextureHandle::Invalid(), rttHandle, "RTT", FGResourceKind::RenderTarget,
             rttWidth, rttHeight, rttFormat, true);
 
@@ -572,7 +585,7 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
         if (view.execute.presentation.postProcess.enabled &&
             view.execute.presentation.postProcess.sceneTexture.IsValid())
         {
-            rttSceneIDs[i] = pipeline.frameGraph.RegisterImportedResource(
+            rttSceneIDs[i] = pipeline.frameGraph.RegisterGraphOwnedResource(
                 view.execute.presentation.postProcess.sceneTexture,
                 view.execute.opaquePass.desc.target.renderTarget,
                 "RTTSceneColor", FGResourceKind::RenderTarget,
@@ -580,7 +593,7 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
 
             if (rt->exposedDepthTexture.IsValid())
             {
-                rttSceneDepthIDs[i] = pipeline.frameGraph.RegisterImportedResource(
+                rttSceneDepthIDs[i] = pipeline.frameGraph.RegisterGraphOwnedResource(
                     rt->exposedDepthTexture,
                     RenderTargetHandle::Invalid(), "RTTSceneDepth", FGResourceKind::Depth,
                     rttWidth, rttHeight, GDXTextureFormat::D24_UNORM_S8_UINT);
@@ -588,7 +601,7 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
 
             if (rt->exposedNormalsTexture.IsValid())
             {
-                rttSceneNormalsIDs[i] = pipeline.frameGraph.RegisterImportedResource(
+                rttSceneNormalsIDs[i] = pipeline.frameGraph.RegisterGraphOwnedResource(
                     rt->exposedNormalsTexture,
                     RenderTargetHandle::Invalid(), "RTTSceneNormals", FGResourceKind::RenderTarget,
                     rttWidth, rttHeight, GDXTextureFormat::RGBA8_UNORM);
@@ -1058,32 +1071,42 @@ void GDXRenderFrameGraph::ComputeResourceLifetimes(RFG::FrameGraph& fg) const
 
 void GDXRenderFrameGraph::PlanResourceStates(RFG::FrameGraph& fg) const
 {
-    auto deriveInitialFromFirstUse = [&](const FGResourceDesc& res) -> ResourceState
+    auto deriveInitialFromFirstUse = [&](const FGResourceDesc& res, FGResourceStateSource& outSource) -> ResourceState
     {
+        outSource = FGResourceStateSource::Unknown;
+
         if (res.kind == FGResourceKind::Backbuffer)
+        {
+            outSource = FGResourceStateSource::BackbufferPresent;
             return ResourceState::Present;
+        }
 
-        // Transient resources are owned by the graph – start in COMMON and transition on first use.
         if (res.IsTransient())
+        {
+            outSource = FGResourceStateSource::TransientCommon;
             return ResourceState::Common;
+        }
 
-        // Imported resources: prefer the first declared usage.
         if (res.firstUseNode != FG_INVALID_NODE && res.firstUseNode < fg.nodes.size())
         {
             const RFG::Node& n = fg.nodes[res.firstUseNode];
             for (const FGResourceAccessDecl& a : n.accesses)
             {
                 if (a.resource == res.id && a.requiredState != ResourceState::Unknown)
+                {
+                    outSource = FGResourceStateSource::ImportedFirstUse;
                     return a.requiredState;
+                }
             }
         }
 
+        outSource = FGResourceStateSource::InferredFallback;
         return InferInitialStateForResource(res);
     };
 
     for (FGResourceDesc& resource : fg.resources)
     {
-        resource.plannedInitialState = deriveInitialFromFirstUse(resource);
+        resource.plannedInitialState = deriveInitialFromFirstUse(resource, resource.plannedInitialStateSource);
         resource.plannedFinalState = resource.plannedInitialState;
     }
 
@@ -1454,6 +1477,9 @@ bool GDXRenderFrameGraph::Validate(RFG::FrameGraph& fg) const
         if (desc.plannedInitialState == ResourceState::Unknown)
             addError("FrameGraph missing planned initial resource state on " + describeResource(rid));
 
+        if (desc.plannedInitialStateSource == FGResourceStateSource::Unknown)
+            addError("FrameGraph missing planned initial resource state source on " + describeResource(rid));
+
         if (desc.plannedFinalState == ResourceState::Unknown)
             addError("FrameGraph missing planned final resource state on " + describeResource(rid));
 
@@ -1683,10 +1709,30 @@ bool GDXRenderFrameGraph::Validate(RFG::FrameGraph& fg) const
                 "FrameGraph resource state plan: id=", rid,
                 " name='", desc.debugName,
                 "' initial=", FGResourceStateToString(desc.plannedInitialState),
+                " source=", FGResourceStateSourceToString(desc.plannedInitialStateSource),
                 " final=", FGResourceStateToString(desc.plannedFinalState),
                 " producer=", desc.producerNode,
                 " firstUse=", desc.firstUseNode,
                 " lastUse=", desc.lastUseNode);
+
+            const bool suspiciousImportedWriteStart =
+                desc.IsImported() &&
+                desc.plannedInitialStateSource == FGResourceStateSource::ImportedFirstUse &&
+                (desc.plannedInitialState == ResourceState::RenderTarget ||
+                 desc.plannedInitialState == ResourceState::DepthWrite ||
+                 desc.plannedInitialState == ResourceState::UnorderedAccess);
+
+            if (suspiciousImportedWriteStart)
+            {
+                DBWARN(GDX_SRC_LOC,
+                    "FrameGraph suspicious imported initial state: id=", rid,
+                    " name='", desc.debugName,
+                    "' initial=", FGResourceStateToString(desc.plannedInitialState),
+                    " source=", FGResourceStateSourceToString(desc.plannedInitialStateSource),
+                    " producer=", desc.producerNode,
+                    " firstUse=", desc.firstUseNode,
+                    " lastUse=", desc.lastUseNode);
+            }
         }
 
         for (uint32_t i = 0u; i < nodeCount; ++i)
