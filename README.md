@@ -17,26 +17,40 @@ The project follows a simple principle:
 - **C++17**
 - **DirectX 11**
 
-## Main page:
+## Get the Source Code 
 
-[Home](https://oyname.github.io/index.html)
+The source code is available on GitHub. 
 
-These example files can be used to verify that the engine is working as expected.
+### Option 1: Download as ZIP 
 
-## Get the Source Code
-
-The source code is available on GitHub:
-
-[Open the GitHub repository](https://github.com/oyname/Krom-Engine)
-
-### Option 1: Download as ZIP
-
-1. Open the [GitHub repository](https://github.com/oyname/Krom-Engine).
+1. Open the GitHub repository.
 2. Click **Code**.
 3. Select **Download ZIP**.
 4. Extract the ZIP file to a local folder.
-
+  
 ### Option 2: Clone with Git
 
-```bash
+bash
 git clone https://github.com/oyname/Krom-Engine.git
+
+## Open the Project in Visual Studio 
+
+The repository already includes a Visual Studio solution file:
+
+KROMEngine.sln 
+
+### Steps 
+
+1. Open **Visual Studio 2022**.
+2. Select **Open a project or solution**.
+3. Browse to the downloaded engine folder.
+4. Open KROMEngine.sln.
+5. Build the solution.
+
+## Test the Engine with Example Files
+
+You can also download example files from the official **OYNAME** website to test whether the engine builds and runs correctly. 
+
+Main page: (https://oyname.github.io/index.html)
+
+These example files can be used to verify that the engine is working as expected.
