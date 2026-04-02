@@ -17,6 +17,11 @@ The project follows a simple principle:
 - **C++17**
 - **DirectX 11**
 
+## Mein page:
+
+[Home](https://oyname.github.io/index.html)
+These example files can be used to verify that the engine is working as expected.
+
 ## Get the Source Code
 
 The source code is available on GitHub:
@@ -34,8 +39,3 @@ The source code is available on GitHub:
 
 ```bash
 git clone https://github.com/oyname/Krom-Engine.git
-
-## Mein page:
-
-[Home](https://oyname.github.io/index.html)
-These example files can be used to verify that the engine is working as expected.
