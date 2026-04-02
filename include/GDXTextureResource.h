@@ -29,6 +29,8 @@ enum class GDXTextureFormat : uint8_t
     RGBA8_UNORM,
     RGBA8_UNORM_SRGB,
     RGBA16_FLOAT,
+    D24_UNORM_S8_UINT,
+    D32_FLOAT,
 };
 
 struct GDXTextureResource

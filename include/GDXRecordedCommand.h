@@ -66,9 +66,6 @@ struct GDXRecordedDrawItem
     uint64_t               passBindingsKey = 0ull;
     uint64_t               materialBindingsKey = 0ull;
     uint64_t               drawBindingsKey = 0ull;
-    MaterialParams             materialParams{};
-    MaterialRenderPolicy       materialRenderPolicy{};
-    MaterialTextureLayerArray  materialTextureLayers{};
     bool                   receiveShadows = true;
 
     Float3                 worldBoundsCenter = {};
@@ -91,9 +88,6 @@ struct GDXRecordedDrawItem
         out.passBindingsKey = cmd.passBindingsKey;
         out.materialBindingsKey = cmd.materialBindingsKey;
         out.drawBindingsKey = cmd.drawBindingsKey;
-        out.materialParams = cmd.materialParams;
-        out.materialRenderPolicy = cmd.materialRenderPolicy;
-        out.materialTextureLayers = cmd.materialTextureLayers;
         out.receiveShadows = cmd.receiveShadows;
         out.worldBoundsCenter = cmd.worldBoundsCenter;
         out.worldBoundsRadius = cmd.worldBoundsRadius;

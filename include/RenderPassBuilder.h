@@ -60,12 +60,13 @@ namespace RenderPassBuilder
     // Baut execute.shadowPass.desc aus view.prepared.
     void BuildShadowPassExecuteInput(RFG::ViewPassData& view);
 
-    // Baut execute.graphicsPass.desc aus targetDesc und Flags.
-    void BuildGraphicsPassExecuteInput(
-        RFG::ViewPassData&        view,
+    // Baut execute.opaquePass / execute.particlePass / execute.transparentPass.
+    void BuildGraphicsPassExecuteInputs(
+        RFG::ViewPassData&          view,
         const RenderPassTargetDesc& targetDesc,
-        bool                      appendGraphicsVisibleSet,
-        bool                      appendShadowVisibleSet);
+        bool                        appendGraphicsVisibleSet,
+        bool                        appendShadowVisibleSet,
+        bool                        enableParticles);
 
     // Befüllt execute.opaqueQueue / execute.alphaQueue / execute.shadowQueue.
     // Ruft debugFn für Debug-Overlays auf wenn entsprechend konfiguriert.
@@ -83,20 +84,23 @@ namespace RenderPassBuilder
     void BuildMainViewExecuteInputs(
         RFG::ViewPassData&      view,
         const PostProcContext&  ppCtx,
-        const DebugAppendFn&    debugFn);
+        const DebugAppendFn&    debugFn,
+        bool                    enableParticles);
 
     // Baut alle Execute-Inputs für alle RTT-Views.
     void BuildRTTExecuteInputs(
         std::vector<RFG::ViewPassData>&                           views,
         ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore,
         const PostProcContext&                                    ppCtx,
-        const DebugAppendFn&                                      debugFn);
+        const DebugAppendFn&                                      debugFn,
+        bool                                                      enableParticles);
 
     // Baut Execute-Inputs für den gesamten Frame (RTT + Main).
     void BuildFrameExecuteInputs(
         RFG::PipelineData&                                       pipeline,
         ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore,
         const PostProcContext&                                   ppCtx,
-        const DebugAppendFn&                                     debugFn);
+        const DebugAppendFn&                                     debugFn,
+        bool                                                     enableParticles);
 
 } // namespace RenderPassBuilder

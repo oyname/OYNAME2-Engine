@@ -29,14 +29,16 @@
 
 namespace
 {
-    DXGI_FORMAT ToDxgiColorFormat(GDXTextureFormat format)
+    DXGI_FORMAT ToDxgiTextureFormat(GDXTextureFormat format)
     {
         switch (format)
         {
-        case GDXTextureFormat::RGBA8_UNORM_SRGB: return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-        case GDXTextureFormat::RGBA16_FLOAT:     return DXGI_FORMAT_R16G16B16A16_FLOAT;
+        case GDXTextureFormat::RGBA8_UNORM_SRGB:  return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+        case GDXTextureFormat::RGBA16_FLOAT:      return DXGI_FORMAT_R16G16B16A16_FLOAT;
+        case GDXTextureFormat::D24_UNORM_S8_UINT: return DXGI_FORMAT_D24_UNORM_S8_UINT;
+        case GDXTextureFormat::D32_FLOAT:         return DXGI_FORMAT_D32_FLOAT;
         case GDXTextureFormat::RGBA8_UNORM:
-        default:                                 return DXGI_FORMAT_R8G8B8A8_UNORM;
+        default:                                  return DXGI_FORMAT_R8G8B8A8_UNORM;
         }
     }
 
@@ -110,76 +112,31 @@ namespace
         if (blend) blend->Release();
     }
 
-    static TextureHandle ResolvePassTextureHandle(const GDXPassResourceUsageEntry& entry,
-                                                  const GDXRenderTargetResource* currentRt) noexcept
-    {
-        if (entry.texture.IsValid())
-            return entry.texture;
-
-        if (!currentRt)
-            return TextureHandle::Invalid();
-
-        switch (entry.kind)
-        {
-        case GDXPassResourceKind::RenderTarget:
-            return currentRt->exposedTexture;
-        default:
-            return TextureHandle::Invalid();
-        }
-    }
-
-    static TextureHandle ResolvePlannedTransitionTexture(const GDXPlannedResourceTransition& entry,
+    static TextureHandle ResolvePlannedTransitionTexture(const BackendPlannedTransition& entry,
                                                          const GDXRenderTargetResource* currentRt) noexcept
     {
         if (entry.texture.IsValid())
             return entry.texture;
 
-        if (!currentRt)
-            return TextureHandle::Invalid();
-
-        switch (entry.kind)
-        {
-        case GDXPassResourceKind::RenderTarget:
+        if (entry.renderTarget.IsValid() && currentRt)
             return currentRt->exposedTexture;
-        default:
-            return TextureHandle::Invalid();
-        }
+
+        return TextureHandle::Invalid();
     }
 
     static void ApplyPlannedTransitions(GDXDX11RenderExecutor& executor,
-                                        const GDXPlannedResourceTransitionSet& transitions,
+                                        const std::vector<BackendPlannedTransition>& transitions,
                                         const GDXRenderTargetResource* currentRt,
                                         const char* debugReason)
     {
-        for (uint32_t i = 0u; i < transitions.count; ++i)
+        for (const BackendPlannedTransition& entry : transitions)
         {
-            const GDXPlannedResourceTransition& entry = transitions.entries[i];
             const TextureHandle texture = ResolvePlannedTransitionTexture(entry, currentRt);
             if (!texture.IsValid())
                 continue;
 
             executor.TransitionTexture(texture, entry.before, entry.after, debugReason);
         }
-    }
-
-    static void ApplyDeclaredPassBeginTransitions(GDXDX11RenderExecutor& executor,
-                                                  const BackendRenderPassDesc& passDesc,
-                                                  const GDXRenderTargetResource* currentRt)
-    {
-        GDXPlannedResourceTransitionSet beginTransitions{};
-        GDXPlannedResourceTransitionSet endTransitions{};
-        GDXBuildPassTransitionPlan(passDesc.resources, beginTransitions, endTransitions);
-        ApplyPlannedTransitions(executor, beginTransitions, currentRt, "DeclaredPass begin");
-    }
-
-    static void ApplyDeclaredPassEndTransitions(GDXDX11RenderExecutor& executor,
-                                                const BackendRenderPassDesc& passDesc,
-                                                const GDXRenderTargetResource* currentRt)
-    {
-        GDXPlannedResourceTransitionSet beginTransitions{};
-        GDXPlannedResourceTransitionSet endTransitions{};
-        GDXBuildPassTransitionPlan(passDesc.resources, beginTransitions, endTransitions);
-        ApplyPlannedTransitions(executor, endTransitions, currentRt, "DeclaredPass end");
     }
 }
 
@@ -207,66 +164,36 @@ struct DebugSmokeVertexPosColor
 
 namespace
 {
-    void ExecuteMainPassCommon(
+    void BindCommonScenePassState(
         ID3D11DeviceContext* ctx,
         ID3D11RasterizerState* rasterizerState,
         ID3D11DepthStencilState* depthStencilState,
-        ID3D11DepthStencilState* depthStateNoWrite,
         ID3D11BlendState* blendState,
-        ID3D11BlendState* blendStateAlpha,
         GDXSamplerCache& samplerCache,
-        GDXDX11RenderExecutor& executor,
-        GDXShadowMap& shadowMap,
-        bool hasShadowPass,
         bool iblValid, ID3D11ShaderResourceView* iblIrr, ID3D11ShaderResourceView* iblEnv, ID3D11ShaderResourceView* iblLut,
-        GDXDX11TileLightCuller& tileCuller,
-        GDXDX11GpuRegistry& gpuRegistry,
-        GDXDX11ParticleRenderer* particleRenderer,
-        const GDXParticleSystem* queuedParticleSystem,
-        const ParticleRenderContext* queuedParticleCtx,
-        Registry& registry,
-        const ICommandList& opaqueQueue,
-        const ICommandList& transparentQueue,
-        ResourceStore<MeshAssetResource, MeshTag>& meshStore,
-        ResourceStore<MaterialResource, MaterialTag>& matStore,
-        ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
-        ResourceStore<GDXTextureResource, TextureTag>& texStore)
+        GDXDX11TileLightCuller& tileCuller)
     {
         if (!ctx) return;
 
         const float bf[4] = { 0,0,0,0 };
-        ID3D11ShaderResourceView* shadowSrv = (hasShadowPass && shadowMap.IsReady()) ? static_cast<ID3D11ShaderResourceView*>(shadowMap.GetSRV()) : nullptr;
-
         ctx->RSSetState(rasterizerState);
         ctx->OMSetDepthStencilState(depthStencilState, 0u);
         ctx->OMSetBlendState(blendState, bf, 0xFFFFFFFF);
         samplerCache.BindAll(ctx);
 
-        // IBL auf t17/t18/t19 binden (Irradiance, Prefiltered, BRDF-LUT)
         if (iblValid && iblIrr && iblEnv && iblLut)
         {
             ID3D11ShaderResourceView* iblSRVs[3] = { iblIrr, iblEnv, iblLut };
             ctx->PSSetShaderResources(17u, 3u, iblSRVs);
         }
 
-        // Forward+: bind tile light SRVs (t20/t21/t22) + tile info cbuffer (b3)
         if (tileCuller.IsReady())
             tileCuller.BindForPS(ctx);
+    }
 
-        if (!opaqueQueue.Empty())
-            executor.ExecuteQueue(registry, opaqueQueue, meshStore, matStore, shaderStore, texStore, gpuRegistry, shadowSrv);
-
-        if (particleRenderer && queuedParticleSystem && queuedParticleCtx)
-            particleRenderer->Render(*queuedParticleSystem, *queuedParticleCtx);
-
-        ctx->OMSetDepthStencilState(depthStateNoWrite, 0u);
-        ctx->OMSetBlendState(blendStateAlpha, bf, 0xFFFFFFFF);
-        if (!transparentQueue.Empty())
-            executor.ExecuteQueue(registry, transparentQueue, meshStore, matStore, shaderStore, texStore, gpuRegistry, shadowSrv);
-
-        ctx->OMSetDepthStencilState(depthStencilState, 0u);
-        ctx->OMSetBlendState(blendState, bf, 0xFFFFFFFF);
-
+    void UnbindCommonScenePassState(ID3D11DeviceContext* ctx, GDXDX11TileLightCuller& tileCuller)
+    {
+        if (!ctx) return;
         if (tileCuller.IsReady())
             tileCuller.UnbindFromPS(ctx);
     }
@@ -422,8 +349,6 @@ bool GDXDX11RenderBackend::InitParticleRenderer(TextureHandle atlasTexture)
 {
     m_particlesReady       = false;
     m_particleAtlas        = atlasTexture;
-    m_queuedParticleSystem = nullptr;
-    m_queuedParticleCtx    = {};
 
     if (!atlasTexture.IsValid() || !m_device || !m_ctx)
         return false;
@@ -439,18 +364,17 @@ bool GDXDX11RenderBackend::InitParticleRenderer(TextureHandle atlasTexture)
     return true;
 }
 
-void GDXDX11RenderBackend::QueueParticles(const GDXParticleSystem* system, const ParticleRenderContext& ctx)
-{
-    if (!m_particlesReady || !system)
-        return;
-
-    m_queuedParticleSystem = system;
-    m_queuedParticleCtx    = ctx;
-}
 
 void GDXDX11RenderBackend::BeginFrame(const float clearColor[4])
 {
     if (!m_context || !m_ctx) return;
+
+    // The frame graph plans transient resources from a fresh per-frame baseline.
+    // The DX11 debug/state tracker must therefore not carry transient states
+    // across frame boundaries, otherwise FrameGraphBegin will report mismatches
+    // like tracked=RenderTarget / expectedBefore=Common on the first pass of
+    // the next frame.
+    m_executor.ResetTrackedResourceStates();
 
     auto* rtv = static_cast<ID3D11RenderTargetView*>(m_context->GetRenderTarget());
     auto* dsv = static_cast<ID3D11DepthStencilView*>(m_context->GetDepthStencil());
@@ -464,7 +388,6 @@ void GDXDX11RenderBackend::BeginFrame(const float clearColor[4])
     const float bf[4] = { 0,0,0,0 };
     m_ctx->OMSetBlendState(m_blendState, bf, 0xFFFFFFFF);
     m_samplerCache.BindAll(m_ctx);
-    m_queuedParticleSystem = nullptr;
 }
 
 void GDXDX11RenderBackend::Present(bool vsync)
@@ -782,7 +705,7 @@ void GDXDX11RenderBackend::BuildGraphicsPassCommands(const BackendRenderPassDesc
         ? GDXPassTargetKind::Backbuffer
         : GDXPassTargetKind::RenderTarget;
     begin.renderTarget = passDesc.target.renderTarget;
-    begin.bindNormalsTarget = begin.targetKind == GDXPassTargetKind::RenderTarget;
+    begin.bindNormalsTarget = begin.targetKind == GDXPassTargetKind::RenderTarget && passDesc.bindNormalsTarget;
     begin.clear = passDesc.target.clear;
     begin.viewport.width = passDesc.target.viewportWidth;
     begin.viewport.height = passDesc.target.viewportHeight;
@@ -972,6 +895,8 @@ void GDXDX11RenderBackend::ExecutePassCommandList(
 
 void GDXDX11RenderBackend::ExecuteRenderPass(
     const BackendRenderPassDesc& passDesc,
+    const std::vector<BackendPlannedTransition>& beginTransitions,
+    const std::vector<BackendPlannedTransition>& endTransitions,
     Registry& registry,
     const ICommandList& opaqueList,
     const ICommandList& alphaList,
@@ -997,37 +922,54 @@ void GDXDX11RenderBackend::ExecuteRenderPass(
         BuildGraphicsPassCommands(passDesc, passCommands);
         ExecutePassCommandList(passCommands, &rtStore);
 
+        const float blendFactor[4] = { 0,0,0,0 };
         m_ctx->RSSetState(m_rasterizerState);
         m_ctx->OMSetDepthStencilState(m_depthStencilState, 0u);
-        const float bf[4] = { 0,0,0,0 };
-        m_ctx->OMSetBlendState(m_blendState, bf, 0xFFFFFFFFu);
+        m_ctx->OMSetBlendState(m_blendState, blendFactor, 0xFFFFFFFFu);
 
         LogDx11MainPassState(m_ctx, rtv, dsv, m_rasterizerState, m_depthStencilState, m_blendState, "before-main");
 
-        ExecuteMainPassCommon(
+        BindCommonScenePassState(
             m_ctx,
             m_rasterizerState,
             m_depthStencilState,
-            m_depthStateNoWrite,
             m_blendState,
-            m_blendStateAlpha,
             m_samplerCache,
-            m_executor,
-            m_shadowMap,
-            m_hasShadowPass,
             m_iblValid, m_iblIrradiance, m_iblPrefiltered, m_iblBrdfLut,
-            m_tileCuller,
-            m_gpuRegistry,
-            (passDesc.target.useBackbuffer || !passDesc.target.renderTarget.IsValid()) && m_particlesReady ? &m_particleRenderer : nullptr,
-            (passDesc.target.useBackbuffer || !passDesc.target.renderTarget.IsValid()) ? m_queuedParticleSystem : nullptr,
-            (passDesc.target.useBackbuffer || !passDesc.target.renderTarget.IsValid()) ? &m_queuedParticleCtx : nullptr,
-            registry,
-            opaqueRef,
-            alphaRef,
-            meshStore,
-            matStore,
-            shaderStore,
-            texStore);
+            m_tileCuller);
+
+        ID3D11ShaderResourceView* shadowSrv =
+            (m_hasShadowPass && m_shadowMap.IsReady()) ? static_cast<ID3D11ShaderResourceView*>(m_shadowMap.GetSRV()) : nullptr;
+
+        switch (passDesc.pass)
+        {
+        case RenderPass::Opaque:
+            if (!opaqueRef.Empty())
+                m_executor.ExecuteQueue(registry, opaqueRef, meshStore, matStore, shaderStore, texStore, m_gpuRegistry, shadowSrv);
+            break;
+
+        case RenderPass::Transparent:
+        {
+            m_ctx->OMSetDepthStencilState(m_depthStateNoWrite, 0u);
+            m_ctx->OMSetBlendState(m_blendStateAlpha, blendFactor, 0xFFFFFFFFu);
+            if (!alphaRef.Empty())
+                m_executor.ExecuteQueue(registry, alphaRef, meshStore, matStore, shaderStore, texStore, m_gpuRegistry, shadowSrv);
+            break;
+        }
+
+        case RenderPass::ParticlesTransparent:
+            m_ctx->OMSetDepthStencilState(m_depthStateNoWrite, 0u);
+            if (m_particlesReady && passDesc.particleSubmission && !passDesc.particleSubmission->Empty())
+                m_particleRenderer.Render(*passDesc.particleSubmission);
+            break;
+
+        default:
+            break;
+        }
+
+        m_ctx->OMSetDepthStencilState(m_depthStencilState, 0u);
+        m_ctx->OMSetBlendState(m_blendState, blendFactor, 0xFFFFFFFFu);
+        UnbindCommonScenePassState(m_ctx, m_tileCuller);
 
         LogDx11MainPassState(m_ctx, rtv, dsv, m_rasterizerState, m_depthStencilState, m_blendState, "after-main");
     };
@@ -1055,13 +997,13 @@ void GDXDX11RenderBackend::ExecuteRenderPass(
     ID3D11ShaderResourceView* nullSrvs[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
     m_ctx->PSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, nullSrvs);
 
-    ApplyDeclaredPassBeginTransitions(m_executor, passDesc, rt);
+    ApplyPlannedTransitions(m_executor, beginTransitions, rt, "FrameGraphBegin");
 
     executeGraphics(rtv, dsv);
 
     m_ctx->PSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, nullSrvs);
 
-    ApplyDeclaredPassEndTransitions(m_executor, passDesc, rt);
+    ApplyPlannedTransitions(m_executor, endTransitions, rt, "FrameGraphEnd");
 
     if (m_context)
     {
@@ -1080,6 +1022,8 @@ void GDXDX11RenderBackend::ExecuteRenderPass(
 
 void GDXDX11RenderBackend::ExecuteShadowPass(
     const BackendRenderPassDesc& passDesc,
+    const std::vector<BackendPlannedTransition>& beginTransitions,
+    const std::vector<BackendPlannedTransition>& endTransitions,
     Registry& registry,
     const ICommandList& commandList,
     ResourceStore<MeshAssetResource, MeshTag>& meshStore,
@@ -1129,6 +1073,7 @@ void GDXDX11RenderBackend::ExecuteShadowPass(
         m_executor.UpdateShadowPassInfo(cascade);
 
         m_hasShadowPass = true;
+        ApplyPlannedTransitions(m_executor, beginTransitions, nullptr, "FrameGraphBegin");
         GDXPassCommandList shadowPassCommands;
         BuildShadowPassCommands(cascade, shadowPassCommands);
         ExecutePassCommandList(shadowPassCommands, nullptr, nullptr, nullptr, nullptr, nullptr, true);
@@ -1136,6 +1081,7 @@ void GDXDX11RenderBackend::ExecuteShadowPass(
         GDXPassCommandList shadowEndCommands;
         shadowEndCommands.EndPass();
         ExecutePassCommandList(shadowEndCommands, nullptr, nullptr, nullptr, nullptr, nullptr, true);
+        ApplyPlannedTransitions(m_executor, endTransitions, nullptr, "FrameGraphEnd");
     }
 
     m_executor.UpdateFrameConstants(*frame);
@@ -1476,11 +1422,27 @@ bool GDXDX11RenderBackend::HasShadowResources() const
 bool GDXDX11RenderBackend::SupportsTextureFormat(GDXTextureFormat format) const
 {
     if (!m_device) return false;
+
     UINT support = 0;
-    const HRESULT hr = m_device->CheckFormatSupport(ToDxgiColorFormat(format), &support);
-    if (FAILED(hr)) return false;
-    return (support & D3D11_FORMAT_SUPPORT_RENDER_TARGET) != 0 &&
-        (support & D3D11_FORMAT_SUPPORT_SHADER_SAMPLE) != 0;
+    const HRESULT hr = m_device->CheckFormatSupport(ToDxgiTextureFormat(format), &support);
+    if (FAILED(hr))
+        return false;
+
+    switch (format)
+    {
+    case GDXTextureFormat::D24_UNORM_S8_UINT:
+    case GDXTextureFormat::D32_FLOAT:
+        return (support & D3D11_FORMAT_SUPPORT_DEPTH_STENCIL) != 0;
+
+    case GDXTextureFormat::RGBA8_UNORM:
+    case GDXTextureFormat::RGBA8_UNORM_SRGB:
+    case GDXTextureFormat::RGBA16_FLOAT:
+        return (support & D3D11_FORMAT_SUPPORT_RENDER_TARGET) != 0 &&
+               (support & D3D11_FORMAT_SUPPORT_SHADER_SAMPLE) != 0;
+
+    default:
+        return false;
+    }
 }
 
 const IGDXRenderBackend::DefaultTextureSet& GDXDX11RenderBackend::GetDefaultTextures() const
@@ -1534,7 +1496,7 @@ bool GDXDX11RenderBackend::EnsurePostProcessSurface(DX11PostProcessSurfaceGpu& s
     texDesc.Height = height;
     texDesc.MipLevels = 1;
     texDesc.ArraySize = 1;
-    texDesc.Format = ToDxgiColorFormat(format);
+    texDesc.Format = ToDxgiTextureFormat(format);
     texDesc.SampleDesc.Count = 1;
     texDesc.Usage = D3D11_USAGE_DEFAULT;
     texDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
@@ -1683,6 +1645,7 @@ void GDXDX11RenderBackend::DestroyPostProcessPasses(ResourceStore<PostProcessRes
 }
 
 bool GDXDX11RenderBackend::ExecutePostProcessChain(const std::vector<PostProcessHandle>& orderedPasses,
+    const std::vector<PostProcessPassConstantOverride>* constantOverrides,
     ResourceStore<PostProcessResource, PostProcessTag>& postStore,
     ResourceStore<GDXTextureResource, TextureTag>& texStore,
     ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore,
@@ -1739,6 +1702,16 @@ bool GDXDX11RenderBackend::ExecutePostProcessChain(const std::vector<PostProcess
             active.push_back(handle);
     }
     if (active.empty()) return false;
+
+    auto FindConstantOverride = [&](PostProcessHandle handle) -> const PostProcessPassConstantOverride*
+    {
+        if (!constantOverrides)
+            return nullptr;
+        for (const PostProcessPassConstantOverride& ov : *constantOverrides)
+            if (ov.pass == handle)
+                return &ov;
+        return nullptr;
+    };
 
     // --- SceneColor-Textur als Basis für Ping-Pong ---
     const auto* sceneRes = texStore.Get(execInputs.sceneColor);
@@ -1891,14 +1864,29 @@ bool GDXDX11RenderBackend::ExecutePostProcessChain(const std::vector<PostProcess
         //    L" PS=" + pass->desc.pixelShaderFile);
 
         // --- Constant Buffer Upload ---
-        if (runtime.constantBuffer && pass->cpuDirty)
+        const PostProcessPassConstantOverride* constantOverride = FindConstantOverride(active[i]);
+        const std::vector<uint8_t>* constantSource = nullptr;
+        bool clearCpuDirty = false;
+
+        if (constantOverride && !constantOverride->constantData.empty())
+        {
+            constantSource = &constantOverride->constantData;
+        }
+        else if (pass->cpuDirty && !pass->constantData.empty())
+        {
+            constantSource = &pass->constantData;
+            clearCpuDirty = true;
+        }
+
+        if (runtime.constantBuffer && constantSource && !constantSource->empty())
         {
             D3D11_MAPPED_SUBRESOURCE mapped = {};
             if (SUCCEEDED(m_ctx->Map(runtime.constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
             {
-                std::memcpy(mapped.pData, pass->constantData.data(), pass->constantData.size());
+                std::memcpy(mapped.pData, constantSource->data(), constantSource->size());
                 m_ctx->Unmap(runtime.constantBuffer, 0);
-                pass->cpuDirty = false;
+                if (clearCpuDirty)
+                    pass->cpuDirty = false;
             }
         }
 
@@ -1961,9 +1949,7 @@ bool GDXDX11RenderBackend::ExecutePostProcessChain(const std::vector<PostProcess
                 break;
             }
 
-            const uint32_t reg = (binding.semantic == PostProcessInputSemantic::ShadowMap)
-                ? static_cast<uint32_t>(GDXDX11PixelShaderRegisterForSemantic(GDXShaderTextureSemantic::ShadowMap))
-                : binding.shaderRegister;
+            const uint32_t reg = binding.shaderRegister;
             if (reg < kMaxBindSlots)
             {
                 srvArray[reg] = srv;
@@ -2208,7 +2194,7 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
     texDesc.Height = height;
     texDesc.MipLevels = 1;
     texDesc.ArraySize = 1;
-    texDesc.Format = ToDxgiColorFormat(colorFormat);
+    texDesc.Format = ToDxgiTextureFormat(colorFormat);
     texDesc.SampleDesc.Count = 1;
     texDesc.Usage = D3D11_USAGE_DEFAULT;
     texDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
@@ -2349,7 +2335,7 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
     depthTexRes.height   = height;
     depthTexRes.ready    = true;
     depthTexRes.isSRGB   = false;
-    depthTexRes.format   = GDXTextureFormat::Unknown;
+    depthTexRes.format   = GDXTextureFormat::D24_UNORM_S8_UINT;
     depthTexRes.semantic = GDXTextureSemantic::Depth;
     depthTexRes.usageDesc.usage = GDXResourceUsage::DepthStencil | GDXResourceUsage::ShaderResource;
     depthTexRes.usageDesc.lifetime = GDXResourceLifetime::Transient;

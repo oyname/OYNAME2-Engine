@@ -435,6 +435,13 @@ struct PostProcessPassDesc
     std::vector<PostProcessInputSlotDesc> inputSlots;
 };
 
+
+struct PostProcessPassConstantOverride
+{
+    PostProcessHandle pass = PostProcessHandle::Invalid();
+    std::vector<uint8_t> constantData;
+};
+
 struct PostProcessResource
 {
     PostProcessPassDesc desc;

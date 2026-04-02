@@ -4,6 +4,7 @@
 //  Backend-neutral simulation. Billboard corners built in VS.
 // ============================================================
 #include "Particles/GDXParticleTypes.h"
+#include "Particles/IGDXParticleRenderer.h"
 #include "Core/GDXMath.h"
 #include <vector>
 #include <random>
@@ -36,23 +37,15 @@ public:
                        const Matrix4& worldMatrix,
                        float worldScale = 1.0f);
 
-    // viewMat = camera VIEW matrix (GDX::MatrixLookAtLH output).
-    // Extracts camRight/camUp (stored for renderer) and runs simulation.
-    void Update(float deltaMs, const Matrix4& viewMat);
+    // Global simulation step. No view-specific render preparation happens here.
+    void Update(float deltaMs);
 
-    // GPU instances — one per live particle, rebuilt every frame.
-    // blendMode 0 = alpha,  1 = additive.
-    const std::vector<ParticleInstance>& GetInstances(int blendMode) const
-    {
-        return m_instances[blendMode];
-    }
-
-    // Camera basis extracted from viewMat in Update() — needed by renderer cbuffer.
-    Float3 GetCamRight() const { return m_camRight; }
-    Float3 GetCamUp   () const { return m_camUp;    }
+    // Per-view render preparation. Visibility, billboard alignment and
+    // transparency sorting are derived from the supplied render context.
+    void BuildRenderSubmission(const ParticleRenderContext& ctx,
+                               ParticleRenderSubmission& outSubmission) const;
 
     int GetParticleCount () const { return (int)m_particles.size(); }
-    int GetRenderedCount () const { return m_renderedCount; }
 
 private:
     struct EmitterSubmission
@@ -86,8 +79,15 @@ private:
     int  GetTypeTrailSpawnBudgetPerFrame(int typeID) const;
     bool IsSpecializedType(int typeID) const;
 
-    // Builds one ParticleInstance from a simulated particle.
-    void BuildInstance(const GDXParticle& p, int blendMode, int nowMs);
+    bool BuildInstance(const GDXParticle& p,
+                       const ParticleRenderContext& ctx,
+                       int blendMode,
+                       int nowMs,
+                       ParticleInstance& outInstance) const;
+
+    bool IsVisibleInView(const GDXParticle& p,
+                         const ParticleRenderContext& ctx,
+                         float size) const;
 
     static uint32_t PackRGBA8(float r255, float g255, float b255, float a01);
 
@@ -112,7 +112,6 @@ private:
     std::vector<GDXParticle>       m_particles;
     std::vector<GDXParticle>       m_spawnQueue;
 
-    std::vector<ParticleInstance>  m_instances[2];
 
     std::array<int, GDX_MAX_PARTICLE_TYPES + 1> m_aliveCountByType        = {};
     std::array<int, GDX_MAX_PARTICLE_TYPES + 1> m_spawnedThisFrameByType   = {};
@@ -126,10 +125,4 @@ private:
     int m_spawnedThisFrameTotal    = 0;
     int m_bounceSpawnCountThisFrame= 0;
 
-
-    // Camera basis stored after each Update() for the renderer cbuffer.
-    Float3 m_camRight = { 1.0f, 0.0f, 0.0f };
-    Float3 m_camUp    = { 0.0f, 1.0f, 0.0f };
-
-    int m_renderedCount = 0;
 };

@@ -55,6 +55,10 @@ private:
 
     void Finalize(RFG::FrameGraph& fg);
     void BuildDependencies(RFG::FrameGraph& fg);
+    void ComputeResourceLifetimes(RFG::FrameGraph& fg) const;
+    void PlanResourceStates(RFG::FrameGraph& fg) const;
+    void ComputeReachabilityFromSinks(RFG::FrameGraph& fg, std::vector<uint8_t>& liveNodes, std::vector<uint8_t>& liveResources) const;
+    void CompactToLiveSubgraph(RFG::FrameGraph& fg, const std::vector<uint8_t>& liveNodes, const std::vector<uint8_t>& liveResources) const;
     bool BuildExecutionOrder(RFG::FrameGraph& fg) const;
     bool Validate(RFG::FrameGraph& fg) const;
 

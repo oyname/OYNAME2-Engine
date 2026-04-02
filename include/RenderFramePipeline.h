@@ -13,6 +13,8 @@
 #include "GDXRenderTargetResource.h"
 #include "PostProcessResource.h"
 #include "ECS/Registry.h"
+#include "GDXTextureResource.h"
+#include "Particles/IGDXParticleRenderer.h"
 
 #include <vector>
 #include <string>
@@ -26,13 +28,125 @@
 
 using FGResourceID = uint32_t;
 static constexpr FGResourceID FG_INVALID_RESOURCE = UINT32_MAX;
+static constexpr uint32_t FG_INVALID_NODE = UINT32_MAX;
+
+enum class FGResourceLifetime : uint8_t
+{
+    Imported = 0,
+    Transient = 1,
+};
+
+enum class FGResourceKind : uint8_t
+{
+    Unknown      = 0,
+    Backbuffer   = 1,
+    Texture      = 2,
+    RenderTarget = 3,
+    Depth        = 4,
+    Shadow       = 5,
+    History      = 6,
+};
+
+const char* FGResourceLifetimeToString(FGResourceLifetime lifetime);
+const char* FGResourceKindToString(FGResourceKind kind);
+const char* FGResourceFormatToString(GDXTextureFormat format);
+
+enum class FGShadowResourcePolicy : uint8_t
+{
+    LocalPerView = 0,
+    GlobalSharedMainView = 1,
+};
+
+const char* FGShadowResourcePolicyToString(FGShadowResourcePolicy policy);
 
 struct FGResourceDesc
 {
     FGResourceID       id           = FG_INVALID_RESOURCE;
     TextureHandle      texture      = TextureHandle::Invalid();
     RenderTargetHandle renderTarget = RenderTargetHandle::Invalid();
-    const char*        debugName    = "";
+    std::string        debugName    = "";
+    FGResourceLifetime lifetime     = FGResourceLifetime::Imported;
+    FGResourceKind     kind         = FGResourceKind::Unknown;
+    uint32_t           width        = 0u;
+    uint32_t           height       = 0u;
+    GDXTextureFormat   format       = GDXTextureFormat::Unknown;
+    uint32_t           producerNode = FG_INVALID_NODE;
+    uint32_t           firstUseNode = FG_INVALID_NODE;
+    uint32_t           lastUseNode  = FG_INVALID_NODE;
+    ResourceState      plannedInitialState = ResourceState::Unknown;
+    ResourceState      plannedFinalState = ResourceState::Unknown;
+    bool               externalOutput = false; // marks resources that are consumed outside the graph (swapchain, RTT targets, etc.)
+
+    bool IsImported() const { return lifetime == FGResourceLifetime::Imported; }
+    bool IsTransient() const { return lifetime == FGResourceLifetime::Transient; }
+    bool HasProducer() const { return producerNode != FG_INVALID_NODE; }
+    bool HasUses() const { return firstUseNode != FG_INVALID_NODE; }
+};
+
+enum class FGResourceAccessMode : uint8_t
+{
+    Read = 0,
+    Write,
+    ReadWrite,
+};
+
+enum class FGResourceAccessType : uint8_t
+{
+    // Graphics
+    RenderTarget = 0,
+    DepthStencil,
+    ShaderResource,
+    UnorderedAccess,
+
+    // Transfer
+    CopySource,
+    CopyDest,
+
+    // Presentation
+    PresentSource,
+
+    // Persistent frame-to-frame resources (temporal AA, history buffers, etc.)
+    History,
+};
+
+inline const char* FGResourceAccessTypeToString(FGResourceAccessType t) noexcept
+{
+    switch (t)
+    {
+    case FGResourceAccessType::RenderTarget:    return "RenderTarget";
+    case FGResourceAccessType::DepthStencil:    return "DepthStencil";
+    case FGResourceAccessType::ShaderResource:  return "ShaderResource";
+    case FGResourceAccessType::UnorderedAccess: return "UnorderedAccess";
+    case FGResourceAccessType::CopySource:      return "CopySource";
+    case FGResourceAccessType::CopyDest:        return "CopyDest";
+    case FGResourceAccessType::PresentSource:   return "PresentSource";
+    case FGResourceAccessType::History:         return "History";
+    default:                                    return "<invalid>";
+    }
+}
+
+struct FGResourceAccessDecl
+{
+    FGResourceID resource = FG_INVALID_RESOURCE;
+    FGResourceAccessType type = FGResourceAccessType::ShaderResource;
+    FGResourceAccessMode mode = FGResourceAccessMode::Read;
+    ResourceState requiredState = ResourceState::Unknown;
+
+    bool IsRead() const noexcept
+    {
+        return mode == FGResourceAccessMode::Read || mode == FGResourceAccessMode::ReadWrite;
+    }
+    bool IsWrite() const noexcept
+    {
+        return mode == FGResourceAccessMode::Write || mode == FGResourceAccessMode::ReadWrite;
+    }
+};
+
+struct FGPlannedTransition
+{
+    FGResourceID  resource = FG_INVALID_RESOURCE;
+    ResourceState before = ResourceState::Unknown;
+    ResourceState after  = ResourceState::Unknown;
 };
 
 // ---------------------------------------------------------------------------
@@ -56,6 +170,8 @@ class IGDXRenderBackend;  // forward — vollständige Definition in IGDXRenderB
 
 namespace RFG
 {
+
+struct FrameGraph;
 
 struct ViewStats
 {
@@ -119,6 +235,8 @@ struct PostProcExec
     bool          enabled      = false;
     TextureHandle sceneTexture = TextureHandle::Invalid();  // bleibt für FrameGraph-Key-Berechnung
     PostProcessExecutionInputs execInputs{};                // vollständige deklarative Inputs (Stufe B)
+    std::vector<PostProcessHandle> orderedPasses{};
+    std::vector<PostProcessPassConstantOverride> constantOverrides{};
     RenderTargetHandle outputTarget = RenderTargetHandle::Invalid();
     bool          outputToBackbuffer = true;
 
@@ -127,6 +245,8 @@ struct PostProcExec
         enabled = false;
         sceneTexture = TextureHandle::Invalid();
         execInputs.Reset();
+        orderedPasses.clear();
+        constantOverrides.clear();
         outputTarget = RenderTargetHandle::Invalid();
         outputToBackbuffer = true;
     }
@@ -146,7 +266,10 @@ struct ExecuteData
     FrameData frame{};
 
     PassExec    shadowPass{};
-    PassExec    graphicsPass{};
+    PassExec    opaquePass{};
+    PassExec    particlePass{};
+    ParticleRenderSubmission particleSubmission{};
+    PassExec    transparentPass{};
     RenderQueue shadowQueue{};
 
     // Pre-split by the planning layer (BuildPreparedExecutionQueues).
@@ -161,7 +284,11 @@ struct ExecuteData
     void Reset()
     {
         frame = {};
-        shadowPass.Reset(); graphicsPass.Reset();
+        shadowPass.Reset();
+        opaquePass.Reset();
+        particlePass.Reset();
+        particleSubmission = {};
+        transparentPass.Reset();
         shadowQueue.Clear();
         opaqueQueue.Clear(); alphaQueue.Clear();
         presentation.Reset();
@@ -173,6 +300,7 @@ struct ViewPassData
     ViewData    prepared{};
     ExecuteData execute{};
     ViewStats   stats{};
+    FGShadowResourcePolicy shadowResourcePolicy = FGShadowResourcePolicy::LocalPerView;
     VisibleSet  graphicsVisibleSet{};
     VisibleSet  shadowVisibleSet{};
     std::vector<RenderGatherSystem::GatherChunkResult> graphicsGatherChunks{};
@@ -189,6 +317,7 @@ struct ViewPassData
     void Reset()
     {
         prepared.Reset(); execute.Reset(); stats.Reset();
+        shadowResourcePolicy = FGShadowResourcePolicy::LocalPerView;
         graphicsVisibleSet = {}; shadowVisibleSet = {};
         graphicsGatherChunks.clear(); shadowGatherChunks.clear();
         opaqueQueue.Clear(); transparentQueue.Clear(); shadowQueue.Clear();
@@ -200,11 +329,12 @@ struct ViewPassData
     // execute.opaqueQueue / execute.alphaQueue — no merge needed.
 };
 
-enum class NodeKind : uint8_t
+enum class PassType : uint8_t
 {
-    Shadow       = 0,   // ShadowPass
-    Graphics     = 1,   // GraphicsPass
-    Presentation = 2    // PostProcess → Backbuffer
+    Graphics  = 0,
+    Compute   = 1,
+    Transfer  = 2,
+    Present   = 3,
 };
 
 // ExecContext — vollständig hier definiert damit Node::executeFn instantiiert werden kann.
@@ -224,13 +354,17 @@ struct ExecContext
     ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore           = nullptr;
     ResourceStore<PostProcessResource,     PostProcessTag>*  postProcessStore  = nullptr;
     Registry* registry = nullptr;
+    const FrameGraph* frameGraph = nullptr;
 
     const std::vector<PostProcessHandle>* postProcessPassOrder = nullptr;
+    const std::vector<BackendPlannedTransition>* beginTransitions = nullptr;
+    const std::vector<BackendPlannedTransition>* endTransitions = nullptr;
 };
 
 struct Node
 {
-    NodeKind kind = NodeKind::Graphics;
+    PassType passType = PassType::Graphics;
+    std::string debugName{};
 
     const ExecuteData* executeInput = nullptr;
     ViewStats*         statsOutput  = nullptr;
@@ -239,22 +373,50 @@ struct Node
     bool     enabled   = false;
     bool     countedAsRenderTargetView = false;
     bool     updateFrameConstants = true; // false für Presentation-Nodes
+    FGShadowResourcePolicy shadowResourcePolicy = FGShadowResourcePolicy::LocalPerView;
 
-    // Execute-Logik direkt im Node — kein switch/NodeKind mehr in ExecuteNode.
+    // Execute-Logik direkt im Node — kein switch/PassType mehr in ExecuteNode.
     std::function<void(const ExecContext&, ViewStats*)> executeFn;
 
-    std::vector<FGResourceID> reads{};
-    std::vector<FGResourceID> writes{};
+    std::vector<FGResourceAccessDecl> accesses{};
     std::vector<uint32_t>     dependencies{};
+    std::vector<FGPlannedTransition> beginTransitions{};
+    std::vector<FGPlannedTransition> endTransitions{};
+
+    void AddAccess(FGResourceID resource,
+                   FGResourceAccessType type,
+                   FGResourceAccessMode mode,
+                   ResourceState requiredState) noexcept
+    {
+        accesses.push_back({ resource, type, mode, requiredState });
+    }
+
+    // Convenience helpers – keep call sites readable.
+    void AddRenderTarget(FGResourceID resource) { AddAccess(resource, FGResourceAccessType::RenderTarget, FGResourceAccessMode::Write, ResourceState::RenderTarget); }
+    void AddDepthWrite(FGResourceID resource)   { AddAccess(resource, FGResourceAccessType::DepthStencil, FGResourceAccessMode::Write, ResourceState::DepthWrite); }
+    void AddDepthRead(FGResourceID resource)    { AddAccess(resource, FGResourceAccessType::DepthStencil, FGResourceAccessMode::Read,  ResourceState::DepthRead); }
+    void AddSRV(FGResourceID resource)          { AddAccess(resource, FGResourceAccessType::ShaderResource, FGResourceAccessMode::Read, ResourceState::ShaderRead); }
+    void AddUAV(FGResourceID resource, FGResourceAccessMode mode = FGResourceAccessMode::ReadWrite)
+    {
+        AddAccess(resource, FGResourceAccessType::UnorderedAccess, mode, ResourceState::UnorderedAccess);
+    }
+    void AddCopySource(FGResourceID resource)   { AddAccess(resource, FGResourceAccessType::CopySource, FGResourceAccessMode::Read,  ResourceState::CopySource); }
+    void AddCopyDest(FGResourceID resource)     { AddAccess(resource, FGResourceAccessType::CopyDest,   FGResourceAccessMode::Write, ResourceState::CopyDest); }
+    void AddPresentSource(FGResourceID resource){ AddAccess(resource, FGResourceAccessType::PresentSource, FGResourceAccessMode::Read, ResourceState::Present); }
+    void AddHistoryRead(FGResourceID resource)  { AddAccess(resource, FGResourceAccessType::History, FGResourceAccessMode::Read, ResourceState::ShaderRead); }
+    void AddHistoryWrite(FGResourceID resource) { AddAccess(resource, FGResourceAccessType::History, FGResourceAccessMode::Write, ResourceState::RenderTarget); }
 
     void Reset()
     {
-        kind = NodeKind::Graphics;
+        passType = PassType::Graphics;
+        debugName.clear();
         executeInput = nullptr; statsOutput = nullptr;
         viewIndex = 0u; enabled = false;
         countedAsRenderTargetView = false; updateFrameConstants = true;
+        shadowResourcePolicy = FGShadowResourcePolicy::LocalPerView;
         executeFn = nullptr;
-        reads.clear(); writes.clear(); dependencies.clear();
+        accesses.clear(); dependencies.clear();
+        beginTransitions.clear(); endTransitions.clear();
     }
 };
 
@@ -272,11 +434,52 @@ struct FrameGraph
     Validation                  validation{};
     std::vector<uint32_t>       executionOrder{};
 
-    FGResourceID RegisterResource(TextureHandle tex, RenderTargetHandle rt, const char* name)
+    FGResourceID RegisterImportedResource(
+        TextureHandle tex,
+        RenderTargetHandle rt,
+        const char* name,
+        FGResourceKind kind,
+        uint32_t width = 0u,
+        uint32_t height = 0u,
+        GDXTextureFormat format = GDXTextureFormat::Unknown,
+        bool externalOutput = false)
     {
         const FGResourceID id = static_cast<FGResourceID>(resources.size());
         FGResourceDesc d{};
-        d.id = id; d.texture = tex; d.renderTarget = rt; d.debugName = name;
+        d.id = id;
+        d.texture = tex;
+        d.renderTarget = rt;
+        d.debugName = name ? name : "";
+        d.lifetime = FGResourceLifetime::Imported;
+        d.kind = kind;
+        d.width = width;
+        d.height = height;
+        d.format = format;
+        d.externalOutput = externalOutput;
+        resources.push_back(d);
+        return id;
+    }
+
+    FGResourceID RegisterTransientResource(
+        TextureHandle tex,
+        RenderTargetHandle rt,
+        const char* name,
+        FGResourceKind kind,
+        uint32_t width = 0u,
+        uint32_t height = 0u,
+        GDXTextureFormat format = GDXTextureFormat::Unknown)
+    {
+        const FGResourceID id = static_cast<FGResourceID>(resources.size());
+        FGResourceDesc d{};
+        d.id = id;
+        d.texture = tex;
+        d.renderTarget = rt;
+        d.debugName = name ? name : "";
+        d.lifetime = FGResourceLifetime::Transient;
+        d.kind = kind;
+        d.width = width;
+        d.height = height;
+        d.format = format;
         resources.push_back(d);
         return id;
     }

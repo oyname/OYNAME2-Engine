@@ -2,6 +2,55 @@
 #include "IGDXRenderBackend.h"
 #include "Core/Debug.h"
 
+#include "GDXResourceState.h"
+
+namespace
+{
+    const char* FGResourceStateToString(ResourceState state)
+    {
+        switch (state)
+        {
+        case ResourceState::Unknown:         return "Unknown";
+        case ResourceState::Common:          return "Common";
+        case ResourceState::ShaderRead:      return "ShaderRead";
+        case ResourceState::RenderTarget:    return "RenderTarget";
+        case ResourceState::DepthWrite:      return "DepthWrite";
+        case ResourceState::DepthRead:       return "DepthRead";
+        case ResourceState::UnorderedAccess: return "UnorderedAccess";
+        case ResourceState::CopySource:      return "CopySource";
+        case ResourceState::CopyDest:        return "CopyDest";
+        case ResourceState::Present:         return "Present";
+        default:                             return "<invalid>";
+        }
+    }
+
+    ResourceState InferInitialStateForResource(const FGResourceDesc& resource)
+    {
+        switch (resource.kind)
+        {
+        case FGResourceKind::Backbuffer:   return ResourceState::Present;
+        case FGResourceKind::Depth:        return ResourceState::ShaderRead;
+        case FGResourceKind::Shadow:       return ResourceState::ShaderRead;
+        case FGResourceKind::RenderTarget: return ResourceState::ShaderRead;
+        case FGResourceKind::Texture:      return ResourceState::ShaderRead;
+        case FGResourceKind::History:      return ResourceState::ShaderRead;
+        case FGResourceKind::Unknown:
+        default:                          return ResourceState::Common;
+        }
+    }
+
+    ResourceState InferStableFinalStateForResource(const FGResourceDesc& resource, ResourceState currentState)
+    {
+        if (resource.kind == FGResourceKind::Backbuffer)
+            return ResourceState::Present;
+
+        if (resource.IsImported())
+            return InferInitialStateForResource(resource);
+
+        return currentState;
+    }
+}
+
 #include <algorithm>
 #include <cassert>
 #include <cstring>
@@ -135,6 +184,128 @@ namespace
 }
 
 
+const char* FGResourceLifetimeToString(FGResourceLifetime lifetime)
+{
+    switch (lifetime)
+    {
+    case FGResourceLifetime::Imported:  return "Imported";
+    case FGResourceLifetime::Transient: return "Transient";
+    default:                            return "InvalidLifetime";
+    }
+}
+
+const char* FGResourceKindToString(FGResourceKind kind)
+{
+    switch (kind)
+    {
+    case FGResourceKind::Unknown:      return "Unknown";
+    case FGResourceKind::Backbuffer:   return "Backbuffer";
+    case FGResourceKind::Texture:      return "Texture";
+    case FGResourceKind::RenderTarget: return "RenderTarget";
+    case FGResourceKind::Depth:        return "Depth";
+    case FGResourceKind::Shadow:       return "Shadow";
+    case FGResourceKind::History:      return "History";
+    default:                           return "InvalidKind";
+    }
+}
+
+const char* FGResourceFormatToString(GDXTextureFormat format)
+{
+    switch (format)
+    {
+    case GDXTextureFormat::Unknown:             return "Unknown";
+    case GDXTextureFormat::RGBA8_UNORM:         return "RGBA8_UNORM";
+    case GDXTextureFormat::RGBA8_UNORM_SRGB:    return "RGBA8_UNORM_SRGB";
+    case GDXTextureFormat::RGBA16_FLOAT:        return "RGBA16_FLOAT";
+    case GDXTextureFormat::D24_UNORM_S8_UINT:   return "D24_UNORM_S8_UINT";
+    case GDXTextureFormat::D32_FLOAT:           return "D32_FLOAT";
+    default:                                    return "InvalidFormat";
+    }
+}
+
+const char* FGShadowResourcePolicyToString(FGShadowResourcePolicy policy)
+{
+    switch (policy)
+    {
+    case FGShadowResourcePolicy::LocalPerView:        return "LocalPerView";
+    case FGShadowResourcePolicy::GlobalSharedMainView:return "GlobalSharedMainView";
+    default:                                          return "InvalidShadowPolicy";
+    }
+}
+
+static bool MatrixEquals(const Matrix4& a, const Matrix4& b)
+{
+    return std::memcmp(&a, &b, sizeof(Matrix4)) == 0;
+}
+
+static bool CanShareMainViewShadow(const RFG::ViewPassData& consumer,
+                                   const RFG::ViewPassData& mainView,
+                                   std::string* outReason)
+{
+    if (consumer.shadowResourcePolicy != FGShadowResourcePolicy::GlobalSharedMainView)
+    {
+        if (outReason) *outReason = "view did not request GlobalSharedMainView";
+        return false;
+    }
+
+    if (consumer.execute.shadowPass.enabled)
+    {
+        if (outReason) *outReason = "consumer has its own shadow pass and must stay local";
+        return false;
+    }
+
+    if (!mainView.execute.shadowPass.enabled)
+    {
+        if (outReason) *outReason = "main view has no shadow producer";
+        return false;
+    }
+
+    const FrameData& c = consumer.execute.frame;
+    const FrameData& m = mainView.execute.frame;
+
+    if (!c.hasShadowPass || !m.hasShadowPass)
+    {
+        if (outReason) *outReason = "shadow data is not enabled on both views";
+        return false;
+    }
+
+    if (c.shadowCascadeCount != m.shadowCascadeCount)
+    {
+        if (outReason) *outReason = "cascade count differs from main view";
+        return false;
+    }
+
+    if (c.shadowCasterMask != m.shadowCasterMask)
+    {
+        if (outReason) *outReason = "shadow caster mask differs from main view";
+        return false;
+    }
+
+    if (!MatrixEquals(c.shadowViewProjMatrix, m.shadowViewProjMatrix))
+    {
+        if (outReason) *outReason = "shadow view-projection differs from main view";
+        return false;
+    }
+
+    for (uint32_t i = 0u; i < c.shadowCascadeCount && i < MAX_SHADOW_CASCADES; ++i)
+    {
+        if (c.shadowCascadeSplits[i] != m.shadowCascadeSplits[i])
+        {
+            if (outReason) *outReason = "cascade splits differ from main view";
+            return false;
+        }
+
+        if (!MatrixEquals(c.shadowCascadeViewProj[i], m.shadowCascadeViewProj[i]))
+        {
+            if (outReason) *outReason = "cascade matrices differ from main view";
+            return false;
+        }
+    }
+
+    if (outReason) *outReason = "main-view shadow can be shared";
+    return true;
+}
+
 bool GDXRenderFrameGraph::HasDependency(const RFG::Node& node, uint32_t dep)
 {
     for (uint32_t existing : node.dependencies)
@@ -160,28 +331,40 @@ MakeShadowExecFn(const RFG::ExecuteData* exec)
     {
         if (c.backend && exec->shadowPass.enabled)
         {
-            c.backend->ExecuteShadowPass(exec->shadowPass.desc, *c.registry,
-                exec->shadowQueue, *c.meshStore, *c.matStore, *c.shaderStore, *c.texStore);
+            const std::vector<BackendPlannedTransition> emptyTransitions{};
+            c.backend->ExecuteShadowPass(exec->shadowPass.desc,
+                c.beginTransitions ? *c.beginTransitions : emptyTransitions,
+                c.endTransitions ? *c.endTransitions : emptyTransitions,
+                *c.registry, exec->shadowQueue, *c.meshStore, *c.matStore, *c.shaderStore, *c.texStore);
             s->shadowPassExecuted = true;
         }
     };
 }
 
 static std::function<void(const RFG::ExecContext&, RFG::ViewStats*)>
-MakeGraphicsExecFn(const RFG::ExecuteData* exec)
+MakeGraphicsExecFn(const RFG::PassExec* passExec,
+                   const ICommandList* opaqueList,
+                   const ICommandList* alphaList,
+                   const ParticleRenderSubmission* particleSubmission = nullptr)
 {
-    return [exec](const RFG::ExecContext& c, RFG::ViewStats* s)
+    return [passExec, opaqueList, alphaList, particleSubmission](const RFG::ExecContext& c, RFG::ViewStats* s)
     {
-        if (c.backend && exec->graphicsPass.enabled)
+        if (c.backend && passExec && passExec->enabled)
         {
-            // Attach pre-split queues onto the pass descriptor.
-            // The backend must not re-split these — it executes them as-is.
-            BackendRenderPassDesc desc = exec->graphicsPass.desc;
-            desc.opaqueList = &exec->opaqueQueue;
-            desc.alphaList  = &exec->alphaQueue;
+            BackendRenderPassDesc desc = passExec->desc;
+            desc.opaqueList = opaqueList;
+            desc.alphaList  = alphaList;
+            desc.particleSubmission = particleSubmission;
 
-            c.backend->ExecuteRenderPass(desc, *c.registry,
-                exec->opaqueQueue, exec->alphaQueue,
+            static const RenderQueue kEmptyQueue{};
+            const ICommandList& opaqueRef = opaqueList ? *opaqueList : static_cast<const ICommandList&>(kEmptyQueue);
+            const ICommandList& alphaRef  = alphaList  ? *alphaList  : static_cast<const ICommandList&>(kEmptyQueue);
+
+            const std::vector<BackendPlannedTransition> emptyTransitions{};
+            c.backend->ExecuteRenderPass(desc,
+                c.beginTransitions ? *c.beginTransitions : emptyTransitions,
+                c.endTransitions ? *c.endTransitions : emptyTransitions,
+                *c.registry, opaqueRef, alphaRef,
                 *c.meshStore, *c.matStore, *c.shaderStore, *c.texStore, *c.rtStore);
             s->graphicsPassExecuted = true;
         }
@@ -218,11 +401,15 @@ uint64_t GDXRenderFrameGraph::ComputeGraphStructureKey(const RFG::FrameGraph& fg
     mix(static_cast<uint64_t>(fg.nodes.size()));
     for (const RFG::Node& node : fg.nodes)
     {
-        mix(static_cast<uint64_t>(node.kind));
-        mix(static_cast<uint64_t>(node.reads.size()));
-        mix(static_cast<uint64_t>(node.writes.size()));
-        for (FGResourceID r : node.reads)  mix(static_cast<uint64_t>(r));
-        for (FGResourceID w : node.writes) mix(static_cast<uint64_t>(w));
+        mix(static_cast<uint64_t>(node.passType));
+        mix(static_cast<uint64_t>(node.accesses.size()));
+        for (const FGResourceAccessDecl& a : node.accesses)
+        {
+            mix(static_cast<uint64_t>(a.resource));
+            mix(static_cast<uint64_t>(a.type));
+            mix(static_cast<uint64_t>(a.mode));
+            mix(static_cast<uint64_t>(a.requiredState));
+        }
     }
     return h;
 }
@@ -235,41 +422,177 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
 {
     pipeline.frameGraph.Reset();
 
+    auto clampExtent = [](float value) -> uint32_t
+    {
+        return value > 0.0f ? static_cast<uint32_t>(value) : 0u;
+    };
+
+    auto tryGetRenderTargetMeta = [&](RenderTargetHandle handle, uint32_t& outWidth, uint32_t& outHeight, GDXTextureFormat& outFormat) -> bool
+    {
+        outWidth = 0u;
+        outHeight = 0u;
+        outFormat = GDXTextureFormat::Unknown;
+
+        if (!ctx.rtStore || !handle.IsValid())
+            return false;
+
+        const GDXRenderTargetResource* rt = ctx.rtStore->Get(handle);
+        if (!rt)
+            return false;
+
+        outWidth = rt->width;
+        outHeight = rt->height;
+        outFormat = rt->colorFormat;
+        return true;
+    };
+
+    const uint32_t backbufferWidth = clampExtent(pipeline.mainView.execute.frame.viewportWidth);
+    const uint32_t backbufferHeight = clampExtent(pipeline.mainView.execute.frame.viewportHeight);
+
+    auto resolveShadowExtent = [&](const RFG::ViewPassData& view, uint32_t& outWidth, uint32_t& outHeight)
+    {
+        outWidth = clampExtent(view.prepared.shadowView.frame.viewportWidth);
+        outHeight = clampExtent(view.prepared.shadowView.frame.viewportHeight);
+        if (outWidth == 0u || outHeight == 0u)
+        {
+            outWidth = clampExtent(view.prepared.frame.viewportWidth);
+            outHeight = clampExtent(view.prepared.frame.viewportHeight);
+        }
+    };
+
+    uint32_t mainShadowWidth = 0u;
+    uint32_t mainShadowHeight = 0u;
+    resolveShadowExtent(pipeline.mainView, mainShadowWidth, mainShadowHeight);
+
+    uint32_t mainSceneWidth = 0u;
+    uint32_t mainSceneHeight = 0u;
+    GDXTextureFormat mainSceneFormat = GDXTextureFormat::Unknown;
+    (void)tryGetRenderTargetMeta(ctx.mainScenePostProcessTarget, mainSceneWidth, mainSceneHeight, mainSceneFormat);
+
+    const GDXRenderTargetResource* mainSceneRt =
+        (ctx.rtStore && ctx.mainScenePostProcessTarget.IsValid())
+            ? ctx.rtStore->Get(ctx.mainScenePostProcessTarget)
+            : nullptr;
+
     // --- Schritt 1: Ressourcen registrieren ---
-    const FGResourceID shadowMapID  = pipeline.frameGraph.RegisterResource(
-        TextureHandle::Invalid(), RenderTargetHandle::Invalid(), "ShadowMap");
-    const FGResourceID backbufferID = pipeline.frameGraph.RegisterResource(
-        TextureHandle::Invalid(), RenderTargetHandle::Invalid(), "Backbuffer");
+    const FGResourceID mainShadowMapID = pipeline.mainView.execute.shadowPass.enabled
+        ? pipeline.frameGraph.RegisterTransientResource(
+            TextureHandle::Invalid(), RenderTargetHandle::Invalid(), "ShadowMap.MainView", FGResourceKind::Shadow,
+            mainShadowWidth, mainShadowHeight, GDXTextureFormat::D32_FLOAT)
+        : FG_INVALID_RESOURCE;
+
+    const FGResourceID backbufferID = pipeline.frameGraph.RegisterImportedResource(
+        TextureHandle::Invalid(), RenderTargetHandle::Invalid(), "Backbuffer", FGResourceKind::Backbuffer,
+        backbufferWidth, backbufferHeight, GDXTextureFormat::RGBA8_UNORM, true);
 
     const bool hasPostProcess =
         pipeline.mainView.execute.presentation.postProcess.enabled &&
         pipeline.mainView.execute.presentation.postProcess.sceneTexture.IsValid();
 
     const FGResourceID mainSceneID = hasPostProcess
-        ? pipeline.frameGraph.RegisterResource(
+        ? pipeline.frameGraph.RegisterImportedResource(
             pipeline.mainView.execute.presentation.postProcess.sceneTexture,
-            ctx.mainScenePostProcessTarget, "MainSceneColor")
+            ctx.mainScenePostProcessTarget, "MainSceneColor", FGResourceKind::RenderTarget,
+            mainSceneWidth, mainSceneHeight, mainSceneFormat)
+        : FG_INVALID_RESOURCE;
+
+    const FGResourceID mainSceneDepthID =
+        (hasPostProcess && mainSceneRt && mainSceneRt->ready && mainSceneRt->exposedDepthTexture.IsValid())
+        ? pipeline.frameGraph.RegisterImportedResource(
+            mainSceneRt->exposedDepthTexture,
+            RenderTargetHandle::Invalid(), "MainSceneDepth", FGResourceKind::Depth,
+            mainSceneWidth, mainSceneHeight, GDXTextureFormat::D24_UNORM_S8_UINT)
+        : FG_INVALID_RESOURCE;
+
+    const FGResourceID mainSceneNormalsID =
+        (hasPostProcess && mainSceneRt && mainSceneRt->ready && mainSceneRt->exposedNormalsTexture.IsValid())
+        ? pipeline.frameGraph.RegisterImportedResource(
+            mainSceneRt->exposedNormalsTexture,
+            RenderTargetHandle::Invalid(), "MainSceneNormals", FGResourceKind::RenderTarget,
+            mainSceneWidth, mainSceneHeight, GDXTextureFormat::RGBA8_UNORM)
         : FG_INVALID_RESOURCE;
 
     const uint32_t rttCount = static_cast<uint32_t>(pipeline.rttViews.size());
     std::vector<FGResourceID> rttColorIDs(rttCount, FG_INVALID_RESOURCE);
     std::vector<FGResourceID> rttSceneIDs(rttCount, FG_INVALID_RESOURCE);
+    std::vector<FGResourceID> rttSceneDepthIDs(rttCount, FG_INVALID_RESOURCE);
+    std::vector<FGResourceID> rttSceneNormalsIDs(rttCount, FG_INVALID_RESOURCE);
+    std::vector<FGResourceID> rttShadowIDs(rttCount, FG_INVALID_RESOURCE);
+    std::vector<bool>         rttReadsGlobalMainShadow(rttCount, false);
     for (uint32_t i = 0u; i < rttCount; ++i)
     {
         const RFG::ViewPassData& view = pipeline.rttViews[i];
+        const RenderTargetHandle rttHandle = view.prepared.graphicsView.renderTarget;
+
+        uint32_t rttWidth = 0u;
+        uint32_t rttHeight = 0u;
+        GDXTextureFormat rttFormat = GDXTextureFormat::Unknown;
+        if (!tryGetRenderTargetMeta(rttHandle, rttWidth, rttHeight, rttFormat))
+        {
+            rttWidth = clampExtent(view.execute.frame.viewportWidth);
+            rttHeight = clampExtent(view.execute.frame.viewportHeight);
+        }
+
         const GDXRenderTargetResource* rt =
-            ctx.rtStore ? ctx.rtStore->Get(view.prepared.graphicsView.renderTarget) : nullptr;
+            ctx.rtStore ? ctx.rtStore->Get(rttHandle) : nullptr;
         if (!rt || !rt->ready) continue;
-        rttColorIDs[i] = pipeline.frameGraph.RegisterResource(
-            TextureHandle::Invalid(), view.prepared.graphicsView.renderTarget, "RTT");
+
+        rttColorIDs[i] = pipeline.frameGraph.RegisterImportedResource(
+            TextureHandle::Invalid(), rttHandle, "RTT", FGResourceKind::RenderTarget,
+            rttWidth, rttHeight, rttFormat, true);
+
+        if (view.execute.shadowPass.enabled)
+        {
+            uint32_t rttShadowWidth = 0u;
+            uint32_t rttShadowHeight = 0u;
+            resolveShadowExtent(view, rttShadowWidth, rttShadowHeight);
+            const std::string shadowName = std::string("ShadowMap.RTT[") + std::to_string(i) + "]";
+            rttShadowIDs[i] = pipeline.frameGraph.RegisterTransientResource(
+                TextureHandle::Invalid(), RenderTargetHandle::Invalid(), shadowName.c_str(), FGResourceKind::Shadow,
+                rttShadowWidth, rttShadowHeight, GDXTextureFormat::D32_FLOAT);
+        }
+        else if (view.shadowResourcePolicy == FGShadowResourcePolicy::GlobalSharedMainView)
+        {
+            std::string reason;
+            const bool canShare = CanShareMainViewShadow(view, pipeline.mainView, &reason);
+            if (!canShare)
+            {
+                pipeline.frameGraph.validation.valid = false;
+                pipeline.frameGraph.validation.errors.push_back(
+                    std::string("RTT view ") + std::to_string(i) +
+                    " requested shadow policy " + FGShadowResourcePolicyToString(view.shadowResourcePolicy) +
+                    " but this is not allowed: " + reason);
+            }
+            else
+            {
+                rttReadsGlobalMainShadow[i] = true;
+            }
+        }
 
         if (view.execute.presentation.postProcess.enabled &&
             view.execute.presentation.postProcess.sceneTexture.IsValid())
         {
-            rttSceneIDs[i] = pipeline.frameGraph.RegisterResource(
+            rttSceneIDs[i] = pipeline.frameGraph.RegisterImportedResource(
                 view.execute.presentation.postProcess.sceneTexture,
-                view.execute.graphicsPass.desc.target.renderTarget,
-                "RTTSceneColor");
+                view.execute.opaquePass.desc.target.renderTarget,
+                "RTTSceneColor", FGResourceKind::RenderTarget,
+                rttWidth, rttHeight, rttFormat);
+
+            if (rt->exposedDepthTexture.IsValid())
+            {
+                rttSceneDepthIDs[i] = pipeline.frameGraph.RegisterImportedResource(
+                    rt->exposedDepthTexture,
+                    RenderTargetHandle::Invalid(), "RTTSceneDepth", FGResourceKind::Depth,
+                    rttWidth, rttHeight, GDXTextureFormat::D24_UNORM_S8_UINT);
+            }
+
+            if (rt->exposedNormalsTexture.IsValid())
+            {
+                rttSceneNormalsIDs[i] = pipeline.frameGraph.RegisterImportedResource(
+                    rt->exposedNormalsTexture,
+                    RenderTargetHandle::Invalid(), "RTTSceneNormals", FGResourceKind::RenderTarget,
+                    rttWidth, rttHeight, GDXTextureFormat::RGBA8_UNORM);
+            }
         }
     }
 
@@ -284,33 +607,99 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
         if (view.execute.shadowPass.enabled)
         {
             RFG::Node node{};
-            node.kind       = RFG::NodeKind::Shadow;
+            node.passType   = RFG::PassType::Graphics;
+            node.debugName  = "Shadow.RTT";
             node.executeInput = &view.execute;
             node.statsOutput  = &view.stats;
             node.viewIndex  = i;
             node.enabled    = true;
             node.countedAsRenderTargetView = true;
-            node.writes.push_back(shadowMapID);
+            node.shadowResourcePolicy = view.shadowResourcePolicy;
+            node.AddDepthWrite(rttShadowIDs[i]);
             node.executeFn  = MakeShadowExecFn(&view.execute);
             pipeline.frameGraph.nodes.push_back(std::move(node));
         }
 
-        if (view.execute.graphicsPass.enabled)
+        if (view.execute.opaquePass.enabled)
         {
             RFG::Node node{};
-            node.kind       = RFG::NodeKind::Graphics;
+            node.passType   = RFG::PassType::Graphics;
+            node.debugName  = "Opaque.RTT";
             node.executeInput = &view.execute;
             node.statsOutput  = &view.stats;
             node.viewIndex  = i;
             node.enabled    = true;
             node.countedAsRenderTargetView = true;
-            if (view.execute.shadowPass.enabled)
-                node.reads.push_back(shadowMapID);
+            node.shadowResourcePolicy = view.shadowResourcePolicy;
+            if (view.execute.shadowPass.enabled && rttShadowIDs[i] != FG_INVALID_RESOURCE)
+                node.AddSRV(rttShadowIDs[i]);
+            else if (rttReadsGlobalMainShadow[i] && mainShadowMapID != FG_INVALID_RESOURCE)
+                node.AddSRV(mainShadowMapID);
             if (view.execute.presentation.postProcess.enabled && rttSceneIDs[i] != FG_INVALID_RESOURCE)
-                node.writes.push_back(rttSceneIDs[i]);
+            {
+                node.AddRenderTarget(rttSceneIDs[i]);
+                if (rttSceneDepthIDs[i] != FG_INVALID_RESOURCE)
+                    node.AddDepthWrite(rttSceneDepthIDs[i]);
+                if (rttSceneNormalsIDs[i] != FG_INVALID_RESOURCE)
+                    node.AddRenderTarget(rttSceneNormalsIDs[i]);
+            }
             else if (rttColorIDs[i] != FG_INVALID_RESOURCE)
-                node.writes.push_back(rttColorIDs[i]);
-            node.executeFn  = MakeGraphicsExecFn(&view.execute);
+                node.AddRenderTarget(rttColorIDs[i]);
+            node.executeFn  = MakeGraphicsExecFn(&view.execute.opaquePass, &view.execute.opaqueQueue, nullptr);
+            pipeline.frameGraph.nodes.push_back(std::move(node));
+        }
+
+        if (view.execute.particlePass.enabled && !view.execute.particleSubmission.Empty())
+        {
+            RFG::Node node{};
+            node.passType   = RFG::PassType::Graphics;
+            node.debugName  = "Particles.RTT";
+            node.executeInput = &view.execute;
+            node.statsOutput  = &view.stats;
+            node.viewIndex  = i;
+            node.enabled    = true;
+            node.countedAsRenderTargetView = true;
+            node.shadowResourcePolicy = view.shadowResourcePolicy;
+            if (view.execute.shadowPass.enabled && rttShadowIDs[i] != FG_INVALID_RESOURCE)
+                node.AddSRV(rttShadowIDs[i]);
+            else if (rttReadsGlobalMainShadow[i] && mainShadowMapID != FG_INVALID_RESOURCE)
+                node.AddSRV(mainShadowMapID);
+            if (view.execute.presentation.postProcess.enabled && rttSceneIDs[i] != FG_INVALID_RESOURCE)
+            {
+                node.AddRenderTarget(rttSceneIDs[i]);
+                if (rttSceneDepthIDs[i] != FG_INVALID_RESOURCE)
+                    node.AddDepthRead(rttSceneDepthIDs[i]);
+            }
+            else if (rttColorIDs[i] != FG_INVALID_RESOURCE)
+                node.AddRenderTarget(rttColorIDs[i]);
+            node.executeFn  = MakeGraphicsExecFn(&view.execute.particlePass, nullptr, nullptr, &view.execute.particleSubmission);
+            pipeline.frameGraph.nodes.push_back(std::move(node));
+        }
+
+        if (view.execute.transparentPass.enabled && !view.execute.alphaQueue.Empty())
+        {
+            RFG::Node node{};
+            node.passType   = RFG::PassType::Graphics;
+            node.debugName  = "Transparent.RTT";
+            node.executeInput = &view.execute;
+            node.statsOutput  = &view.stats;
+            node.viewIndex  = i;
+            node.enabled    = true;
+            node.countedAsRenderTargetView = true;
+            node.shadowResourcePolicy = view.shadowResourcePolicy;
+            if (view.execute.shadowPass.enabled && rttShadowIDs[i] != FG_INVALID_RESOURCE)
+                node.AddSRV(rttShadowIDs[i]);
+            else if (rttReadsGlobalMainShadow[i] && mainShadowMapID != FG_INVALID_RESOURCE)
+                node.AddSRV(mainShadowMapID);
+            if (view.execute.presentation.postProcess.enabled && rttSceneIDs[i] != FG_INVALID_RESOURCE)
+            {
+                node.AddRenderTarget(rttSceneIDs[i]);
+                if (rttSceneDepthIDs[i] != FG_INVALID_RESOURCE)
+                    node.AddDepthRead(rttSceneDepthIDs[i]);
+            }
+            else if (rttColorIDs[i] != FG_INVALID_RESOURCE)
+                node.AddRenderTarget(rttColorIDs[i]);
+            node.executeFn  = MakeGraphicsExecFn(&view.execute.transparentPass, nullptr, &view.execute.alphaQueue);
             pipeline.frameGraph.nodes.push_back(std::move(node));
         }
 
@@ -320,15 +709,21 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
             rttColorIDs[i] != FG_INVALID_RESOURCE)
         {
             RFG::Node node{};
-            node.kind = RFG::NodeKind::Presentation;
+            node.passType  = RFG::PassType::Graphics;
+            node.debugName = "PostProcess.RTT";
             node.executeInput = &view.execute;
             node.statsOutput = &view.stats;
             node.viewIndex = i;
             node.enabled = true;
             node.countedAsRenderTargetView = true;
+            node.shadowResourcePolicy = view.shadowResourcePolicy;
             node.updateFrameConstants = false;
-            node.reads.push_back(rttSceneIDs[i]);
-            node.writes.push_back(rttColorIDs[i]);
+            node.AddSRV(rttSceneIDs[i]);
+            if (rttSceneDepthIDs[i] != FG_INVALID_RESOURCE)
+                node.AddSRV(rttSceneDepthIDs[i]);
+            if (rttSceneNormalsIDs[i] != FG_INVALID_RESOURCE)
+                node.AddSRV(rttSceneNormalsIDs[i]);
+            node.AddRenderTarget(rttColorIDs[i]);
             const RFG::ExecuteData* exec = &view.execute;
             node.executeFn = [exec](const RFG::ExecContext& c, RFG::ViewStats* s)
             {
@@ -336,11 +731,11 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
                     exec->presentation.postProcess.enabled &&
                     exec->presentation.postProcess.sceneTexture.IsValid())
                 {
-                    assert(c.postProcessPassOrder != nullptr);
                     assert(c.postProcessStore != nullptr);
-                    UpdatePerViewPostProcessConstants(*exec, *c.postProcessPassOrder, *c.postProcessStore);
                     const bool ok = c.backend->ExecutePostProcessChain(
-                        *c.postProcessPassOrder, *c.postProcessStore, *c.texStore, c.rtStore,
+                        exec->presentation.postProcess.orderedPasses,
+                        &exec->presentation.postProcess.constantOverrides,
+                        *c.postProcessStore, *c.texStore, c.rtStore,
                         exec->presentation.postProcess.execInputs,
                         exec->frame.viewportWidth,
                         exec->frame.viewportHeight,
@@ -356,42 +751,98 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
     if (pipeline.mainView.execute.shadowPass.enabled)
     {
         RFG::Node node{};
-        node.kind       = RFG::NodeKind::Shadow;
+        node.passType   = RFG::PassType::Graphics;
+        node.debugName  = "Shadow.Main";
         node.executeInput = &pipeline.mainView.execute;
         node.statsOutput  = &pipeline.mainView.stats;
         node.enabled    = true;
-        node.writes.push_back(shadowMapID);
+        node.shadowResourcePolicy = FGShadowResourcePolicy::LocalPerView;
+        node.AddDepthWrite(mainShadowMapID);
         node.executeFn  = MakeShadowExecFn(&pipeline.mainView.execute);
         pipeline.frameGraph.nodes.push_back(std::move(node));
     }
 
-    if (pipeline.mainView.execute.graphicsPass.enabled)
+    if (pipeline.mainView.execute.opaquePass.enabled)
     {
         RFG::Node node{};
-        node.kind       = RFG::NodeKind::Graphics;
+        node.passType   = RFG::PassType::Graphics;
+        node.debugName  = "Opaque.Main";
         node.executeInput = &pipeline.mainView.execute;
         node.statsOutput  = &pipeline.mainView.stats;
         node.enabled    = true;
-        if (pipeline.mainView.execute.shadowPass.enabled)
-            node.reads.push_back(shadowMapID);
+        node.shadowResourcePolicy = FGShadowResourcePolicy::LocalPerView;
+        if (pipeline.mainView.execute.shadowPass.enabled && mainShadowMapID != FG_INVALID_RESOURCE)
+            node.AddSRV(mainShadowMapID);
         for (uint32_t i = 0u; i < rttCount; ++i)
             if (rttColorIDs[i] != FG_INVALID_RESOURCE)
-                node.reads.push_back(rttColorIDs[i]);
-        node.writes.push_back(hasPostProcess ? mainSceneID : backbufferID);
-        node.executeFn  = MakeGraphicsExecFn(&pipeline.mainView.execute);
+                node.AddSRV(rttColorIDs[i]);
+        node.AddRenderTarget(hasPostProcess ? mainSceneID : backbufferID);
+        if (hasPostProcess)
+        {
+            if (mainSceneDepthID != FG_INVALID_RESOURCE)
+                node.AddDepthWrite(mainSceneDepthID);
+            if (mainSceneNormalsID != FG_INVALID_RESOURCE)
+                node.AddRenderTarget(mainSceneNormalsID);
+        }
+        node.executeFn  = MakeGraphicsExecFn(&pipeline.mainView.execute.opaquePass, &pipeline.mainView.execute.opaqueQueue, nullptr);
+        pipeline.frameGraph.nodes.push_back(std::move(node));
+    }
+
+    if (pipeline.mainView.execute.particlePass.enabled && !pipeline.mainView.execute.particleSubmission.Empty())
+    {
+        RFG::Node node{};
+        node.passType   = RFG::PassType::Graphics;
+        node.debugName  = "Particles.Main";
+        node.executeInput = &pipeline.mainView.execute;
+        node.statsOutput  = &pipeline.mainView.stats;
+        node.enabled    = true;
+        node.shadowResourcePolicy = FGShadowResourcePolicy::LocalPerView;
+        if (pipeline.mainView.execute.shadowPass.enabled && mainShadowMapID != FG_INVALID_RESOURCE)
+            node.AddSRV(mainShadowMapID);
+        node.AddRenderTarget(hasPostProcess ? mainSceneID : backbufferID);
+        if (hasPostProcess && mainSceneDepthID != FG_INVALID_RESOURCE)
+            node.AddDepthRead(mainSceneDepthID);
+        node.executeFn = MakeGraphicsExecFn(&pipeline.mainView.execute.particlePass, nullptr, nullptr, &pipeline.mainView.execute.particleSubmission);
+        pipeline.frameGraph.nodes.push_back(std::move(node));
+    }
+
+    if (pipeline.mainView.execute.transparentPass.enabled && !pipeline.mainView.execute.alphaQueue.Empty())
+    {
+        RFG::Node node{};
+        node.passType   = RFG::PassType::Graphics;
+        node.debugName  = "Transparent.Main";
+        node.executeInput = &pipeline.mainView.execute;
+        node.statsOutput  = &pipeline.mainView.stats;
+        node.enabled    = true;
+        node.shadowResourcePolicy = FGShadowResourcePolicy::LocalPerView;
+        if (pipeline.mainView.execute.shadowPass.enabled && mainShadowMapID != FG_INVALID_RESOURCE)
+            node.AddSRV(mainShadowMapID);
+        for (uint32_t i = 0u; i < rttCount; ++i)
+            if (rttColorIDs[i] != FG_INVALID_RESOURCE)
+                node.AddSRV(rttColorIDs[i]);
+        node.AddRenderTarget(hasPostProcess ? mainSceneID : backbufferID);
+        if (hasPostProcess && mainSceneDepthID != FG_INVALID_RESOURCE)
+            node.AddDepthRead(mainSceneDepthID);
+        node.executeFn  = MakeGraphicsExecFn(&pipeline.mainView.execute.transparentPass, nullptr, &pipeline.mainView.execute.alphaQueue);
         pipeline.frameGraph.nodes.push_back(std::move(node));
     }
 
     if (hasPostProcess)
     {
         RFG::Node node{};
-        node.kind       = RFG::NodeKind::Presentation;
+        node.passType  = RFG::PassType::Graphics;
+        node.debugName = "PostProcess.Main";
         node.executeInput = &pipeline.mainView.execute;
         node.statsOutput  = &pipeline.mainView.stats;
         node.enabled    = true;
+        node.shadowResourcePolicy = FGShadowResourcePolicy::LocalPerView;
         node.updateFrameConstants = false;
-        node.reads.push_back(mainSceneID);
-        node.writes.push_back(backbufferID);
+        node.AddSRV(mainSceneID);
+        if (mainSceneDepthID != FG_INVALID_RESOURCE)
+            node.AddSRV(mainSceneDepthID);
+        if (mainSceneNormalsID != FG_INVALID_RESOURCE)
+            node.AddSRV(mainSceneNormalsID);
+        node.AddRenderTarget(backbufferID);
         const RFG::ExecuteData* exec = &pipeline.mainView.execute;
         node.executeFn = [exec](const RFG::ExecContext& c, RFG::ViewStats* s)
         {
@@ -401,11 +852,11 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
             {
                 // postProcessStore/PassOrder sind immer gesetzt wenn backend gesetzt ist —
                 // null hier ist ein Programmierfehler im ExecContext-Build, kein Laufzeitfall.
-                assert(c.postProcessPassOrder != nullptr);
-                assert(c.postProcessStore     != nullptr);
-                UpdatePerViewPostProcessConstants(*exec, *c.postProcessPassOrder, *c.postProcessStore);
+                assert(c.postProcessStore != nullptr);
                 const bool ok = c.backend->ExecutePostProcessChain(
-                    *c.postProcessPassOrder, *c.postProcessStore, *c.texStore, c.rtStore,
+                    exec->presentation.postProcess.orderedPasses,
+                    &exec->presentation.postProcess.constantOverrides,
+                    *c.postProcessStore, *c.texStore, c.rtStore,
                     exec->presentation.postProcess.execInputs,
                     exec->frame.viewportWidth,
                     exec->frame.viewportHeight,
@@ -417,6 +868,29 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
                         L"MainView post-process chain did not execute successfully.");
                 }
                 s->presentationExecuted = ok;
+            }
+        };
+        pipeline.frameGraph.nodes.push_back(std::move(node));
+    }
+
+    // Explicit present pass (no rendering): consumes the swapchain/backbuffer in PRESENT state.
+    // This removes the implicit "present outside of the graph" special path.
+    if (pipeline.mainView.execute.presentation.presentAfterExecute && backbufferID != FG_INVALID_RESOURCE)
+    {
+        RFG::Node node{};
+        node.passType = RFG::PassType::Present;
+        node.debugName = "Present";
+        node.executeInput = &pipeline.mainView.execute;
+        node.statsOutput  = &pipeline.mainView.stats;
+        node.enabled = true;
+        node.updateFrameConstants = false;
+        node.AddPresentSource(backbufferID);
+        node.executeFn = [](const RFG::ExecContext& c, RFG::ViewStats* s)
+        {
+            if (c.backend)
+            {
+                c.backend->Present(true);
+                s->presentationExecuted = true;
             }
         };
         pipeline.frameGraph.nodes.push_back(std::move(node));
@@ -438,6 +912,11 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
         // Execute() sieht einen strukturell unvollständigen Graph.
         BuildDependencies(pipeline.frameGraph);
         pipeline.frameGraph.executionOrder = m_cachedExecutionOrder;
+
+        // Lifetime-Metadaten hängen an der finalen Execution-Order und müssen
+        // auch im Cache-Hit-Pfad neu berechnet werden.
+        ComputeResourceLifetimes(pipeline.frameGraph);
+        PlanResourceStates(pipeline.frameGraph);
 
         // Validation explizit prüfen statt blind auf true setzen.
         // Validate() ist günstig wenn kein Zyklus-Check nötig ist
@@ -466,7 +945,16 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
 void GDXRenderFrameGraph::Finalize(RFG::FrameGraph& fg)
 {
     BuildDependencies(fg);
+
+    std::vector<uint8_t> liveNodes;
+    std::vector<uint8_t> liveResources;
+    ComputeReachabilityFromSinks(fg, liveNodes, liveResources);
+    CompactToLiveSubgraph(fg, liveNodes, liveResources);
+
+    BuildDependencies(fg);
     BuildExecutionOrder(fg);
+    ComputeResourceLifetimes(fg);
+    PlanResourceStates(fg);
     Validate(fg);
     // Ergebnis liegt in fg.validation.valid — Callsite liest dort.
 }
@@ -484,8 +972,11 @@ void GDXRenderFrameGraph::BuildDependencies(RFG::FrameGraph& fg)
     auto findLastWriter = [&](uint32_t before, FGResourceID rid) -> int
     {
         for (int j = static_cast<int>(before) - 1; j >= 0; --j)
-            for (FGResourceID w : fg.nodes[j].writes)
-                if (w == rid) return j;
+        {
+            const auto& prev = fg.nodes[j];
+            for (const FGResourceAccessDecl& a : prev.accesses)
+                if (a.resource == rid && a.IsWrite()) return j;
+        }
         return -1;
     };
 
@@ -494,8 +985,8 @@ void GDXRenderFrameGraph::BuildDependencies(RFG::FrameGraph& fg)
         for (int j = static_cast<int>(before) - 1; j >= 0; --j)
         {
             const auto& prev = fg.nodes[j];
-            for (FGResourceID w : prev.writes) if (w == rid) return j;
-            for (FGResourceID r : prev.reads)  if (r == rid) return j;
+            for (const FGResourceAccessDecl& a : prev.accesses)
+                if (a.resource == rid && (a.IsRead() || a.IsWrite())) return j;
         }
         return -1;
     };
@@ -503,17 +994,321 @@ void GDXRenderFrameGraph::BuildDependencies(RFG::FrameGraph& fg)
     for (uint32_t i = 0u; i < nodeCount; ++i)
     {
         RFG::Node& node = fg.nodes[i];
-        for (FGResourceID rid : node.reads)
+        for (const FGResourceAccessDecl& a : node.accesses)
         {
-            const int j = findLastWriter(i, rid);
-            if (j >= 0) AddDependency(node, static_cast<uint32_t>(j));
-        }
-        for (FGResourceID rid : node.writes)
-        {
-            const int j = findLastAccessor(i, rid);
-            if (j >= 0) AddDependency(node, static_cast<uint32_t>(j));
+            const FGResourceID rid = a.resource;
+            if (rid == FG_INVALID_RESOURCE)
+                continue;
+
+            if (a.IsRead())
+            {
+                const int j = findLastWriter(i, rid);
+                if (j >= 0) AddDependency(node, static_cast<uint32_t>(j));
+            }
+            if (a.IsWrite())
+            {
+                const int j = findLastAccessor(i, rid);
+                if (j >= 0) AddDependency(node, static_cast<uint32_t>(j));
+            }
         }
     }
+}
+
+void GDXRenderFrameGraph::ComputeResourceLifetimes(RFG::FrameGraph& fg) const
+{
+    for (FGResourceDesc& resource : fg.resources)
+    {
+        resource.producerNode = FG_INVALID_NODE;
+        resource.firstUseNode = FG_INVALID_NODE;
+        resource.lastUseNode  = FG_INVALID_NODE;
+    }
+
+    for (uint32_t orderIndex = 0u; orderIndex < static_cast<uint32_t>(fg.executionOrder.size()); ++orderIndex)
+    {
+        const uint32_t nodeIndex = fg.executionOrder[orderIndex];
+        if (nodeIndex >= fg.nodes.size())
+            continue;
+
+        const RFG::Node& node = fg.nodes[nodeIndex];
+
+        auto markUse = [&](FGResourceID rid, bool isWrite)
+        {
+            if (rid == FG_INVALID_RESOURCE || rid >= fg.resources.size())
+                return;
+
+            FGResourceDesc& resource = fg.resources[rid];
+            if (resource.firstUseNode == FG_INVALID_NODE)
+                resource.firstUseNode = nodeIndex;
+            resource.lastUseNode = nodeIndex;
+
+            if (isWrite && resource.producerNode == FG_INVALID_NODE)
+                resource.producerNode = nodeIndex;
+        };
+
+        for (const FGResourceAccessDecl& a : node.accesses)
+        {
+            if (a.IsRead())
+                markUse(a.resource, false);
+            if (a.IsWrite())
+                markUse(a.resource, true);
+        }
+    }
+}
+
+
+void GDXRenderFrameGraph::PlanResourceStates(RFG::FrameGraph& fg) const
+{
+    auto deriveInitialFromFirstUse = [&](const FGResourceDesc& res) -> ResourceState
+    {
+        if (res.kind == FGResourceKind::Backbuffer)
+            return ResourceState::Present;
+
+        // Transient resources are owned by the graph – start in COMMON and transition on first use.
+        if (res.IsTransient())
+            return ResourceState::Common;
+
+        // Imported resources: prefer the first declared usage.
+        if (res.firstUseNode != FG_INVALID_NODE && res.firstUseNode < fg.nodes.size())
+        {
+            const RFG::Node& n = fg.nodes[res.firstUseNode];
+            for (const FGResourceAccessDecl& a : n.accesses)
+            {
+                if (a.resource == res.id && a.requiredState != ResourceState::Unknown)
+                    return a.requiredState;
+            }
+        }
+
+        return InferInitialStateForResource(res);
+    };
+
+    for (FGResourceDesc& resource : fg.resources)
+    {
+        resource.plannedInitialState = deriveInitialFromFirstUse(resource);
+        resource.plannedFinalState = resource.plannedInitialState;
+    }
+
+    std::vector<ResourceState> currentStates(fg.resources.size(), ResourceState::Unknown);
+    for (uint32_t rid = 0u; rid < static_cast<uint32_t>(fg.resources.size()); ++rid)
+        currentStates[rid] = fg.resources[rid].plannedInitialState;
+
+    for (RFG::Node& node : fg.nodes)
+    {
+        node.beginTransitions.clear();
+        node.endTransitions.clear();
+    }
+
+    for (uint32_t orderIndex = 0u; orderIndex < static_cast<uint32_t>(fg.executionOrder.size()); ++orderIndex)
+    {
+        const uint32_t nodeIndex = fg.executionOrder[orderIndex];
+        if (nodeIndex >= fg.nodes.size())
+            continue;
+
+        RFG::Node& node = fg.nodes[nodeIndex];
+        for (const FGResourceAccessDecl& access : node.accesses)
+        {
+            if (access.resource == FG_INVALID_RESOURCE || access.resource >= fg.resources.size())
+                continue;
+            if (access.requiredState == ResourceState::Unknown)
+                continue;
+
+            ResourceState& current = currentStates[access.resource];
+            if (current == ResourceState::Unknown)
+                current = fg.resources[access.resource].plannedInitialState;
+
+            if (current != access.requiredState)
+                node.beginTransitions.push_back({ access.resource, current, access.requiredState });
+
+            current = access.requiredState;
+            fg.resources[access.resource].plannedFinalState = current;
+        }
+    }
+
+    for (uint32_t rid = 0u; rid < static_cast<uint32_t>(fg.resources.size()); ++rid)
+    {
+        FGResourceDesc& resource = fg.resources[rid];
+        const ResourceState stableFinal = InferStableFinalStateForResource(resource, currentStates[rid]);
+        resource.plannedFinalState = stableFinal;
+        if (stableFinal == currentStates[rid])
+            continue;
+
+        for (int32_t orderIndex = static_cast<int32_t>(fg.executionOrder.size()) - 1; orderIndex >= 0; --orderIndex)
+        {
+            const uint32_t nodeIndex = fg.executionOrder[static_cast<uint32_t>(orderIndex)];
+            if (nodeIndex >= fg.nodes.size())
+                continue;
+
+            RFG::Node& node = fg.nodes[nodeIndex];
+            bool touchesResource = false;
+            for (const FGResourceAccessDecl& access : node.accesses)
+            {
+                if (access.resource == rid)
+                {
+                    touchesResource = true;
+                    break;
+                }
+            }
+
+            if (touchesResource)
+            {
+                node.endTransitions.push_back({ rid, currentStates[rid], stableFinal });
+                currentStates[rid] = stableFinal;
+                break;
+            }
+        }
+    }
+}
+
+void GDXRenderFrameGraph::ComputeReachabilityFromSinks(
+    RFG::FrameGraph& fg,
+    std::vector<uint8_t>& liveNodes,
+    std::vector<uint8_t>& liveResources) const
+{
+    const uint32_t nodeCount = static_cast<uint32_t>(fg.nodes.size());
+    const uint32_t resourceCount = static_cast<uint32_t>(fg.resources.size());
+
+    liveNodes.assign(nodeCount, 0u);
+    liveResources.assign(resourceCount, 0u);
+
+    auto markResource = [&](FGResourceID rid) -> bool
+    {
+        if (rid == FG_INVALID_RESOURCE || rid >= resourceCount)
+            return false;
+        if (liveResources[rid] != 0u)
+            return false;
+        liveResources[rid] = 1u;
+        return true;
+    };
+
+    // Seed: explicit external outputs (swapchain/backbuffer, RTT targets, etc.)
+    for (uint32_t rid = 0u; rid < resourceCount; ++rid)
+    {
+        const FGResourceDesc& res = fg.resources[rid];
+        if (res.externalOutput)
+            liveResources[rid] = 1u;
+    }
+
+    // Seed: present passes are sinks even if they don't "write" anything.
+    for (uint32_t nodeIndex = 0u; nodeIndex < nodeCount; ++nodeIndex)
+    {
+        const RFG::Node& node = fg.nodes[nodeIndex];
+        if (node.enabled && node.passType == RFG::PassType::Present)
+        {
+            liveNodes[nodeIndex] = 1u;
+            for (const FGResourceAccessDecl& a : node.accesses)
+                (void)markResource(a.resource);
+        }
+    }
+
+    bool changed = true;
+    while (changed)
+    {
+        changed = false;
+
+        for (uint32_t nodeIndex = 0u; nodeIndex < nodeCount; ++nodeIndex)
+        {
+            const RFG::Node& node = fg.nodes[nodeIndex];
+
+            bool writesLive = false;
+            for (const FGResourceAccessDecl& a : node.accesses)
+            {
+                if (!a.IsWrite())
+                    continue;
+                if (a.resource < resourceCount && liveResources[a.resource] != 0u)
+                {
+                    writesLive = true;
+                    break;
+                }
+            }
+
+            const bool isAlreadyLive = (liveNodes[nodeIndex] != 0u);
+            if (!writesLive && !isAlreadyLive)
+                continue;
+
+            if (!isAlreadyLive)
+            {
+                liveNodes[nodeIndex] = 1u;
+                changed = true;
+            }
+
+            for (const FGResourceAccessDecl& a : node.accesses)
+                changed = markResource(a.resource) || changed;
+
+            for (uint32_t dep : node.dependencies)
+            {
+                if (dep < nodeCount && liveNodes[dep] == 0u)
+                {
+                    liveNodes[dep] = 1u;
+                    changed = true;
+                }
+            }
+        }
+
+        // Ensure resources referenced by live nodes stay live.
+        for (uint32_t nodeIndex = 0u; nodeIndex < nodeCount; ++nodeIndex)
+        {
+            if (liveNodes[nodeIndex] == 0u)
+                continue;
+            const RFG::Node& node = fg.nodes[nodeIndex];
+            for (const FGResourceAccessDecl& a : node.accesses)
+                changed = markResource(a.resource) || changed;
+        }
+    }
+}
+
+void GDXRenderFrameGraph::CompactToLiveSubgraph(
+    RFG::FrameGraph& fg,
+    const std::vector<uint8_t>& liveNodes,
+    const std::vector<uint8_t>& liveResources) const
+{
+    const uint32_t oldNodeCount = static_cast<uint32_t>(fg.nodes.size());
+    const uint32_t oldResourceCount = static_cast<uint32_t>(fg.resources.size());
+
+    std::vector<uint32_t> resourceRemap(oldResourceCount, FG_INVALID_RESOURCE);
+    std::vector<FGResourceDesc> newResources;
+    newResources.reserve(oldResourceCount);
+    for (uint32_t rid = 0u; rid < oldResourceCount; ++rid)
+    {
+        if (rid >= liveResources.size() || liveResources[rid] == 0u)
+            continue;
+        resourceRemap[rid] = static_cast<uint32_t>(newResources.size());
+        FGResourceDesc desc = fg.resources[rid];
+        desc.id = static_cast<uint32_t>(newResources.size());
+        newResources.push_back(std::move(desc));
+    }
+
+    std::vector<uint32_t> nodeRemap(oldNodeCount, FG_INVALID_NODE);
+    std::vector<RFG::Node> newNodes;
+    newNodes.reserve(oldNodeCount);
+    for (uint32_t nid = 0u; nid < oldNodeCount; ++nid)
+    {
+        if (nid >= liveNodes.size() || liveNodes[nid] == 0u)
+            continue;
+        nodeRemap[nid] = static_cast<uint32_t>(newNodes.size());
+        RFG::Node node = fg.nodes[nid];
+
+        {
+            std::vector<FGResourceAccessDecl> remapped;
+            remapped.reserve(node.accesses.size());
+            for (const FGResourceAccessDecl& a : node.accesses)
+            {
+                if (a.resource == FG_INVALID_RESOURCE || a.resource >= oldResourceCount)
+                    continue;
+                const uint32_t mapped = resourceRemap[a.resource];
+                if (mapped == FG_INVALID_RESOURCE)
+                    continue;
+                FGResourceAccessDecl b = a;
+                b.resource = mapped;
+                remapped.push_back(b);
+            }
+            node.accesses.swap(remapped);
+        }
+        node.dependencies.clear();
+        newNodes.push_back(std::move(node));
+    }
+
+    fg.resources = std::move(newResources);
+    fg.nodes = std::move(newNodes);
+    fg.executionOrder.clear();
 }
 
 bool GDXRenderFrameGraph::BuildExecutionOrder(RFG::FrameGraph& fg) const
@@ -562,13 +1357,173 @@ bool GDXRenderFrameGraph::Validate(RFG::FrameGraph& fg) const
         fg.validation.errors.push_back(std::move(msg));
     };
 
-    // Hilfsmakros — inline-Lambda statt Makro um Shadowing zu vermeiden.
+    auto describeResource = [&](FGResourceID rid) -> std::string
+    {
+        if (rid == FG_INVALID_RESOURCE || rid >= resourceCount)
+            return "resource=" + std::to_string(rid);
+
+        const FGResourceDesc& desc = fg.resources[rid];
+        std::string text = "resource=" + std::to_string(rid);
+        text += " name='";
+        text += !desc.debugName.empty() ? desc.debugName : "<unnamed>";
+        text += "'";
+        text += " lifetime=";
+        text += FGResourceLifetimeToString(desc.lifetime);
+        text += " kind=";
+        text += FGResourceKindToString(desc.kind);
+        text += " extent=";
+        text += std::to_string(desc.width);
+        text += "x";
+        text += std::to_string(desc.height);
+        text += " format=";
+        text += FGResourceFormatToString(desc.format);
+        text += " producer=";
+        text += (desc.producerNode == FG_INVALID_NODE) ? "none" : std::to_string(desc.producerNode);
+        text += " firstUse=";
+        text += (desc.firstUseNode == FG_INVALID_NODE) ? "none" : std::to_string(desc.firstUseNode);
+        text += " lastUse=";
+        text += (desc.lastUseNode == FG_INVALID_NODE) ? "none" : std::to_string(desc.lastUseNode);
+        text += " initialState=";
+        text += FGResourceStateToString(desc.plannedInitialState);
+        text += " finalState=";
+        text += FGResourceStateToString(desc.plannedFinalState);
+        return text;
+    };
+
     auto checkResourceID = [&](FGResourceID rid, uint32_t nodeIdx, const char* slot)
     {
         if (rid == FG_INVALID_RESOURCE || rid >= resourceCount)
             addError("FrameGraph " + std::string(slot) + " invalid resource " +
                      std::to_string(rid) + " at node " + std::to_string(nodeIdx));
     };
+
+    for (uint32_t rid = 0u; rid < resourceCount; ++rid)
+    {
+        const FGResourceDesc& desc = fg.resources[rid];
+        if (desc.id != rid)
+            addError("FrameGraph resource id mismatch: slot " + std::to_string(rid) +
+                     " stores id " + std::to_string(desc.id));
+
+        switch (desc.lifetime)
+        {
+        case FGResourceLifetime::Imported:
+        case FGResourceLifetime::Transient:
+            break;
+        default:
+            addError("FrameGraph invalid lifetime on " + describeResource(rid));
+            break;
+        }
+
+        if (desc.kind == FGResourceKind::Unknown)
+            addError("FrameGraph missing ResourceKind on " + describeResource(rid));
+
+        if (desc.kind == FGResourceKind::Backbuffer && desc.IsTransient())
+            addError("FrameGraph backbuffer must not be transient: " + describeResource(rid));
+
+        if (desc.kind == FGResourceKind::History && desc.IsTransient())
+            addError("FrameGraph history resource must be imported/persistent: " + describeResource(rid));
+
+        if (desc.kind == FGResourceKind::Shadow && desc.IsImported())
+            addError("FrameGraph shadow resource must not be imported/shared implicitly: " + describeResource(rid));
+
+        if (desc.kind == FGResourceKind::Shadow && desc.renderTarget.IsValid())
+            addError("FrameGraph shadow resource should not masquerade as color render target: " + describeResource(rid));
+
+        const bool expectsExtent =
+            desc.kind == FGResourceKind::Backbuffer ||
+            desc.kind == FGResourceKind::Texture ||
+            desc.kind == FGResourceKind::RenderTarget ||
+            desc.kind == FGResourceKind::Depth ||
+            desc.kind == FGResourceKind::Shadow ||
+            desc.kind == FGResourceKind::History;
+
+        if (expectsExtent && (desc.width == 0u || desc.height == 0u))
+            addError("FrameGraph missing extent metadata on " + describeResource(rid));
+
+        const bool requiresKnownFormat =
+            desc.kind == FGResourceKind::Backbuffer ||
+            desc.kind == FGResourceKind::Texture ||
+            desc.kind == FGResourceKind::RenderTarget ||
+            desc.kind == FGResourceKind::History ||
+            desc.kind == FGResourceKind::Shadow ||
+            desc.kind == FGResourceKind::Depth;
+
+        if (requiresKnownFormat && desc.format == GDXTextureFormat::Unknown)
+            addError("FrameGraph missing format metadata on " + describeResource(rid));
+
+        if (desc.plannedInitialState == ResourceState::Unknown)
+            addError("FrameGraph missing planned initial resource state on " + describeResource(rid));
+
+        if (desc.plannedFinalState == ResourceState::Unknown)
+            addError("FrameGraph missing planned final resource state on " + describeResource(rid));
+
+        if (desc.HasUses() && desc.lastUseNode == FG_INVALID_NODE)
+            addError("FrameGraph lifetime missing last-use on " + describeResource(rid));
+
+        if (!desc.HasUses() && desc.lastUseNode != FG_INVALID_NODE)
+            addError("FrameGraph lifetime has last-use without first-use on " + describeResource(rid));
+
+        if (desc.firstUseNode != FG_INVALID_NODE && desc.firstUseNode >= nodeCount)
+            addError("FrameGraph lifetime first-use OOB on " + describeResource(rid));
+
+        if (desc.lastUseNode != FG_INVALID_NODE && desc.lastUseNode >= nodeCount)
+            addError("FrameGraph lifetime last-use OOB on " + describeResource(rid));
+
+        if (desc.producerNode != FG_INVALID_NODE && desc.producerNode >= nodeCount)
+            addError("FrameGraph lifetime producer OOB on " + describeResource(rid));
+
+
+        if (desc.producerNode != FG_INVALID_NODE && desc.firstUseNode == FG_INVALID_NODE)
+            addError("FrameGraph lifetime producer without use-span on " + describeResource(rid));
+
+        if (desc.producerNode != FG_INVALID_NODE)
+        {
+            bool producerWrites = false;
+            if (desc.producerNode < nodeCount)
+            {
+                for (const FGResourceAccessDecl& a : fg.nodes[desc.producerNode].accesses)
+                    if (a.resource == rid && a.IsWrite()) { producerWrites = true; break; }
+            }
+            if (!producerWrites)
+                addError("FrameGraph lifetime producer does not write resource on " + describeResource(rid));
+        }
+    }
+
+    std::vector<int32_t> execPos(nodeCount, -1);
+    for (uint32_t p = 0u; p < static_cast<uint32_t>(fg.executionOrder.size()); ++p)
+    {
+        const uint32_t ni = fg.executionOrder[p];
+        if (ni < nodeCount)
+            execPos[ni] = static_cast<int32_t>(p);
+    }
+
+    for (uint32_t rid = 0u; rid < resourceCount; ++rid)
+    {
+        const FGResourceDesc& desc = fg.resources[rid];
+        if (desc.firstUseNode != FG_INVALID_NODE && desc.lastUseNode != FG_INVALID_NODE)
+        {
+            if (execPos[desc.firstUseNode] == -1 || execPos[desc.lastUseNode] == -1)
+            {
+                addError("FrameGraph lifetime references node outside executionOrder on " + describeResource(rid));
+            }
+            else if (execPos[desc.firstUseNode] > execPos[desc.lastUseNode])
+            {
+                addError("FrameGraph lifetime first-use after last-use on " + describeResource(rid));
+            }
+        }
+
+        if (desc.producerNode != FG_INVALID_NODE && desc.firstUseNode != FG_INVALID_NODE)
+        {
+            if (execPos[desc.producerNode] == -1 || execPos[desc.firstUseNode] == -1)
+            {
+                addError("FrameGraph lifetime producer not in executionOrder on " + describeResource(rid));
+            }
+            else if (execPos[desc.producerNode] > execPos[desc.firstUseNode])
+            {
+                addError("FrameGraph lifetime producer after first-use on " + describeResource(rid));
+            }
+        }
+    }
 
     for (uint32_t i = 0u; i < nodeCount; ++i)
     {
@@ -587,64 +1542,105 @@ bool GDXRenderFrameGraph::Validate(RFG::FrameGraph& fg) const
               addError("FrameGraph self-dep at node " + std::to_string(i));
         }
 
-        // --- Resource-Bounds: reads ---
+        // --- Access validation (single source of truth) ---
         {
-            for (uint32_t r = 0u; r < static_cast<uint32_t>(node.reads.size()); ++r)
+            for (uint32_t a = 0u; a < static_cast<uint32_t>(node.accesses.size()); ++a)
             {
-                checkResourceID(node.reads[r], i, "read");
-                // Duplikat-Check innerhalb reads
-                for (uint32_t r2 = r + 1u; r2 < static_cast<uint32_t>(node.reads.size()); ++r2)
-                    if (node.reads[r] == node.reads[r2])
-                        addError("FrameGraph duplicate read resource " +
-                                 std::to_string(node.reads[r]) + " at node " + std::to_string(i));
+                const FGResourceAccessDecl& access = node.accesses[a];
+                checkResourceID(access.resource, i, "access");
+                if (access.resource == FG_INVALID_RESOURCE || access.resource >= resourceCount)
+                    continue;
+                if (access.requiredState == ResourceState::Unknown)
+                {
+                    addError("FrameGraph access missing required state for " + describeResource(access.resource) +
+                             " at node " + std::to_string(i) +
+                             " (type=" + std::string(FGResourceAccessTypeToString(access.type)) + ")");
+                }
+
+                // Duplicate resource access within a node is usually accidental.
+                for (uint32_t b = a + 1u; b < static_cast<uint32_t>(node.accesses.size()); ++b)
+                {
+                    const auto& other = node.accesses[b];
+                    if (other.resource == access.resource)
+                    {
+                        addError("FrameGraph duplicate access to " + describeResource(access.resource) +
+                                 " at node " + std::to_string(i));
+                        break;
+                    }
+                }
             }
         }
 
-        // --- Resource-Bounds: writes ---
+        bool readsMainViewShadow = false;
+        bool hasLocalShadowWrite = false;
+        for (const FGResourceAccessDecl& a : node.accesses)
         {
-            for (uint32_t w = 0u; w < static_cast<uint32_t>(node.writes.size()); ++w)
-            {
-                checkResourceID(node.writes[w], i, "write");
-                // Duplikat-Check innerhalb writes
-                for (uint32_t w2 = w + 1u; w2 < static_cast<uint32_t>(node.writes.size()); ++w2)
-                    if (node.writes[w] == node.writes[w2])
-                        addError("FrameGraph duplicate write resource " +
-                                 std::to_string(node.writes[w]) + " at node " + std::to_string(i));
-            }
+            if (a.resource >= resourceCount)
+                continue;
+            const FGResourceDesc& res = fg.resources[a.resource];
+            if (a.IsRead() && res.debugName == "ShadowMap.MainView")
+                readsMainViewShadow = true;
+            if (a.IsWrite() && res.kind == FGResourceKind::Shadow)
+                hasLocalShadowWrite = true;
         }
 
-        // --- RAW: jeder Read braucht einen Writer in den Deps ---
-        for (FGResourceID rid : node.reads)
+        if (node.countedAsRenderTargetView && readsMainViewShadow &&
+            node.shadowResourcePolicy != FGShadowResourcePolicy::GlobalSharedMainView)
         {
-            if (rid == FG_INVALID_RESOURCE || rid >= resourceCount) continue; // bereits gemeldet
+            addError("FrameGraph RTT node reads main-view shadow without explicit GlobalSharedMainView policy at node " + std::to_string(i));
+        }
+
+        if (node.shadowResourcePolicy == FGShadowResourcePolicy::GlobalSharedMainView && hasLocalShadowWrite)
+        {
+            addError("FrameGraph node mixes GlobalSharedMainView shadow policy with local shadow production at node " + std::to_string(i));
+        }
+
+        // --- RAW: each read must be ordered after a writer OR be an imported external input ---
+        for (const FGResourceAccessDecl& a : node.accesses)
+        {
+            if (!a.IsRead())
+                continue;
+            const FGResourceID rid = a.resource;
+            if (rid == FG_INVALID_RESOURCE || rid >= resourceCount)
+                continue;
+
             bool hasWriter = false;
             for (uint32_t dep : node.dependencies)
             {
                 if (dep >= nodeCount) continue;
-                for (FGResourceID w : fg.nodes[dep].writes)
-                    if (w == rid) { hasWriter = true; break; }
+                for (const FGResourceAccessDecl& wa : fg.nodes[dep].accesses)
+                {
+                    if (wa.resource == rid && wa.IsWrite()) { hasWriter = true; break; }
+                }
                 if (hasWriter) break;
             }
-            if (!hasWriter)
-                addError("FrameGraph RAW: resource " + std::to_string(rid) +
+
+            const FGResourceDesc& res = fg.resources[rid];
+            const bool allowImportedRead = (res.IsImported() && !res.HasProducer());
+            if (!hasWriter && !allowImportedRead)
+                addError("FrameGraph RAW: " + describeResource(rid) +
                          " at node " + std::to_string(i) + " has no writer dep");
         }
 
-        // --- WAW/WAR: Writer muss letzten Accessor als Dep haben ---
-        for (FGResourceID rid : node.writes)
+        // --- WAW/WAR: writer must depend on the last accessor ---
+        for (const FGResourceAccessDecl& a : node.accesses)
         {
-            if (rid == FG_INVALID_RESOURCE || rid >= resourceCount) continue;
+            if (!a.IsWrite())
+                continue;
+            const FGResourceID rid = a.resource;
+            if (rid == FG_INVALID_RESOURCE || rid >= resourceCount)
+                continue;
             int lastAccessor = -1;
             for (int j = static_cast<int>(i) - 1; j >= 0; --j)
             {
                 const auto& prev = fg.nodes[j];
                 bool hit = false;
-                for (FGResourceID w : prev.writes) if (w == rid) { hit = true; break; }
-                if (!hit) for (FGResourceID r : prev.reads) if (r == rid) { hit = true; break; }
+                for (const FGResourceAccessDecl& pa : prev.accesses)
+                    if (pa.resource == rid && (pa.IsRead() || pa.IsWrite())) { hit = true; break; }
                 if (hit) { lastAccessor = j; break; }
             }
             if (lastAccessor >= 0 && !HasDependency(node, static_cast<uint32_t>(lastAccessor)))
-                addError("FrameGraph WAW/WAR: resource " + std::to_string(rid) +
+                addError("FrameGraph WAW/WAR: " + describeResource(rid) +
                          " node " + std::to_string(i) + " missing dep on " + std::to_string(lastAccessor));
         }
     }
@@ -675,6 +1671,49 @@ bool GDXRenderFrameGraph::Validate(RFG::FrameGraph& fg) const
             if (pos[dep] >= pos[i])
                 addError("FrameGraph order violation: dep " + std::to_string(dep) +
                          " must execute before node " + std::to_string(i));
+        }
+    }
+
+    if (fg.validation.valid)
+    {
+        for (uint32_t rid = 0u; rid < resourceCount; ++rid)
+        {
+            const FGResourceDesc& desc = fg.resources[rid];
+            Debug::Log(GDX_SRC_LOC,
+                "FrameGraph resource state plan: id=", rid,
+                " name='", desc.debugName,
+                "' initial=", FGResourceStateToString(desc.plannedInitialState),
+                " final=", FGResourceStateToString(desc.plannedFinalState),
+                " producer=", desc.producerNode,
+                " firstUse=", desc.firstUseNode,
+                " lastUse=", desc.lastUseNode);
+        }
+
+        for (uint32_t i = 0u; i < nodeCount; ++i)
+        {
+            const RFG::Node& node = fg.nodes[i];
+            for (const FGPlannedTransition& transition : node.beginTransitions)
+            {
+                if (transition.resource >= resourceCount)
+                    continue;
+                const FGResourceDesc& resource = fg.resources[transition.resource];
+                Debug::Log(GDX_SRC_LOC,
+                    "FrameGraph begin transition: node=", i,
+                    " resource='", resource.debugName,
+                    "' ", FGResourceStateToString(transition.before),
+                    " -> ", FGResourceStateToString(transition.after));
+            }
+            for (const FGPlannedTransition& transition : node.endTransitions)
+            {
+                if (transition.resource >= resourceCount)
+                    continue;
+                const FGResourceDesc& resource = fg.resources[transition.resource];
+                Debug::Log(GDX_SRC_LOC,
+                    "FrameGraph end transition: node=", i,
+                    " resource='", resource.debugName,
+                    "' ", FGResourceStateToString(transition.before),
+                    " -> ", FGResourceStateToString(transition.after));
+            }
         }
     }
 
@@ -730,7 +1769,48 @@ void GDXRenderFrameGraph::Execute(RFG::PipelineData& pipeline, const RFG::ExecCo
             lastUpdatedExec = node.executeInput;
         }
 
-        ExecuteNode(node, ctx);
+        // Materialize per-node planned transitions into backend payloads.
+        std::vector<BackendPlannedTransition> beginBackend;
+        std::vector<BackendPlannedTransition> endBackend;
+        RFG::ExecContext localCtx = ctx;
+        if (ctx.backend && ctx.frameGraph)
+        {
+            const RFG::FrameGraph& fg = *ctx.frameGraph;
+            beginBackend.reserve(node.beginTransitions.size());
+            for (const FGPlannedTransition& t : node.beginTransitions)
+            {
+                if (t.resource == FG_INVALID_RESOURCE || t.resource >= fg.resources.size())
+                    continue;
+                const FGResourceDesc& res = fg.resources[t.resource];
+                BackendPlannedTransition bt{};
+                bt.texture = res.texture;
+                bt.renderTarget = res.renderTarget;
+                bt.before = t.before;
+                bt.after = t.after;
+                bt.debugName = res.debugName.c_str();
+                beginBackend.push_back(bt);
+            }
+
+            endBackend.reserve(node.endTransitions.size());
+            for (const FGPlannedTransition& t : node.endTransitions)
+            {
+                if (t.resource == FG_INVALID_RESOURCE || t.resource >= fg.resources.size())
+                    continue;
+                const FGResourceDesc& res = fg.resources[t.resource];
+                BackendPlannedTransition bt{};
+                bt.texture = res.texture;
+                bt.renderTarget = res.renderTarget;
+                bt.before = t.before;
+                bt.after = t.after;
+                bt.debugName = res.debugName.c_str();
+                endBackend.push_back(bt);
+            }
+
+            localCtx.beginTransitions = &beginBackend;
+            localCtx.endTransitions = &endBackend;
+        }
+
+        ExecuteNode(node, localCtx);
         executed[nodeIndex] = 1u;
     }
 }

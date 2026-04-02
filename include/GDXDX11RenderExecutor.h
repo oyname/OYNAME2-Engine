@@ -177,6 +177,7 @@ private:
     ID3D11Buffer* ResolveConstantBufferForBinding(
         const GDXRecordedConstantBufferBinding& binding,
         const GDXRecordedDrawItem& item,
+        ResourceStore<MaterialResource, MaterialTag>& matStore,
         GDXDX11GpuRegistry& gpuRegistry,
         bool applyReceiveShadowOverride);
     void BindTextureBinding(
@@ -193,12 +194,14 @@ private:
         const GDXPipelineLayoutDesc& pipelineLayout,
         const GDXRecordedConstantBufferBinding& binding,
         const GDXRecordedDrawItem& item,
+        ResourceStore<MaterialResource, MaterialTag>& matStore,
         GDXDX11GpuRegistry& gpuRegistry,
         bool applyReceiveShadowOverride);
     void BindBindingGroup(
         const GDXPipelineLayoutDesc& pipelineLayout,
         const GDXRecordedDrawItem& item,
         const GDXRecordedBindingGroupData& bindings,
+        ResourceStore<MaterialResource, MaterialTag>& matStore,
         ResourceStore<GDXTextureResource, TextureTag>& texStore,
         GDXDX11GpuRegistry& gpuRegistry,
         ID3D11ShaderResourceView* shadowSRV,
@@ -211,6 +214,7 @@ private:
         const GDXPipelineLayoutDesc& pipelineLayout,
         const GDXRecordedDrawItem& item,
         const GDXRecordedBindingGroupData& groupData,
+        ResourceStore<MaterialResource, MaterialTag>& matStore,
         ResourceStore<GDXTextureResource, TextureTag>& texStore,
         GDXDX11GpuRegistry& gpuRegistry,
         ResourceBindingScope scope,
@@ -218,6 +222,7 @@ private:
     void BindExplicitPassResources(
         const GDXPipelineLayoutDesc& pipelineLayout,
         const GDXRecordedDrawItem& item,
+        ResourceStore<MaterialResource, MaterialTag>& matStore,
         ResourceStore<GDXTextureResource, TextureTag>& texStore,
         GDXDX11GpuRegistry& gpuRegistry,
         ID3D11ShaderResourceView* shadowSRV);

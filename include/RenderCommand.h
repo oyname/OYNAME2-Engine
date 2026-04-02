@@ -3,8 +3,8 @@
 #include "ECS/ECSTypes.h"
 #include "GDXResourceBinding.h"
 #include "GDXPipelineState.h"
-#include "MaterialParams.h"
-#include "GDXTextureSlots.h"
+// Material params are authored data and live in MaterialResource.
+// Render commands only carry handles and binding/pipeline keys.
 
 #include <cstdint>
 #include "Core/GDXMath.h"
@@ -14,6 +14,7 @@ enum class RenderPass : uint8_t
     Shadow      = 0,
     Opaque      = 1,
     Transparent = 2,
+    ParticlesTransparent = 3,
 };
 
 struct RenderCommand
@@ -32,10 +33,6 @@ struct RenderCommand
     uint64_t             passBindingsKey = 0ull;
     uint64_t             materialBindingsKey = 0ull;
     uint64_t             drawBindingsKey = 0ull;
-    MaterialParams             materialParams{};
-    MaterialRenderPolicy       materialRenderPolicy{};
-    MaterialTextureLayerArray  materialTextureLayers{};
-
     uint64_t sortKey = 0ull;
     bool     receiveShadows = true;
 

@@ -34,6 +34,28 @@ enum class GDXBindingGroup : uint8_t
     Draw = 2,
 };
 
+// Binding frequency is the higher-level (backend neutral) intent.
+// For now Global maps to the existing Pass group (frame constants, global textures).
+enum class GDXBindingFrequency : uint8_t
+{
+    Global = 0,
+    Pass = 1,
+    Material = 2,
+    Draw = 3,
+};
+
+inline constexpr GDXBindingGroup GDXBindingGroupFromFrequency(GDXBindingFrequency f) noexcept
+{
+    switch (f)
+    {
+    case GDXBindingFrequency::Global:
+    case GDXBindingFrequency::Pass:     return GDXBindingGroup::Pass;
+    case GDXBindingFrequency::Material: return GDXBindingGroup::Material;
+    case GDXBindingFrequency::Draw:     return GDXBindingGroup::Draw;
+    default:                            return GDXBindingGroup::Pass;
+    }
+}
+
 enum class GDXBoundResourceClass : uint8_t
 {
     ConstantBuffer = 0,

@@ -273,9 +273,7 @@ void GDXDebugCullingRenderer::AppendBounds(
     cmd.ownerEntity  = candidate.entity;
     cmd.pass         = RenderPass::Opaque;
     cmd.worldMatrix  = Matrix4::Identity();
-    cmd.materialParams = matRes->GetParams();
-    cmd.materialTextureLayers = matRes->GetTextureLayers();
-    cmd.materialParams.baseColor.w = 1.f;
+    // Material data is sourced from MaterialResource at execution time.
 
     const ResourceBindingSet bindings = BuildDebugBindings(*matRes, *shaderRes);
     cmd.SetBindings(bindings,
@@ -333,9 +331,7 @@ void GDXDebugCullingRenderer::AppendFrustum(
     cmd.ownerEntity  = NULL_ENTITY;
     cmd.pass         = RenderPass::Opaque;
     cmd.worldMatrix  = Matrix4::Identity();
-    cmd.materialParams = matRes->GetParams();
-    cmd.materialTextureLayers = matRes->GetTextureLayers();
-    cmd.materialParams.baseColor = { 1.f, 1.f, 1.f, 1.f };
+    // Material data is sourced from MaterialResource at execution time.
 
     const ResourceBindingSet bindings = BuildDebugBindings(*matRes, *shaderRes);
     cmd.SetBindings(bindings,

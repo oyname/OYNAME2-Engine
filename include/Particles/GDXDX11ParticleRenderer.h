@@ -31,11 +31,12 @@ public:
               ID3D11ShaderResourceView*  particleTexture,
               int                        maxParticles = 16384);
 
-    void Render  (const GDXParticleSystem& system, const ParticleRenderContext& ctx) override;
+    void Render  (const ParticleRenderSubmission& submission) override;
     void Shutdown()                                                                   override;
 
 private:
     bool CreateBuffers(ID3D11Device* dev, int maxParticles);
+    bool EnsureInstanceCapacity(int requiredInstances);
     bool CreateShaders(ID3D11Device* dev);
     bool CreateStates (ID3D11Device* dev);
 
@@ -66,4 +67,6 @@ private:
     ID3D11ShaderResourceView* m_texture    = nullptr;  // not owned
 
     int m_maxInstances = 0;
+    int m_lastUploadedCounts[2] = {};
+    ID3D11Device* m_device = nullptr;
 };

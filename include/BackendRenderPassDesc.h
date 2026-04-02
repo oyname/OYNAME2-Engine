@@ -5,10 +5,18 @@
 #include "RenderCommand.h"
 #include "GDXResourceState.h"
 #include "GDXPassExecutionModel.h"
-#include "GDXResourceStatePlanner.h"
+#include "Particles/IGDXParticleRenderer.h"
 
-// Forward declarations — avoid pulling in full ICommandList.h here.
 class ICommandList;
+
+struct BackendPlannedTransition
+{
+    TextureHandle texture = TextureHandle::Invalid();
+    RenderTargetHandle renderTarget = RenderTargetHandle::Invalid();
+    ResourceState before = ResourceState::Unknown;
+    ResourceState after = ResourceState::Unknown;
+    const char* debugName = "";
+};
 
 struct BackendRenderPassDesc
 {
@@ -21,57 +29,36 @@ struct BackendRenderPassDesc
     Kind kind = Kind::Graphics;
     RenderPass pass = RenderPass::Opaque;
     RenderPassTargetDesc target{};
+    bool bindNormalsTarget = false;
     const FrameData* frame = nullptr;
     GDXPassExecutionInfo execution{};
-    GDXPassResourceUsageSet resources{};
 
-    // Graphics pass: pre-split by the planning layer.
-    // opaqueList  — opaque + alpha-tested draws (depth write on).
-    // alphaList   — transparent draws (depth write off, back-to-front sorted).
-    // Both are nullptr for Shadow passes.
     const ICommandList* opaqueList = nullptr;
-    const ICommandList* alphaList  = nullptr;
-
-    void ClearResourceUsages() noexcept
-    {
-        resources.Clear();
-    }
-
-    void NormalizeResourceUsages() noexcept
-    {
-        GDXNormalizePassResourceUsageSet(resources);
-    }
-
-    bool AddResourceUsage(const GDXPassResourceUsageEntry& entry) noexcept
-    {
-        GDXPassResourceUsageEntry normalized = entry;
-        GDXNormalizePassResourceUsageEntry(normalized);
-        return resources.Add(normalized);
-    }
+    const ICommandList* alphaList = nullptr;
+    const ParticleRenderSubmission* particleSubmission = nullptr;
 
     static BackendRenderPassDesc Shadow(const FrameData& inFrame)
     {
         BackendRenderPassDesc d{};
-        d.kind  = Kind::Shadow;
-        d.pass  = RenderPass::Shadow;
+        d.kind = Kind::Shadow;
+        d.pass = RenderPass::Shadow;
         d.frame = &inFrame;
         d.execution.executionClass = GDXPassExecutionClass::Shadow;
         d.execution.commandEncoding = GDXCommandEncoding::DrawQueue;
-        d.resources.Add({ GDXPassResourceKind::ShadowMap, GDXPassResourceAccess::DepthTarget,
-                          TextureHandle::Invalid(), RenderTargetHandle::Invalid(), L"ShadowMap",
-                          ResourceState::ShaderRead, ResourceState::DepthWrite, ResourceState::ShaderRead });
         return d;
     }
 
     static BackendRenderPassDesc Graphics(const RenderPassTargetDesc& inTarget,
                                           const FrameData* inFrame = nullptr,
-                                          RenderPass inPass = RenderPass::Opaque)
+                                          RenderPass inPass = RenderPass::Opaque,
+                                          bool inBindNormalsTarget = false)
     {
         BackendRenderPassDesc d{};
-        d.kind   = Kind::Graphics;
-        d.pass   = inPass;
+        d.kind = Kind::Graphics;
+        d.pass = inPass;
         d.target = inTarget;
-        d.frame  = inFrame;
+        d.bindNormalsTarget = inBindNormalsTarget;
+        d.frame = inFrame;
         d.execution.executionClass = GDXPassExecutionClass::Graphics;
         d.execution.commandEncoding = GDXCommandEncoding::DrawQueue;
         d.execution.updatesFrameConstants = true;

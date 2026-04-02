@@ -496,6 +496,7 @@ ID3D11ShaderResourceView* GDXDX11RenderExecutor::ResolveTextureSRVForBinding(
 ID3D11Buffer* GDXDX11RenderExecutor::ResolveConstantBufferForBinding(
     const GDXRecordedConstantBufferBinding& binding,
     const GDXRecordedDrawItem& item,
+    ResourceStore<MaterialResource, MaterialTag>& matStore,
     GDXDX11GpuRegistry& gpuRegistry,
     bool applyReceiveShadowOverride)
 {
@@ -524,7 +525,13 @@ ID3D11Buffer* GDXDX11RenderExecutor::ResolveConstantBufferForBinding(
 
     if (binding.semantic == GDXShaderConstantBufferSlot::Material && cb)
     {
-        MaterialCBuffer drawData = ToGPU(item.materialParams, item.materialRenderPolicy, item.materialTextureLayers);
+        const MaterialResource* mat = binding.materialHandle.IsValid()
+            ? matStore.Get(binding.materialHandle)
+            : nullptr;
+        if (!mat)
+            return cb;
+
+        MaterialCBuffer drawData = ToGPU(mat->GetParams(), mat->GetRenderPolicy(), mat->GetTextureLayers());
         if (applyReceiveShadowOverride)
         {
             constexpr uint32_t kReceiveShadowsBit = (1u << 12);
@@ -572,6 +579,7 @@ void GDXDX11RenderExecutor::BindConstantBufferBinding(
     const GDXPipelineLayoutDesc& pipelineLayout,
     const GDXRecordedConstantBufferBinding& binding,
     const GDXRecordedDrawItem& item,
+    ResourceStore<MaterialResource, MaterialTag>& matStore,
     GDXDX11GpuRegistry& gpuRegistry,
     bool applyReceiveShadowOverride)
 {
@@ -583,7 +591,7 @@ void GDXDX11RenderExecutor::BindConstantBufferBinding(
     if (!resolvedBinding)
         return;
 
-    ID3D11Buffer* cb = ResolveConstantBufferForBinding(binding, item, gpuRegistry, applyReceiveShadowOverride);
+    ID3D11Buffer* cb = ResolveConstantBufferForBinding(binding, item, matStore, gpuRegistry, applyReceiveShadowOverride);
 
     const GDXDX11StageRegisterPair regs = GDXDX11RegistersForConstantBufferBinding(
         resolvedBinding->bindingGroup, resolvedBinding->slot, resolvedBinding->layoutBindingIndex, resolvedBinding->visibility);
@@ -597,6 +605,7 @@ void GDXDX11RenderExecutor::BindBindingGroup(
     const GDXPipelineLayoutDesc& pipelineLayout,
     const GDXRecordedDrawItem& item,
     const GDXRecordedBindingGroupData& bindings,
+    ResourceStore<MaterialResource, MaterialTag>& matStore,
     ResourceStore<GDXTextureResource, TextureTag>& texStore,
     GDXDX11GpuRegistry& gpuRegistry,
     ID3D11ShaderResourceView* shadowSRV,
@@ -610,13 +619,14 @@ void GDXDX11RenderExecutor::BindBindingGroup(
         BindTextureBinding(pipelineLayout, bindings.textures[i], texStore, gpuRegistry, shadowSRV, defaultWhite, defaultNormal, defaultORM, defaultBlack);
 
     for (uint32_t i = 0; i < bindings.constantBufferCount; ++i)
-        BindConstantBufferBinding(pipelineLayout, bindings.constantBuffers[i], item, gpuRegistry, applyReceiveShadowOverride);
+        BindConstantBufferBinding(pipelineLayout, bindings.constantBuffers[i], item, matStore, gpuRegistry, applyReceiveShadowOverride);
 }
 
 void GDXDX11RenderExecutor::ApplyBindingsForGroup(
     const GDXPipelineLayoutDesc& pipelineLayout,
     const GDXRecordedDrawItem& item,
     const GDXRecordedBindingGroupData& groupData,
+    ResourceStore<MaterialResource, MaterialTag>& matStore,
     ResourceStore<GDXTextureResource, TextureTag>& texStore,
     GDXDX11GpuRegistry& gpuRegistry,
     ResourceBindingScope scope,
@@ -632,7 +642,7 @@ void GDXDX11RenderExecutor::ApplyBindingsForGroup(
     if (scopeKey != 0ull && !m_bindingCache.ShouldApply(scope, scopeKey))
         return;
 
-    BindBindingGroup(pipelineLayout, item, groupData, texStore, gpuRegistry, nullptr,
+    BindBindingGroup(pipelineLayout, item, groupData, matStore, texStore, gpuRegistry, nullptr,
         defaultWhiteTex, defaultNormalTex, defaultORMTex, defaultBlackTex, applyReceiveShadowOverride);
 
     if (scopeKey != 0ull)
@@ -753,6 +763,7 @@ void GDXDX11RenderExecutor::BindResolvedBindingGroup(
 void GDXDX11RenderExecutor::BindExplicitPassResources(
     const GDXPipelineLayoutDesc& pipelineLayout,
     const GDXRecordedDrawItem& item,
+    ResourceStore<MaterialResource, MaterialTag>& matStore,
     ResourceStore<GDXTextureResource, TextureTag>& texStore,
     GDXDX11GpuRegistry& gpuRegistry,
     ID3D11ShaderResourceView* shadowSRV)
@@ -761,7 +772,7 @@ void GDXDX11RenderExecutor::BindExplicitPassResources(
     if (scopeKey != 0ull && !m_bindingCache.ShouldApply(ResourceBindingScope::Pass, scopeKey))
         return;
 
-    BindBindingGroup(pipelineLayout, item, item.passBindings, texStore, gpuRegistry, shadowSRV,
+    BindBindingGroup(pipelineLayout, item, item.passBindings, matStore, texStore, gpuRegistry, shadowSRV,
         defaultWhiteTex, defaultNormalTex, defaultORMTex, defaultBlackTex, false);
 
     if (scopeKey != 0ull)
@@ -905,18 +916,18 @@ void GDXDX11RenderExecutor::ExecuteRecordedStream(
 
         case GDXRecordedOpType::BindPassResources:
             if (currentItem == &item && currentShader)
-                BindExplicitPassResources(GetCachedPipelineLayout(item.shader, *currentShader), item, texStore, gpuRegistry, shadowPass ? nullptr : shadowSRV);
+                BindExplicitPassResources(GetCachedPipelineLayout(item.shader, *currentShader), item, matStore, texStore, gpuRegistry, shadowPass ? nullptr : shadowSRV);
             break;
 
         case GDXRecordedOpType::BindMaterialResources:
             if (currentItem == &item && currentShader)
-                ApplyBindingsForGroup(GetCachedPipelineLayout(item.shader, *currentShader), item, item.materialBindings, texStore, gpuRegistry, ResourceBindingScope::Material, false);
+                ApplyBindingsForGroup(GetCachedPipelineLayout(item.shader, *currentShader), item, item.materialBindings, matStore, texStore, gpuRegistry, ResourceBindingScope::Material, false);
             break;
 
         case GDXRecordedOpType::BindDrawResources:
             if (currentItem == &item && currentShader)
             {
-                ApplyBindingsForGroup(GetCachedPipelineLayout(item.shader, *currentShader), item, item.drawBindings, texStore, gpuRegistry, ResourceBindingScope::Draw, !shadowPass);
+                ApplyBindingsForGroup(GetCachedPipelineLayout(item.shader, *currentShader), item, item.drawBindings, matStore, texStore, gpuRegistry, ResourceBindingScope::Draw, !shadowPass);
 
                 Dx11EntityConstants ec = {};
                 std::memcpy(ec.worldMatrix, &item.worldMatrix, 64);

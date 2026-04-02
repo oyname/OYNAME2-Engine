@@ -175,9 +175,7 @@ namespace
             cache.pass = pass;
             cache.pipelineState = BuildPipelineStateDesc(pass, *mat);
             cache.bindings = BuildResourceBindingSet(*mat, renderable.material, *shaderRes);
-            cache.materialParams = mat->GetParams();
-            cache.materialRenderPolicy = mat->GetRenderPolicy();
-            cache.materialTextureLayers = mat->GetTextureLayers();
+            // Authored material data lives in MaterialResource; commands carry only handles.
             cache.transparent = outTransparent;
             cache.materialSortID = mat->GetSortID();
             cache.renderStateVersion = renderable.stateVersion;
@@ -216,9 +214,6 @@ namespace
             BuildResourceBindingScopeKey(cache.bindings, ResourceBindingScope::Material, cache.material.value),
             BuildResourceBindingScopeKey(cache.bindings, ResourceBindingScope::Draw, candidate.entity.value));
         outCmd.SetPipelineState(cache.pipelineState);
-        outCmd.materialParams = cache.materialParams;
-        outCmd.materialRenderPolicy = cache.materialRenderPolicy;
-        outCmd.materialTextureLayers = cache.materialTextureLayers;
         outCmd.receiveShadows = renderable.receiveShadows;
         outCmd.hasBounds         = candidate.hasBounds;
         outCmd.worldBoundsCenter = candidate.worldBoundsCenter;
@@ -271,9 +266,7 @@ namespace
             cache.pass = RenderPass::Shadow;
             cache.pipelineState = BuildPipelineStateDesc(RenderPass::Shadow, *mat);
             cache.bindings = BuildResourceBindingSet(*mat, renderable.material, *shaderRes);
-            cache.materialParams = mat->GetParams();
-            cache.materialRenderPolicy = mat->GetRenderPolicy();
-            cache.materialTextureLayers = mat->GetTextureLayers();
+            // Authored material data lives in MaterialResource; commands carry only handles.
             cache.transparent = false;
             cache.materialSortID = mat->GetSortID();
             cache.renderStateVersion = renderable.stateVersion;
@@ -306,9 +299,6 @@ namespace
             BuildResourceBindingScopeKey(cache.bindings, ResourceBindingScope::Material, cache.material.value),
             BuildResourceBindingScopeKey(cache.bindings, ResourceBindingScope::Draw, candidate.entity.value));
         outCmd.SetPipelineState(cache.pipelineState);
-        outCmd.materialParams = cache.materialParams;
-        outCmd.materialRenderPolicy = cache.materialRenderPolicy;
-        outCmd.materialTextureLayers = cache.materialTextureLayers;
         outCmd.receiveShadows = true;
         outCmd.hasBounds         = candidate.hasBounds;
         outCmd.worldBoundsCenter = candidate.worldBoundsCenter;

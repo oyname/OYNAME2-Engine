@@ -104,7 +104,6 @@ public:
     // Call with nullptr to detach.
     void SetParticleSystem(GDXParticleSystem* ps);
 
-    void QueueParticles(const GDXParticleSystem* system, const ParticleRenderContext& ctx);
     void SetOcclusionCulling(bool enabled);
     void SetShadowMapSize(uint32_t size);
     bool SupportsTextureFormat(GDXTextureFormat format) const;

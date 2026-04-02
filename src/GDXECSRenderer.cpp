@@ -166,6 +166,7 @@ void GDXECSRenderer::FillFrameDispatch(const RenderGatherSystem::ShaderResolver&
     m_frameDispatch.execCtx.rtStore              = &m_rtStore;
     m_frameDispatch.execCtx.postProcessStore     = &m_postProcessStore;
     m_frameDispatch.execCtx.postProcessPassOrder = &m_postProcessPassOrder;
+    m_frameDispatch.execCtx.frameGraph           = &m_renderPipeline.frameGraph;
 
     m_frameDispatch.fgBuild.rtStore                    = &m_rtStore;
     m_frameDispatch.fgBuild.mainScenePostProcessTarget = m_mainScenePostProcessTarget;
@@ -239,12 +240,6 @@ bool GDXECSRenderer::InitParticleRenderer(TextureHandle atlasTexture)
 void GDXECSRenderer::SetParticleSystem(GDXParticleSystem* ps)
 {
     m_particleSystemPtr = ps;
-}
-
-void GDXECSRenderer::QueueParticles(const GDXParticleSystem* system, const ParticleRenderContext& ctx)
-{
-    if (m_backend)
-        m_backend->QueueParticles(system, ctx);
 }
 
 bool GDXECSRenderer::Initialize()
@@ -1506,22 +1501,10 @@ void GDXECSRenderer::EndFrame()
             if (!m_particleSystemPtr)
                 return;
 
-            Matrix4 viewProj = Matrix4::Identity();
             m_particleEmitterSystem.Update(
                 m_registry,
-                m_cameraSystem,
                 *m_particleSystemPtr,
-                m_lastDeltaTime,
-                &viewProj);
-
-            if (m_particlesRenderReady)
-            {
-                ParticleRenderContext ctx;
-                ctx.viewProj  = viewProj;
-                ctx.camRight  = m_particleSystemPtr->GetCamRight();
-                ctx.camUp     = m_particleSystemPtr->GetCamUp();
-                QueueParticles(m_particleSystemPtr, ctx);
-            }
+                m_lastDeltaTime);
         } });
 
     // ---- Scene Extraction ----
@@ -1548,6 +1531,48 @@ void GDXECSRenderer::EndFrame()
                 m_frameDispatch.viewPrep,
                 m_renderPipeline.frameSnapshot,
                 m_renderPipeline.rttViews);
+        } });
+
+    m_systemScheduler.AddTask({ "Prepare Main Particles",
+        SR_MAIN_VIEW | SR_PARTICLES, SR_MAIN_VIEW,
+        [this]()
+        {
+            m_renderPipeline.mainView.execute.particleSubmission.Clear();
+            if (!m_particlesRenderReady || !m_particleSystemPtr)
+                return;
+
+            ParticleRenderContext ctx{};
+            ctx.viewMatrix = m_renderPipeline.mainView.prepared.frame.viewMatrix;
+            ctx.viewProj = m_renderPipeline.mainView.prepared.frame.viewProjMatrix;
+            ctx.cameraPosition = m_renderPipeline.mainView.prepared.frame.cameraPos;
+            ctx.cameraForward = m_renderPipeline.mainView.prepared.frame.cameraForward;
+            ctx.camRight = GDX::Normalize3({ ctx.viewMatrix._11, ctx.viewMatrix._21, ctx.viewMatrix._31 });
+            ctx.camUp = GDX::Normalize3({ ctx.viewMatrix._12, ctx.viewMatrix._22, ctx.viewMatrix._32 });
+            m_particleSystemPtr->BuildRenderSubmission(ctx, m_renderPipeline.mainView.execute.particleSubmission);
+        } });
+
+    m_systemScheduler.AddTask({ "Prepare RTT Particles",
+        SR_RTT_VIEWS | SR_PARTICLES, SR_RTT_VIEWS,
+        [this]()
+        {
+            if (!m_particlesRenderReady || !m_particleSystemPtr)
+            {
+                for (auto& view : m_renderPipeline.rttViews)
+                    view.execute.particleSubmission.Clear();
+                return;
+            }
+
+            for (auto& view : m_renderPipeline.rttViews)
+            {
+                ParticleRenderContext ctx{};
+                ctx.viewMatrix = view.prepared.frame.viewMatrix;
+                ctx.viewProj = view.prepared.frame.viewProjMatrix;
+                ctx.cameraPosition = view.prepared.frame.cameraPos;
+                ctx.cameraForward = view.prepared.frame.cameraForward;
+                ctx.camRight = GDX::Normalize3({ ctx.viewMatrix._11, ctx.viewMatrix._21, ctx.viewMatrix._31 });
+                ctx.camUp = GDX::Normalize3({ ctx.viewMatrix._12, ctx.viewMatrix._22, ctx.viewMatrix._32 });
+                m_particleSystemPtr->BuildRenderSubmission(ctx, view.execute.particleSubmission);
+            }
         } });
 
     // ---- Cull + Gather ----
@@ -1602,14 +1627,15 @@ void GDXECSRenderer::EndFrame()
 
     // ---- Execute-Input Build (Layer 2) ----
     m_systemScheduler.AddTask({ "Build Frame Execute Inputs",
-        SR_RENDER_QUEUES | SR_BACKEND, SR_RENDER_QUEUES,
+        SR_RENDER_QUEUES | SR_BACKEND | SR_MAIN_VIEW | SR_RTT_VIEWS, SR_RENDER_QUEUES,
         [this]()
         {
             RenderPassBuilder::BuildFrameExecuteInputs(
                 m_renderPipeline,
                 m_rtStore,
                 m_frameDispatch.postProc,
-                m_frameDispatch.debugAppend);
+                m_frameDispatch.debugAppend,
+                m_particlesRenderReady && m_particleSystemPtr && !m_renderPipeline.mainView.execute.particleSubmission.Empty());
         } });
 
     // ---- Framegraph Build ----
@@ -1630,12 +1656,13 @@ void GDXECSRenderer::EndFrame()
         SR_BACKEND | SR_STATS,
         [this]()
         {
+            m_frameDispatch.execCtx.frameGraph = &m_renderPipeline.frameGraph;
             m_frameGraph.Execute(m_renderPipeline, m_frameDispatch.execCtx);
 
             m_renderPipeline.mainView.stats.drawCalls =
                 m_backend ? m_backend->GetDrawCallCount() : 0u;
             m_renderPipeline.mainView.stats.renderCommands =
-                m_renderPipeline.mainView.execute.graphicsPass.enabled
+                m_renderPipeline.mainView.execute.opaquePass.enabled
                 ? static_cast<uint32_t>(
                     m_renderPipeline.mainView.execute.opaqueQueue.Count() +
                     m_renderPipeline.mainView.execute.alphaQueue.Count()) : 0u;
@@ -1654,8 +1681,6 @@ void GDXECSRenderer::EndFrame()
             LogDebugCullingStats();
 
             m_framePhase = RenderFramePhase::ExecuteSubmit;
-            if (m_backend && m_renderPipeline.mainView.execute.presentation.presentAfterExecute)
-                m_backend->Present(true);
         } });
 
     // Alle Task-Lambdas capturen nur [this] und lesen aus m_frameDispatch —

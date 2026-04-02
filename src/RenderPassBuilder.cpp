@@ -111,6 +111,113 @@ namespace
         return false;
     }
 
+
+    std::vector<PostProcessPassConstantOverride> BuildPerViewConstantOverrides(
+        const RFG::ExecuteData& exec,
+        const PostProcContext& ppCtx)
+    {
+        std::vector<PostProcessPassConstantOverride> overrides;
+        if (!ppCtx.postProcessStore || !ppCtx.passOrder)
+            return overrides;
+
+        struct DepthDebugParams
+        {
+            float nearPlane = 0.1f;
+            float farPlane = 1000.0f;
+            uint32_t isOrtho = 0u;
+            uint32_t flags = 1u;
+        } depthParams{
+            exec.presentation.postProcess.execInputs.cameraNearPlane,
+            exec.presentation.postProcess.execInputs.cameraFarPlane,
+            exec.presentation.postProcess.execInputs.cameraIsOrtho,
+            exec.presentation.postProcess.execInputs.depthDebugFlags
+        };
+
+        for (const PostProcessHandle handle : *ppCtx.passOrder)
+        {
+            const PostProcessResource* pass = ppCtx.postProcessStore->Get(handle);
+            if (!pass || !pass->ready || !pass->enabled)
+                continue;
+
+            PostProcessPassConstantOverride ov{};
+            ov.pass = handle;
+            ov.constantData = pass->constantData;
+
+            if (pass->desc.pixelShaderFile == L"PostProcessDepthDebugPS.hlsl")
+            {
+                if (pass->constantBufferBytes >= sizeof(DepthDebugParams) && ov.constantData.size() >= sizeof(DepthDebugParams))
+                    std::memcpy(ov.constantData.data(), &depthParams, sizeof(DepthDebugParams));
+            }
+            else if (pass->desc.pixelShaderFile == L"PostProcessGTAOPS.hlsl")
+            {
+                if (pass->constantBufferBytes >= sizeof(GTAOParams) && ov.constantData.size() >= sizeof(GTAOParams))
+                {
+                    GTAOParams* params = reinterpret_cast<GTAOParams*>(ov.constantData.data());
+                    params->nearPlane = exec.presentation.postProcess.execInputs.cameraNearPlane;
+                    params->farPlane = exec.presentation.postProcess.execInputs.cameraFarPlane;
+                    params->projScaleX = exec.presentation.postProcess.execInputs.cameraProjScaleX;
+                    params->projScaleY = exec.presentation.postProcess.execInputs.cameraProjScaleY;
+                    params->cameraIsOrtho = exec.presentation.postProcess.execInputs.cameraIsOrtho;
+                }
+            }
+            else if (pass->desc.pixelShaderFile == L"PostProcessGTAOBlurPS.hlsl")
+            {
+                if (pass->constantBufferBytes >= sizeof(GTAOBlurParams) && ov.constantData.size() >= sizeof(GTAOBlurParams))
+                {
+                    GTAOBlurParams* params = reinterpret_cast<GTAOBlurParams*>(ov.constantData.data());
+                    params->nearPlane = exec.presentation.postProcess.execInputs.cameraNearPlane;
+                    params->farPlane = exec.presentation.postProcess.execInputs.cameraFarPlane;
+                    params->cameraIsOrtho = exec.presentation.postProcess.execInputs.cameraIsOrtho;
+                }
+            }
+            else if (pass->desc.pixelShaderFile == L"PostProcessDepthFogPS.hlsl")
+            {
+                if (pass->constantBufferBytes >= sizeof(FogParams) && ov.constantData.size() >= sizeof(FogParams))
+                {
+                    FogParams* params = reinterpret_cast<FogParams*>(ov.constantData.data());
+                    params->cameraNearPlane = exec.presentation.postProcess.execInputs.cameraNearPlane;
+                    params->cameraFarPlane  = exec.presentation.postProcess.execInputs.cameraFarPlane;
+                    params->projScaleX      = exec.presentation.postProcess.execInputs.cameraProjScaleX;
+                    params->projScaleY      = exec.presentation.postProcess.execInputs.cameraProjScaleY;
+                    params->cameraIsOrtho   = exec.presentation.postProcess.execInputs.cameraIsOrtho;
+                    std::memcpy(params->invView, &exec.presentation.postProcess.execInputs.invViewMatrix, sizeof(params->invView));
+                }
+            }
+            else if (pass->desc.pixelShaderFile == L"PostProcessVolumetricFogPS.hlsl")
+            {
+                if (pass->constantBufferBytes >= sizeof(VolumetricFogParams) && ov.constantData.size() >= sizeof(VolumetricFogParams))
+                {
+                    VolumetricFogParams* params = reinterpret_cast<VolumetricFogParams*>(ov.constantData.data());
+                    params->cameraNearPlane = exec.presentation.postProcess.execInputs.cameraNearPlane;
+                    params->cameraFarPlane  = exec.presentation.postProcess.execInputs.cameraFarPlane;
+                    params->projScaleX      = exec.presentation.postProcess.execInputs.cameraProjScaleX;
+                    params->projScaleY      = exec.presentation.postProcess.execInputs.cameraProjScaleY;
+                    params->cameraIsOrtho   = exec.presentation.postProcess.execInputs.cameraIsOrtho;
+                    params->cascadeCount    = exec.presentation.postProcess.execInputs.shadowCascadeCount;
+                    params->cameraPos[0] = exec.presentation.postProcess.execInputs.cameraPos.x;
+                    params->cameraPos[1] = exec.presentation.postProcess.execInputs.cameraPos.y;
+                    params->cameraPos[2] = exec.presentation.postProcess.execInputs.cameraPos.z;
+                    params->cameraPos[3] = 0.0f;
+                    params->lightDir[0] = exec.presentation.postProcess.execInputs.shadowLightDir.x;
+                    params->lightDir[1] = exec.presentation.postProcess.execInputs.shadowLightDir.y;
+                    params->lightDir[2] = exec.presentation.postProcess.execInputs.shadowLightDir.z;
+                    params->lightDir[3] = 0.0f;
+                    std::memcpy(params->invView, &exec.presentation.postProcess.execInputs.invViewMatrix, sizeof(params->invView));
+                    for (uint32_t c = 0u; c < 4u; ++c)
+                    {
+                        std::memcpy(params->cascadeViewProj[c], &exec.presentation.postProcess.execInputs.shadowCascadeViewProj[c], sizeof(params->cascadeViewProj[c]));
+                        params->cascadeSplits[c] = exec.presentation.postProcess.execInputs.shadowCascadeSplits[c];
+                    }
+                }
+            }
+
+            if (!ov.constantData.empty())
+                overrides.push_back(std::move(ov));
+        }
+
+        return overrides;
+    }
+
     bool PrepareViewPostProcess(
         RFG::ViewPassData& view,
         const PostProcContext& ppCtx,
@@ -190,12 +297,15 @@ namespace
                 break;
             }
         }
+        if (ppCtx.passOrder)
+            view.execute.presentation.postProcess.orderedPasses = *ppCtx.passOrder;
+        view.execute.presentation.postProcess.constantOverrides = BuildPerViewConstantOverrides(view.execute, ppCtx);
         view.execute.presentation.postProcess.outputToBackbuffer = outputToBackbuffer;
         view.execute.presentation.postProcess.outputTarget =
             outputToBackbuffer ? RenderTargetHandle::Invalid()
                                : view.prepared.graphicsView.renderTarget;
 
-        BuildGraphicsPassExecuteInput(
+        BuildGraphicsPassExecuteInputs(
             view,
             RenderPassTargetDesc::Offscreen(
                 sceneTarget,
@@ -204,7 +314,8 @@ namespace
                 view.prepared.frame.viewportHeight,
                 outputToBackbuffer ? L"MainScenePostProcess" : L"RTTScenePostProcess"),
             true,
-            outputToBackbuffer ? true : view.prepared.shadowEnabled);
+            outputToBackbuffer ? true : view.prepared.shadowEnabled,
+            !view.execute.particleSubmission.Empty());
 
         return true;
     }
@@ -212,52 +323,12 @@ namespace
 
 
 
-void PopulateShadowPassResourceUsages(RFG::ViewPassData& view)
-{
-    view.execute.shadowPass.desc.ClearResourceUsages();
-    view.execute.shadowPass.desc.AddResourceUsage({ GDXPassResourceKind::ShadowMap,
-                                                    GDXPassResourceAccess::DepthTarget,
-                                                    TextureHandle::Invalid(),
-                                                    RenderTargetHandle::Invalid(),
-                                                    L"ShadowMap",
-                                                    ResourceState::ShaderRead,
-                                                    ResourceState::DepthWrite,
-                                                    ResourceState::ShaderRead });
-}
-
-void PopulateGraphicsPassResourceUsages(RFG::ViewPassData& view)
-{
-    BackendRenderPassDesc& desc = view.execute.graphicsPass.desc;
-    desc.ClearResourceUsages();
-
-    if (desc.target.useBackbuffer || !desc.target.renderTarget.IsValid())
-    {
-        desc.AddResourceUsage({ GDXPassResourceKind::Backbuffer,
-                                GDXPassResourceAccess::Present,
-                                TextureHandle::Invalid(),
-                                RenderTargetHandle::Invalid(),
-                                L"Backbuffer",
-                                ResourceState::Present,
-                                ResourceState::RenderTarget,
-                                ResourceState::Present });
-    }
-    else
-    {
-        desc.AddResourceUsage({ GDXPassResourceKind::RenderTarget,
-                                GDXPassResourceAccess::RenderTarget,
-                                TextureHandle::Invalid(),
-                                desc.target.renderTarget,
-                                L"OffscreenRenderTarget",
-                                ResourceState::ShaderRead,
-                                ResourceState::RenderTarget,
-                                ResourceState::ShaderRead });
-    }
-}
-
 // ---------------------------------------------------------------------------
 void ConfigureCommonExecuteInputs(RFG::ViewPassData& view, bool presentAfterExecute)
 {
+    ParticleRenderSubmission preservedParticles = std::move(view.execute.particleSubmission);
     view.execute.Reset();
+    view.execute.particleSubmission = std::move(preservedParticles);
     view.execute.frame = view.prepared.frame;
     view.execute.presentation.presentAfterExecute = presentAfterExecute;
 }
@@ -272,25 +343,51 @@ void BuildShadowPassExecuteInput(RFG::ViewPassData& view)
     if (!view.execute.shadowPass.enabled) return;
 
     view.execute.shadowPass.desc = BackendRenderPassDesc::Shadow(view.execute.frame);
-    PopulateShadowPassResourceUsages(view);
 }
 
-void BuildGraphicsPassExecuteInput(
+void BuildGraphicsPassExecuteInputs(
     RFG::ViewPassData&          view,
     const RenderPassTargetDesc& targetDesc,
     bool                        appendGraphicsVisibleSet,
-    bool                        appendShadowVisibleSet)
+    bool                        appendShadowVisibleSet,
+    bool                        enableParticles)
 {
-    view.execute.graphicsPass.Reset();
-    view.execute.graphicsPass.enabled = true;
-    view.execute.graphicsPass.desc    = BackendRenderPassDesc::Graphics(
+    view.execute.opaquePass.Reset();
+    view.execute.particlePass.Reset();
+    view.execute.transparentPass.Reset();
+
+    RenderPassTargetDesc loadTarget = targetDesc;
+    loadTarget.clear.clearColorEnabled = false;
+    loadTarget.clear.clearDepthEnabled = false;
+    loadTarget.clear.clearStencilEnabled = false;
+
+    view.execute.opaquePass.enabled = true;
+    view.execute.opaquePass.desc = BackendRenderPassDesc::Graphics(
         targetDesc,
         &view.execute.frame,
-        RenderPass::Opaque);
-    view.execute.graphicsPass.appendGraphicsVisibleSet = appendGraphicsVisibleSet;
-    view.execute.graphicsPass.appendShadowVisibleSet   = appendShadowVisibleSet;
-    view.execute.graphicsPass.sortQueueBeforeExecute   = true;
-    PopulateGraphicsPassResourceUsages(view);
+        RenderPass::Opaque,
+        true);
+    view.execute.opaquePass.appendGraphicsVisibleSet = appendGraphicsVisibleSet;
+    view.execute.opaquePass.appendShadowVisibleSet = appendShadowVisibleSet;
+    view.execute.opaquePass.sortQueueBeforeExecute = true;
+
+    view.execute.particlePass.enabled = enableParticles;
+    if (view.execute.particlePass.enabled)
+    {
+        view.execute.particlePass.desc = BackendRenderPassDesc::Graphics(
+            loadTarget,
+            &view.execute.frame,
+            RenderPass::ParticlesTransparent,
+            false);
+    }
+
+    view.execute.transparentPass.enabled = true;
+    view.execute.transparentPass.desc = BackendRenderPassDesc::Graphics(
+        loadTarget,
+        &view.execute.frame,
+        RenderPass::Transparent,
+        false);
+    view.execute.transparentPass.sortQueueBeforeExecute = true;
 }
 
 void BuildExecutionQueues(RFG::ViewPassData& view, const DebugAppendFn& debugFn)
@@ -299,24 +396,24 @@ void BuildExecutionQueues(RFG::ViewPassData& view, const DebugAppendFn& debugFn)
     view.execute.opaqueQueue = view.opaqueQueue;
     view.execute.alphaQueue  = view.transparentQueue;
 
-    const RFG::PassExec& passExec = view.execute.graphicsPass;
+    const RFG::PassExec& opaqueExec = view.execute.opaquePass;
+    const RFG::PassExec& transparentExec = view.execute.transparentPass;
     RenderViewData graphicsViewForDebug = view.prepared.graphicsView;
     graphicsViewForDebug.frame = view.realCameraFrame;
 
     if (debugFn)
     {
-        if (passExec.appendGraphicsVisibleSet)
+        if (opaqueExec.appendGraphicsVisibleSet)
             debugFn(view.execute.opaqueQueue, view.graphicsVisibleSet, graphicsViewForDebug, &view.stats);
 
-        if (passExec.appendShadowVisibleSet && view.prepared.shadowEnabled)
+        if (opaqueExec.appendShadowVisibleSet && view.prepared.shadowEnabled)
             debugFn(view.execute.opaqueQueue, view.shadowVisibleSet, view.prepared.shadowView, &view.stats);
     }
 
-    if (passExec.sortQueueBeforeExecute)
-    {
+    if (opaqueExec.sortQueueBeforeExecute)
         view.execute.opaqueQueue.Sort();
+    if (transparentExec.sortQueueBeforeExecute)
         view.execute.alphaQueue.Sort();
-    }
 }
 
 bool PrepareMainViewPostProcess(RFG::ViewPassData& view, const PostProcContext& ppCtx)
@@ -327,19 +424,20 @@ bool PrepareMainViewPostProcess(RFG::ViewPassData& view, const PostProcContext& 
 void BuildMainViewExecuteInputs(
     RFG::ViewPassData&     view,
     const PostProcContext& ppCtx,
-    const DebugAppendFn&   debugFn)
+    const DebugAppendFn&   debugFn,
+    bool                   enableParticles)
 {
     ConfigureCommonExecuteInputs(view, /*presentAfterExecute=*/true);
     BuildShadowPassExecuteInput(view);
     if (!PrepareMainViewPostProcess(view, ppCtx))
-        BuildGraphicsPassExecuteInput(view, view.prepared.graphicsTargetDesc, true, true);
+        BuildGraphicsPassExecuteInputs(view, view.prepared.graphicsTargetDesc, true, true, enableParticles);
     BuildExecutionQueues(view, debugFn);
 }
 
 void BuildRTTExecuteInputs(
     std::vector<RFG::ViewPassData>&                           views,
     ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore,
-    const PostProcContext&                                    /*ppCtx*/,
+    const PostProcContext&                                    ppCtx,
     const DebugAppendFn&                                      debugFn)
 {
     for (auto& view : views)
@@ -351,14 +449,15 @@ void BuildRTTExecuteInputs(
 
         BuildShadowPassExecuteInput(view);
 
-        // RTT views deliberately bypass the shared fullscreen post-process chain.
-        // Otherwise GTAO/bloom/debug passes contaminate monitor/RTT previews and
-        // make main-view debugging ambiguous.
-        BuildGraphicsPassExecuteInput(
-            view,
-            view.prepared.graphicsTargetDesc,
-            true,
-            view.prepared.shadowEnabled);
+        if (!PrepareViewPostProcess(view, ppCtx, /*outputToBackbuffer=*/false))
+        {
+            BuildGraphicsPassExecuteInputs(
+                view,
+                view.prepared.graphicsTargetDesc,
+                true,
+                view.prepared.shadowEnabled,
+                !view.execute.particleSubmission.Empty());
+        }
 
         BuildExecutionQueues(view, debugFn);
     }
@@ -368,10 +467,11 @@ void BuildFrameExecuteInputs(
     RFG::PipelineData&                                       pipeline,
     ResourceStore<GDXRenderTargetResource, RenderTargetTag>& rtStore,
     const PostProcContext&                                   ppCtx,
-    const DebugAppendFn&                                     debugFn)
+    const DebugAppendFn&                                     debugFn,
+    bool                                                     enableParticlesInMainView)
 {
     BuildRTTExecuteInputs(pipeline.rttViews, rtStore, ppCtx, debugFn);
-    BuildMainViewExecuteInputs(pipeline.mainView, ppCtx, debugFn);
+    BuildMainViewExecuteInputs(pipeline.mainView, ppCtx, debugFn, enableParticlesInMainView);
 }
 
 } // namespace RenderPassBuilder

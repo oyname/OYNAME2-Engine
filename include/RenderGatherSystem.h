@@ -44,9 +44,6 @@ public:
         ResourceBindingSet bindings{};
         GDXPipelineStateDesc pipelineState{};
         GDXPipelineStateKey pipelineStateKey{};
-        MaterialParams materialParams{};
-        MaterialRenderPolicy materialRenderPolicy{};
-        MaterialTextureLayerArray materialTextureLayers{};
         bool transparent = false;
         uint32_t materialSortID = 0u;
         uint32_t renderStateVersion = 0u;

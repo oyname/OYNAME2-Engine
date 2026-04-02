@@ -14,11 +14,11 @@
 #include "GDXRenderTargetResource.h"
 #include "PostProcessResource.h"
 #include "Particles/GDXDX11ParticleRenderer.h"
-#include "Particles/GDXParticleSystem.h"
 #include "Particles/IGDXParticleRenderer.h"  // ParticleRenderContext
 
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
 struct ID3D11Device;
 struct ID3D11DeviceContext;
@@ -74,6 +74,8 @@ public:
 
     void ExecuteRenderPass(
         const BackendRenderPassDesc& passDesc,
+        const std::vector<BackendPlannedTransition>& beginTransitions,
+        const std::vector<BackendPlannedTransition>& endTransitions,
         Registry& registry,
         const ICommandList& opaqueList,
         const ICommandList& alphaList,
@@ -85,6 +87,8 @@ public:
 
     void ExecuteShadowPass(
         const BackendRenderPassDesc& passDesc,
+        const std::vector<BackendPlannedTransition>& beginTransitions,
+        const std::vector<BackendPlannedTransition>& endTransitions,
         Registry& registry,
         const ICommandList& commandList,
         ResourceStore<MeshAssetResource,  MeshTag>&      meshStore,
@@ -93,7 +97,6 @@ public:
         ResourceStore<GDXTextureResource, TextureTag>&   texStore) override;
 
     bool InitParticleRenderer(TextureHandle atlasTexture) override;
-    void QueueParticles(const GDXParticleSystem* system, const ParticleRenderContext& ctx) override;
 
 
     PostProcessHandle CreatePostProcessPass(ResourceStore<PostProcessResource, PostProcessTag>& postStore,
@@ -101,6 +104,7 @@ public:
     bool UpdatePostProcessConstants(PostProcessResource& pass, const void* data, uint32_t size) override;
     void DestroyPostProcessPasses(ResourceStore<PostProcessResource, PostProcessTag>& postStore) override;
     bool ExecutePostProcessChain(const std::vector<PostProcessHandle>& orderedPasses,
+                                const std::vector<PostProcessPassConstantOverride>* constantOverrides,
                                 ResourceStore<PostProcessResource, PostProcessTag>& postStore,
                                 ResourceStore<GDXTextureResource, TextureTag>& texStore,
                                 ResourceStore<GDXRenderTargetResource, RenderTargetTag>* rtStore,
@@ -233,7 +237,5 @@ private:
 
     TextureHandle           m_particleAtlas = TextureHandle::Invalid();
     GDXDX11ParticleRenderer m_particleRenderer;
-    const GDXParticleSystem* m_queuedParticleSystem = nullptr;
-    ParticleRenderContext    m_queuedParticleCtx    = {};
     bool                    m_particlesReady = false;
 };

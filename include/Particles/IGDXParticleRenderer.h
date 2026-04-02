@@ -2,15 +2,42 @@
 // ============================================================
 //  IGDXParticleRenderer.h  --  backend-neutral particle renderer interface
 // ============================================================
-#include "Particles/GDXParticleSystem.h"
+#include "Particles/GDXParticleTypes.h"
 #include "Core/GDXMath.h"
 
-// Camera basis + viewProj — passed to renderer each frame.
+#include <vector>
+
 struct ParticleRenderContext
 {
-    Matrix4 viewProj;
-    Float3  camRight;
-    Float3  camUp;
+    Matrix4 viewMatrix = Matrix4::Identity();
+    Matrix4 viewProj = Matrix4::Identity();
+    Float3  cameraPosition = { 0.0f, 0.0f, 0.0f };
+    Float3  cameraForward = { 0.0f, 0.0f, 1.0f };
+    Float3  camRight = { 1.0f, 0.0f, 0.0f };
+    Float3  camUp = { 0.0f, 1.0f, 0.0f };
+};
+
+struct ParticleRenderSubmission
+{
+    ParticleRenderContext context{};
+    std::vector<ParticleInstance> alphaInstances{};
+    std::vector<ParticleInstance> additiveInstances{};
+
+    void Clear()
+    {
+        alphaInstances.clear();
+        additiveInstances.clear();
+    }
+
+    bool Empty() const
+    {
+        return alphaInstances.empty() && additiveInstances.empty();
+    }
+
+    uint32_t InstanceCount() const
+    {
+        return static_cast<uint32_t>(alphaInstances.size() + additiveInstances.size());
+    }
 };
 
 class IGDXParticleRenderer
@@ -18,10 +45,7 @@ class IGDXParticleRenderer
 public:
     virtual ~IGDXParticleRenderer() = default;
 
-    // Upload instance data to GPU + issue DrawIndexedInstanced calls.
-    // Must be called AFTER GDXParticleSystem::Update() each frame.
-    virtual void Render(const GDXParticleSystem&    system,
-                        const ParticleRenderContext& ctx) = 0;
+    virtual void Render(const ParticleRenderSubmission& submission) = 0;
 
     virtual void Shutdown() = 0;
 };

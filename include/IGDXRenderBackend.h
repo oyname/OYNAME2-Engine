@@ -14,8 +14,6 @@
 #include "BackendRenderPassDesc.h"
 #include "ICommandList.h"
 #include "ECS/ECSTypes.h"
-class GDXParticleSystem;  // forward-decl — backend never owns the system
-struct ParticleRenderContext;
 
 #include <cstdint>
 #include <string>
@@ -92,6 +90,8 @@ public:
     // -- Render pass execution ----------------------------------------------
     virtual void ExecuteRenderPass(
         const BackendRenderPassDesc& passDesc,
+        const std::vector<BackendPlannedTransition>& beginTransitions,
+        const std::vector<BackendPlannedTransition>& endTransitions,
         Registry& registry,
         const ICommandList& opaqueList,
         const ICommandList& alphaList,
@@ -103,6 +103,8 @@ public:
 
     virtual void ExecuteShadowPass(
         const BackendRenderPassDesc& passDesc,
+        const std::vector<BackendPlannedTransition>& beginTransitions,
+        const std::vector<BackendPlannedTransition>& endTransitions,
         Registry& registry,
         const ICommandList& commandList,
         ResourceStore<MeshAssetResource,           MeshTag>&          meshStore,
@@ -119,10 +121,6 @@ public:
         return false;
     }
 
-    virtual void QueueParticles(const GDXParticleSystem* system, const ParticleRenderContext& ctx)
-    {
-        (void)system; (void)ctx;
-    }
 
     // -- Post processing ----------------------------------------------------
     virtual PostProcessHandle CreatePostProcessPass(
@@ -148,6 +146,7 @@ public:
 
     virtual bool ExecutePostProcessChain(
         const std::vector<PostProcessHandle>& orderedPasses,
+        const std::vector<PostProcessPassConstantOverride>* constantOverrides,
         ResourceStore<PostProcessResource,        PostProcessTag>&    postStore,
         ResourceStore<GDXTextureResource,         TextureTag>&        texStore,
         ResourceStore<GDXRenderTargetResource,    RenderTargetTag>*   rtStore,
@@ -157,7 +156,7 @@ public:
         RenderTargetHandle outputTarget   = RenderTargetHandle::Invalid(),
         bool               outputToBackbuffer = true)
     {
-        (void)orderedPasses; (void)postStore; (void)texStore; (void)rtStore;
+        (void)orderedPasses; (void)constantOverrides; (void)postStore; (void)texStore; (void)rtStore;
         (void)execInputs;    (void)viewportWidth; (void)viewportHeight;
         (void)outputTarget;  (void)outputToBackbuffer;
         return false;
