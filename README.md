@@ -51,6 +51,6 @@ KROMEngine.sln
 
 You can also download example files from the official **OYNAME** website to test whether the engine builds and runs correctly. 
 
-Main page: (https://oyname.github.io/index.html)
+Main page: https://oyname.github.io/index.html
 
 These example files can be used to verify that the engine is working as expected.
