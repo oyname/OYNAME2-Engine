@@ -17,7 +17,7 @@ The project follows a simple principle:
 - **C++17**
 - **DirectX 11**
 
-## Mein page:
+## Main page:
 
 [Home](https://oyname.github.io/index.html)
 
