@@ -32,6 +32,7 @@
 #include "WindowDesc.h"
 #include "Core/Debug.h"
 #include "Particles/GDXParticleTypes.h"
+#include "Particles/IParticleSystem.h"
 
 #include <functional>
 #include <variant>

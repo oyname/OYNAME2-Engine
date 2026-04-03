@@ -248,7 +248,7 @@ bool GDXECSRenderer::InitParticleRenderer(TextureHandle atlasTexture)
     return m_particlesRenderReady;
 }
 
-void GDXECSRenderer::SetParticleSystem(GDXParticleSystem* ps)
+void GDXECSRenderer::SetParticleSystem(IParticleSystem* ps)
 {
     m_particleSystemPtr = ps;
 }

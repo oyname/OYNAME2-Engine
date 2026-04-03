@@ -3,17 +3,14 @@
 //  GDXParticleSystem.h  --  KROM Engine Particle System
 //  Backend-neutral simulation. Billboard corners built in VS.
 // ============================================================
-#include "Particles/GDXParticleTypes.h"
-#include "Particles/IGDXParticleRenderer.h"
-#include "ParticleCommandList.h"
-#include "Core/GDXMath.h"
+#include "Particles/IParticleSystem.h"
 #include <vector>
 #include <random>
 #include <chrono>
 #include <array>
 #include <cstddef>
 
-class GDXParticleSystem
+class GDXParticleSystem : public IParticleSystem
 {
 public:
     GDXParticleSystem();
@@ -26,28 +23,28 @@ public:
     int  RegisterType(const GDXParticleTypeDesc& desc);
     const GDXParticleTypeInternal& GetType(int id) const;
 
-    void StartEmitter (GDXParticleEmitterComponent& em);
-    void StopEmitter  (GDXParticleEmitterComponent& em);
-    void PauseEmitter (GDXParticleEmitterComponent& em);
-    void ResumeEmitter(GDXParticleEmitterComponent& em);
+    void StartEmitter (GDXParticleEmitterComponent& em) override;
+    void StopEmitter  (GDXParticleEmitterComponent& em) override;
+    void PauseEmitter (GDXParticleEmitterComponent& em) override;
+    void ResumeEmitter(GDXParticleEmitterComponent& em) override;
 
-    bool IsEmitterPaused  (const GDXParticleEmitterComponent& em) const;
-    bool IsEmitterPlaying (const GDXParticleEmitterComponent& em) const;
-    bool IsEmitterFinished(const GDXParticleEmitterComponent& em) const;
+    bool IsEmitterPaused  (const GDXParticleEmitterComponent& em) const override;
+    bool IsEmitterPlaying (const GDXParticleEmitterComponent& em) const override;
+    bool IsEmitterFinished(const GDXParticleEmitterComponent& em) const override;
 
     void SubmitEmitter(GDXParticleEmitterComponent& em,
                        const Matrix4& worldMatrix,
-                       float worldScale = 1.0f);
+                       float worldScale = 1.0f) override;
 
     // Global simulation step. No view-specific render preparation happens here.
-    void Update(float deltaMs);
+    void Update(float deltaMs) override;
 
     // Per-view render preparation. Visibility, billboard alignment and
     // transparency sorting are derived from the supplied render context.
     void BuildRenderSubmission(const ParticleRenderContext& ctx,
-                               ParticleCommandList& outCommandList) const;
+                               ParticleCommandList& outCommandList) const override;
 
-    int GetParticleCount () const { return (int)m_particles.size(); }
+    int GetParticleCount () const override { return (int)m_particles.size(); }
 
 private:
     struct EmitterSubmission

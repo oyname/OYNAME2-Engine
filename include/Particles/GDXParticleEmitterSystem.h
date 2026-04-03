@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ECS/Registry.h"
-#include "Particles/GDXParticleSystem.h"
+#include "Particles/IParticleSystem.h"
 #include "Components.h"
 #include "Core/GDXMathOps.h"
 #include <algorithm>
@@ -11,7 +11,7 @@ class GDXParticleEmitterSystem
 {
 public:
     inline void Update(Registry& registry,
-        GDXParticleSystem& runtime,
+        IParticleSystem& runtime,
         float deltaSeconds)
     {
         registry.View<GDXParticleEmitterComponent, ParticleEmitterStateComponent, WorldTransformComponent>(

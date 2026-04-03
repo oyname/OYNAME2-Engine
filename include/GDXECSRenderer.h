@@ -35,8 +35,8 @@
 #include "RenderPassBuilder.h"
 #include "CullGatherSystem.h"
 #include "FrameDispatch.h"
-#include "Particles/GDXParticleEmitterSystem.h"  // GDXParticleSystem included transitively
-// GDXParticleSystem is user-owned; engine holds a non-owning pointer.
+#include "Particles/GDXParticleEmitterSystem.h"
+#include "Particles/IParticleSystem.h"
 
 #include <unordered_map>
 #include <unordered_set>
@@ -99,10 +99,10 @@ public:
     // The particle system itself is user-owned and passed via SetParticleSystem().
     bool InitParticleRenderer(TextureHandle atlasTexture);
 
-    // Register a user-owned GDXParticleSystem with the engine.
+    // Register a user-owned particle system with the engine.
     // The engine stores a non-owning pointer; lifetime is the caller's responsibility.
     // Call with nullptr to detach.
-    void SetParticleSystem(GDXParticleSystem* ps);
+    void SetParticleSystem(IParticleSystem* ps);
 
     void SetOcclusionCulling(bool enabled);
     void SetShadowMapSize(uint32_t size);
@@ -320,7 +320,7 @@ private:
     TickFn m_tickCallback;
     float  m_lastDeltaTime = 0.0f;
     bool   m_particlesRenderReady = false;
-    GDXParticleSystem*       m_particleSystemPtr     = nullptr;  // user-owned, non-owning
+    IParticleSystem*         m_particleSystemPtr     = nullptr;  // user-owned, non-owning
     GDXParticleEmitterSystem m_particleEmitterSystem;
 
     std::vector<PostProcessHandle> m_postProcessPassOrder;
