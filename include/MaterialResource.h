@@ -2,6 +2,7 @@
 #include "Handle.h"
 #include "GDXTextureSlots.h"
 #include "MaterialParams.h"
+#include "RenderPassMask.h"
 
 #include <array>
 #include <cassert>
@@ -13,6 +14,13 @@ enum class MaterialShadowCullMode : uint8_t
     Auto = 0,
     Back = 1,
     None = 2,
+};
+
+enum class MaterialTransparencyClass : uint8_t
+{
+    Surface = 0,
+    Particle = 1,
+    Distortion = 2,
 };
 
 class MaterialResource
@@ -31,6 +39,10 @@ public:
     uint32_t GetSortID() const noexcept { return m_sortID; }
     void SetSortID(uint32_t sortID) noexcept { m_sortID = sortID; }
     uint32_t GetStateVersion() const noexcept { return m_stateVersion; }
+    DrawPassMask GetPassSupportMask() const noexcept { return m_passSupportMask; }
+    bool SupportsPass(DrawPassType pass) const noexcept { return HasDrawPass(m_passSupportMask, pass); }
+    MaterialTransparencyClass GetTransparencyClass() const noexcept { return m_transparencyClass; }
+    uint8_t GetTransparencySortPriority() const noexcept { return m_transparencySortPriority; }
 
     bool IsTransparent() const noexcept { return m_renderPolicy.blendMode == BlendMode::AlphaBlend; }
     bool IsAlphaTest() const noexcept { return m_renderPolicy.alphaTest; }
@@ -46,6 +58,7 @@ public:
     MaterialDetailBlendMode GetDetailBlendMode() const noexcept { return m_params.detailBlendMode; }
     MaterialShadowCullMode GetShadowCullMode() const noexcept { return m_shadowCullMode; }
     BlendMode GetBlendMode() const noexcept { return m_renderPolicy.blendMode; }
+    bool IsDistortion() const noexcept { return m_transparencyClass == MaterialTransparencyClass::Distortion; }
 
     bool IsShadowDoubleSided() const noexcept
     {
@@ -69,6 +82,17 @@ public:
     void SetAlphaTest(bool on) noexcept { m_renderPolicy.alphaTest = on; Touch(); }
     void SetDoubleSided(bool on) noexcept { m_renderPolicy.doubleSided = on; Touch(); }
     void SetBlendMode(BlendMode mode) noexcept { m_renderPolicy.blendMode = mode; Touch(); }
+    void SetPassSupportMask(DrawPassMask mask) noexcept { m_passSupportMask = mask; Touch(); }
+    void SetSupportsPass(DrawPassType pass, bool enabled) noexcept
+    {
+        if (enabled)
+            m_passSupportMask |= DrawPassBit(pass);
+        else
+            m_passSupportMask &= ~DrawPassBit(pass);
+        Touch();
+    }
+    void SetTransparencyClass(MaterialTransparencyClass cls) noexcept { m_transparencyClass = cls; Touch(); }
+    void SetTransparencySortPriority(uint8_t priority) noexcept { m_transparencySortPriority = priority; Touch(); }
     void SetUnlit(bool on) noexcept { m_params.unlit = on; Touch(); }
     void SetBaseColor(float r, float g, float b, float a = 1.0f) noexcept { m_params.baseColor = { r, g, b, a }; Touch(); }
     void SetMetallic(float v) noexcept { m_params.metallic = v; Touch(); }
@@ -255,6 +279,9 @@ private:
     uint32_t m_sortID = 0u;
     uint32_t m_stateVersion = 1u;
     MaterialShadowCullMode m_shadowCullMode = MaterialShadowCullMode::Auto;
+    DrawPassMask m_passSupportMask = DrawPassBits::Depth | DrawPassBits::Opaque | DrawPassBits::Transparent | DrawPassBits::ShadowDepth | DrawPassBits::MotionVectors;
+    MaterialTransparencyClass m_transparencyClass = MaterialTransparencyClass::Surface;
+    uint8_t m_transparencySortPriority = 128u;
 
     void Touch() noexcept { ++m_stateVersion; }
 };

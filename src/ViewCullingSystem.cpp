@@ -46,6 +46,11 @@ namespace
         if ((candidate.layerMask & set.cullMask & mask) == 0u)
             return false;
 
+        const DrawPassType requiredPass = (mode == ViewFilterMode::Shadow) ? DrawPassType::ShadowDepth
+                                                                           : DrawPassType::Opaque;
+        if (!HasDrawPass(candidate.drawPassMask, requiredPass) && !(mode == ViewFilterMode::Main && HasDrawPass(candidate.drawPassMask, DrawPassType::Transparent)))
+            return false;
+
         if (mode == ViewFilterMode::Shadow)
             return candidate.castShadows;
 
@@ -131,6 +136,8 @@ void ViewCullingSystem::BuildVisibleSet(Registry& registry,
                 candidate.receiveShadows = visibility->receiveShadows;
                 candidate.renderableStateVersion = renderable->stateVersion;
                 candidate.visibilityStateVersion = visibility->stateVersion;
+                candidate.drawPassMask = renderable->drawPassMask & view.viewPassMask;
+                candidate.renderPriority = renderable->renderPriority;
 
                 if (!candidate.active || !candidate.enabled)
                 {
@@ -167,8 +174,29 @@ void ViewCullingSystem::BuildVisibleSet(Registry& registry,
                             // Stufe 2 — AABB (präziser, nur wenn Sphere nicht eindeutig raus)
                             if (bounds->shape == RenderBoundsComponent::Shape::AABB)
                             {
+                                Float3 localAabbMin = bounds->localAabbMin;
+                                Float3 localAabbMax = bounds->localAabbMax;
+                                if (bounds->boundsScale != 1.0f)
+                                {
+                                    const Float3 scaledExtents = {
+                                        (bounds->localAabbMax.x - bounds->localCenter.x) * bounds->boundsScale,
+                                        (bounds->localAabbMax.y - bounds->localCenter.y) * bounds->boundsScale,
+                                        (bounds->localAabbMax.z - bounds->localCenter.z) * bounds->boundsScale,
+                                    };
+                                    localAabbMin = {
+                                        bounds->localCenter.x - scaledExtents.x,
+                                        bounds->localCenter.y - scaledExtents.y,
+                                        bounds->localCenter.z - scaledExtents.z,
+                                    };
+                                    localAabbMax = {
+                                        bounds->localCenter.x + scaledExtents.x,
+                                        bounds->localCenter.y + scaledExtents.y,
+                                        bounds->localCenter.z + scaledExtents.z,
+                                    };
+                                }
+
                                 Float3 worldMin, worldMax;
-                                TransformAABB(bounds->localAabbMin, bounds->localAabbMax,
+                                TransformAABB(localAabbMin, localAabbMax,
                                               worlds[i].matrix, worldMin, worldMax);
                                 if (!AABBInsideFrustum(localView.frustum, worldMin, worldMax))
                                 {

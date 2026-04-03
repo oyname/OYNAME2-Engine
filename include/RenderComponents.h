@@ -18,6 +18,7 @@
 #include "Core/GDXMath.h"
 #include "SubmeshData.h"
 #include "RenderPassClearDesc.h"
+#include "RenderPassMask.h"
 
 #include <cstdint>
 #include <vector>
@@ -35,6 +36,8 @@ struct RenderableComponent
 
     bool           dirty = true;
     uint32_t       stateVersion = 1u;
+    DrawPassMask   drawPassMask = DrawPassBits::Depth | DrawPassBits::Opaque | DrawPassBits::Transparent | DrawPassBits::ShadowDepth | DrawPassBits::MotionVectors;
+    uint8_t        renderPriority = 128u;
 
     RenderableComponent() = default;
     RenderableComponent(MeshHandle meshHandle, MaterialHandle materialHandle, uint32_t slot = 0u)
@@ -198,6 +201,7 @@ struct RenderTargetCameraComponent
     bool renderOpaque           = true;
     bool renderTransparent      = true;
     bool skipSelfReferentialDraws = true;
+    DrawPassMask viewPassMask     = DrawPassBits::Depth | DrawPassBits::Opaque | DrawPassBits::Transparent | DrawPassBits::ShadowDepth | DrawPassBits::MotionVectors | DrawPassBits::Distortion | DrawPassBits::Particles;
 
     RenderPassClearDesc clear;
 

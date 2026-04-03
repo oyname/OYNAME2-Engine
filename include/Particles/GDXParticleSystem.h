@@ -5,11 +5,13 @@
 // ============================================================
 #include "Particles/GDXParticleTypes.h"
 #include "Particles/IGDXParticleRenderer.h"
+#include "ParticleCommandList.h"
 #include "Core/GDXMath.h"
 #include <vector>
 #include <random>
 #include <chrono>
 #include <array>
+#include <cstddef>
 
 class GDXParticleSystem
 {
@@ -43,7 +45,7 @@ public:
     // Per-view render preparation. Visibility, billboard alignment and
     // transparency sorting are derived from the supplied render context.
     void BuildRenderSubmission(const ParticleRenderContext& ctx,
-                               ParticleRenderSubmission& outSubmission) const;
+                               ParticleCommandList& outCommandList) const;
 
     int GetParticleCount () const { return (int)m_particles.size(); }
 
@@ -87,9 +89,16 @@ private:
 
     bool IsVisibleInView(const GDXParticle& p,
                          const ParticleRenderContext& ctx,
-                         float size) const;
+                         float size,
+                         float& outProjectedPixelRadius) const;
 
     static uint32_t PackRGBA8(float r255, float g255, float b255, float a01);
+
+    struct AlphaSortEntry
+    {
+        float sortKey = 0.0f;
+        ParticleInstance instance{};
+    };
 
     float RndF(float lo, float hi);
     int   RndI(int   lo, int   hi);
@@ -124,5 +133,6 @@ private:
     int m_maxSpawnPerFrameTotal    = 4096;
     int m_spawnedThisFrameTotal    = 0;
     int m_bounceSpawnCountThisFrame= 0;
+
 
 };

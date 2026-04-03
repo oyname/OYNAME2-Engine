@@ -7,6 +7,8 @@
 #include "Core/Debug.h"
 #include <d3d11.h>
 #include <d3dcompiler.h>
+#include <algorithm>
+#include <cstring>
 
 // ---- cbuffer layout (must match ParticleVS.hlsl b0) --------
 struct ParticleCBuffer
@@ -112,28 +114,39 @@ void GDXDX11ParticleRenderer::Render(const ParticleRenderSubmission& submission)
 bool GDXDX11ParticleRenderer::UploadAndDrawInstanced(int blendMode,
                                                        const std::vector<ParticleInstance>& instances)
 {
-    const int n = (int)instances.size();
-    if (n <= 0)
+    const int totalInstanceCount = static_cast<int>(instances.size());
+    if (totalInstanceCount <= 0)
     {
         m_lastUploadedCounts[blendMode] = 0;
         return true;
     }
 
-    if (!EnsureInstanceCapacity(n))
+    const int chunkCapacity = (std::max)(m_maxInstances, 1);
+    if (!EnsureInstanceCapacity(chunkCapacity))
         return false;
 
-    D3D11_MAPPED_SUBRESOURCE mapped = {};
-    if (FAILED(m_ctx->Map(m_instanceBuf[blendMode], 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
-        return false;
-    memcpy(mapped.pData, instances.data(), static_cast<size_t>(n) * sizeof(ParticleInstance));
-    m_ctx->Unmap(m_instanceBuf[blendMode], 0);
-    m_lastUploadedCounts[blendMode] = n;
-
-    // Bind instance buffer to slot 1
     UINT instStride = sizeof(ParticleInstance), instOffset = 0;
     m_ctx->IASetVertexBuffers(1, 1, &m_instanceBuf[blendMode], &instStride, &instOffset);
 
-    m_ctx->DrawIndexedInstanced(6, (UINT)n, 0, 0, 0);
+    int uploadedCount = 0;
+    while (uploadedCount < totalInstanceCount)
+    {
+        const int chunkCount = (std::min)(chunkCapacity, totalInstanceCount - uploadedCount);
+
+        D3D11_MAPPED_SUBRESOURCE mapped = {};
+        if (FAILED(m_ctx->Map(m_instanceBuf[blendMode], 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+            return false;
+
+        memcpy(mapped.pData,
+               instances.data() + uploadedCount,
+               static_cast<size_t>(chunkCount) * sizeof(ParticleInstance));
+        m_ctx->Unmap(m_instanceBuf[blendMode], 0);
+
+        m_ctx->DrawIndexedInstanced(6, static_cast<UINT>(chunkCount), 0, 0, 0);
+        uploadedCount += chunkCount;
+    }
+
+    m_lastUploadedCounts[blendMode] = totalInstanceCount;
     return true;
 }
 

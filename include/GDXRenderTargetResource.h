@@ -24,6 +24,8 @@ struct GDXRenderTargetResource
     TextureHandle exposedDepthTexture = TextureHandle::Invalid();
     // Samplebare Screen-Normal-Ausgabe als Engine-Textur nutzbar.
     TextureHandle exposedNormalsTexture = TextureHandle::Invalid();
+    // Samplebare Motion-Vector-Ausgabe als Engine-Textur nutzbar.
+    TextureHandle exposedMotionVectorsTexture = TextureHandle::Invalid();
 
     std::wstring debugName;
 

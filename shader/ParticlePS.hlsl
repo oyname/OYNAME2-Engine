@@ -17,14 +17,13 @@ struct PSIn
 float4 PSMain(PSIn pin) : SV_TARGET
 {
     float4 texColor = gParticleTex.Sample(gSampler, pin.UV);
+    const float alpha = texColor.a * pin.Color.a;
 
-    // Modulate texture by per-particle tint and alpha
+    // Kill effectively invisible fragments before the remaining blend work.
+    clip(alpha - (1.0f / 255.0f));
+
     float4 result;
     result.rgb = texColor.rgb * pin.Color.rgb;
-    result.a   = texColor.a   * pin.Color.a;
-
-    // Discard fully transparent fragments (saves EarlyZ bandwidth)
-    clip(result.a - 0.001f);
-
+    result.a   = alpha;
     return result;
 }

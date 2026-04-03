@@ -151,7 +151,7 @@ bool GDXDX11RenderExecutor::Init(const InitParams& p)
     m_pipelineCache.Clear();
     m_layoutCache.Clear();
     m_lastAppliedPipelineKey = 0u;
-    return m_entityCB && m_frameCB && m_cascadeCB && m_shadowPassInfoCB;
+    return m_entityCB && m_frameCB && m_cascadeCB && m_shadowPassInfoCB && m_meshInstanceBuffer;
 }
 
 void GDXDX11RenderExecutor::CreateConstantBuffers()
@@ -166,6 +166,7 @@ void GDXDX11RenderExecutor::CreateConstantBuffers()
         sizeof(Dx11CascadeConstants), D3D11_BIND_CONSTANT_BUFFER, true);
     m_shadowPassInfoCB = CreateBuffer(m_device, nullptr,
         sizeof(Dx11ShadowPassInfoConstants), D3D11_BIND_CONSTANT_BUFFER, true);
+    EnsureMeshInstanceBufferCapacity(1u);
 }
 
 void GDXDX11RenderExecutor::Shutdown()
@@ -175,6 +176,8 @@ void GDXDX11RenderExecutor::Shutdown()
     if (m_skinCB) { m_skinCB->Release();   m_skinCB = nullptr; }
     if (m_cascadeCB) { m_cascadeCB->Release(); m_cascadeCB = nullptr; }
     if (m_shadowPassInfoCB) { m_shadowPassInfoCB->Release(); m_shadowPassInfoCB = nullptr; }
+    if (m_meshInstanceBuffer) { m_meshInstanceBuffer->Release(); m_meshInstanceBuffer = nullptr; }
+    m_meshInstanceBufferCapacity = 0u;
     m_textureStates.clear();
     ResetScopeCaches();
     ResetCommandBindings();
@@ -405,6 +408,83 @@ void GDXDX11RenderExecutor::ResetCommandBindings()
     m_boundShaderHandle = ShaderHandle::Invalid();
 }
 
+static bool GDXBatchRangeIsInstanced(const RenderBatchRange& batch) noexcept
+{
+    return batch.executionKind == RenderBatchExecutionKind::Instanced && batch.commandCount > 1u;
+}
+
+void GDXDX11RenderExecutor::EnsureMeshInstanceBufferCapacity(uint32_t instanceCount)
+{
+    if (!m_device)
+        return;
+
+    uint32_t required = instanceCount == 0u ? 1u : instanceCount;
+    if (m_meshInstanceBuffer && m_meshInstanceBufferCapacity >= required)
+        return;
+
+    uint32_t newCapacity = m_meshInstanceBufferCapacity ? m_meshInstanceBufferCapacity : 1u;
+    while (newCapacity < required)
+        newCapacity *= 2u;
+
+    D3D11_BUFFER_DESC desc{};
+    desc.ByteWidth = static_cast<UINT>(sizeof(GDXMeshInstanceData) * newCapacity);
+    desc.Usage = D3D11_USAGE_DYNAMIC;
+    desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+
+    ID3D11Buffer* newBuffer = nullptr;
+    if (FAILED(m_device->CreateBuffer(&desc, nullptr, &newBuffer)))
+        return;
+
+    if (m_meshInstanceBuffer)
+        m_meshInstanceBuffer->Release();
+    m_meshInstanceBuffer = newBuffer;
+    m_meshInstanceBufferCapacity = newCapacity;
+}
+
+bool GDXDX11RenderExecutor::UploadMeshInstanceData(const GDXMeshInstanceData* data, uint32_t instanceCount)
+{
+    if (!data || instanceCount == 0u)
+        return false;
+
+    EnsureMeshInstanceBufferCapacity(instanceCount);
+    if (!m_meshInstanceBuffer)
+        return false;
+
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if (FAILED(m_context->Map(m_meshInstanceBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+        return false;
+
+    std::memcpy(mapped.pData, data, sizeof(GDXMeshInstanceData) * instanceCount);
+    m_context->Unmap(m_meshInstanceBuffer, 0);
+    return true;
+}
+
+void GDXDX11RenderExecutor::BindMeshInstanceStream()
+{
+    if (!m_meshInstanceBuffer)
+        return;
+
+    constexpr UINT kInstanceSlot = 8u;
+    UINT stride = sizeof(GDXMeshInstanceData);
+    UINT offset = 0u;
+    ID3D11Buffer* buffer = m_meshInstanceBuffer;
+    m_context->IASetVertexBuffers(kInstanceSlot, 1u, &buffer, &stride, &offset);
+}
+
+GDXMeshInstanceData GDXDX11RenderExecutor::BuildMeshInstanceData(const Matrix4& worldMatrix, bool shadowPass)
+{
+    GDXMeshInstanceData data{};
+    data.worldMatrix = worldMatrix;
+
+    DirectX::XMMATRIX w = GDXMathHelpers::LoadMatrix4(worldMatrix);
+    DirectX::XMMATRIX wIT = shadowPass
+        ? DirectX::XMMatrixIdentity()
+        : DirectX::XMMatrixTranspose(DirectX::XMMatrixInverse(nullptr, w));
+    GDXMathHelpers::StoreMatrix4(data.worldInverseTranspose, wIT);
+    return data;
+}
+
 // ---------------------------------------------------------------------------
 // BindVertexStreams — flag-gesteuert (wie OYNAME SurfaceGpuBuffer::Draw)
 // ---------------------------------------------------------------------------
@@ -443,6 +523,7 @@ bool GDXDX11RenderExecutor::BindVertexStreams(const DX11MeshGpu& gpu, uint32_t f
     if (slot > 0u)
         m_context->IASetVertexBuffers(0, slot, buffers, strides, offsets);
 
+    BindMeshInstanceStream();
     return true;
 }
 
@@ -784,10 +865,14 @@ void GDXDX11RenderExecutor::BuildRecordedStreamFromQueue(const ICommandList& que
     outStream.Clear();
 
     const auto& commands = queue.GetCommands();
+    const auto& batches = queue.GetBatchRanges();
     outStream.drawItems.reserve(commands.size());
+    outStream.instanceData.reserve(commands.size());
+    outStream.instanceBatches.reserve(batches.size());
+    outStream.batchPackets.reserve(batches.size());
     outStream.commands.reserve(commands.size() * 5u);
 
-    for (const RenderCommand& cmd : commands)
+    auto buildRecordedItem = [&](const RenderCommand& cmd) -> GDXRecordedDrawItem
     {
         GDXRecordedDrawItem item = GDXRecordedDrawItem::FromRenderCommand(cmd);
         item.passBuildDesc = BuildDescriptorSetBuildDesc(item.resourceBindings, ResourceBindingScope::Pass);
@@ -804,13 +889,72 @@ void GDXDX11RenderExecutor::BuildRecordedStreamFromQueue(const ICommandList& que
             Debug::LogWarning(GDX_SRC_LOC, "Recorded material binding group/layout data is inconsistent.");
         if (!GDXValidateDescriptorSetBuildDesc(item.drawBuildDesc) || !GDXValidateBindingGroupData(item.drawBindings))
             Debug::LogWarning(GDX_SRC_LOC, "Recorded draw binding group/layout data is inconsistent.");
+        return item;
+    };
 
-        const uint32_t drawIndex = outStream.AddDrawItem(item);
-        outStream.AddOp(GDXRecordedOpType::SetPipeline, drawIndex);
-        outStream.AddOp(GDXRecordedOpType::BindPassResources, drawIndex);
-        outStream.AddOp(GDXRecordedOpType::BindMaterialResources, drawIndex);
-        outStream.AddOp(GDXRecordedOpType::BindDrawResources, drawIndex);
-        outStream.AddOp(GDXRecordedOpType::DrawMesh, drawIndex);
+    for (const RenderBatchRange& batch : batches)
+    {
+        if (!batch.IsValid() || batch.firstCommand >= commands.size())
+            continue;
+
+        GDXRecordedBatchPacket packet{};
+        packet.batchRange = batch;
+        packet.firstOp = static_cast<uint32_t>(outStream.commands.size());
+        packet.drawItemStart = static_cast<uint32_t>(outStream.drawItems.size());
+
+        const uint32_t batchStart = batch.firstCommand;
+        const uint32_t batchEnd = batch.firstCommand + batch.commandCount;
+        if (batchEnd > commands.size())
+            continue;
+
+        if (GDXBatchRangeIsInstanced(batch))
+        {
+            const RenderCommand& baseCmd = commands[batchStart];
+            GDXRecordedDrawItem item = buildRecordedItem(baseCmd);
+            const uint32_t drawIndex = outStream.AddDrawItem(item);
+            packet.drawItemStart = drawIndex;
+            packet.drawItemCount = 1u;
+
+            const uint32_t instanceOffset = static_cast<uint32_t>(outStream.instanceData.size());
+            for (uint32_t commandIndex = batchStart; commandIndex < batchEnd; ++commandIndex)
+                outStream.AddInstanceData(BuildMeshInstanceData(commands[commandIndex].worldMatrix, baseCmd.pass == RenderPass::Shadow));
+
+            GDXRecordedInstanceBatch instanceBatch{};
+            instanceBatch.drawItemIndex = drawIndex;
+            instanceBatch.instanceDataOffset = instanceOffset;
+            instanceBatch.instanceCount = batch.commandCount;
+            packet.instanceBatchIndex = outStream.AddInstanceBatch(instanceBatch);
+
+            outStream.AddOp(GDXRecordedOpType::SetPipeline, drawIndex);
+            outStream.AddOp(GDXRecordedOpType::BindPassResources, drawIndex);
+            outStream.AddOp(GDXRecordedOpType::BindMaterialResources, drawIndex);
+            outStream.AddOp(GDXRecordedOpType::BindDrawResources, drawIndex);
+            outStream.AddOp(GDXRecordedOpType::DrawMeshInstanced, packet.instanceBatchIndex);
+        }
+        else
+        {
+            bool sharedStateBound = false;
+            for (uint32_t commandIndex = batchStart; commandIndex < batchEnd; ++commandIndex)
+            {
+                GDXRecordedDrawItem item = buildRecordedItem(commands[commandIndex]);
+                const uint32_t drawIndex = outStream.AddDrawItem(item);
+                ++packet.drawItemCount;
+
+                if (!sharedStateBound)
+                {
+                    outStream.AddOp(GDXRecordedOpType::SetPipeline, drawIndex);
+                    outStream.AddOp(GDXRecordedOpType::BindPassResources, drawIndex);
+                    outStream.AddOp(GDXRecordedOpType::BindMaterialResources, drawIndex);
+                    sharedStateBound = true;
+                }
+
+                outStream.AddOp(GDXRecordedOpType::BindDrawResources, drawIndex);
+                outStream.AddOp(GDXRecordedOpType::DrawMesh, drawIndex);
+            }
+        }
+
+        packet.opCount = static_cast<uint32_t>(outStream.commands.size()) - packet.firstOp;
+        outStream.AddBatchPacket(packet);
     }
 }
 
@@ -825,6 +969,7 @@ void GDXDX11RenderExecutor::ExecuteRecordedStream(
     ID3D11ShaderResourceView* shadowSRV,
     bool shadowPass)
 {
+    (void)meshStore;
     (void)matStore;
 
     m_drawCalls = 0u;
@@ -885,22 +1030,48 @@ void GDXDX11RenderExecutor::ExecuteRecordedStream(
             TransitionTexture(t.texture, t.before, t.after, "RecordedPreTransition");
     }
 
-    for (const GDXRecordedCommand& cmd : stream.commands)
+    for (const GDXRecordedBatchPacket& packet : stream.batchPackets)
     {
-        if (cmd.type == GDXRecordedOpType::Transition)
-        {
-            if (cmd.transition.kind == GDXRecordedResourceKind::Texture)
-                TransitionTexture(cmd.transition.texture, cmd.transition.before, cmd.transition.after, "RecordedTransition");
-            continue;
-        }
-
-        if (cmd.drawItemIndex >= stream.drawItems.size())
+        if (!packet.batchRange.IsValid() || packet.opCount == 0u)
             continue;
 
-        const GDXRecordedDrawItem& item = stream.drawItems[cmd.drawItemIndex];
+        const uint32_t opEnd = packet.firstOp + packet.opCount;
+        if (opEnd > stream.commands.size())
+            continue;
 
-        switch (cmd.type)
+        for (uint32_t opIndex = packet.firstOp; opIndex < opEnd; ++opIndex)
         {
+            const GDXRecordedCommand& cmd = stream.commands[opIndex];
+            if (cmd.type == GDXRecordedOpType::Transition)
+            {
+                if (cmd.transition.kind == GDXRecordedResourceKind::Texture)
+                    TransitionTexture(cmd.transition.texture, cmd.transition.before, cmd.transition.after, "RecordedTransition");
+                continue;
+            }
+
+            const bool instancedOp = (cmd.type == GDXRecordedOpType::DrawMeshInstanced);
+            if (!instancedOp && cmd.drawItemIndex >= stream.drawItems.size())
+                continue;
+
+            const GDXRecordedDrawItem* itemPtr = nullptr;
+            if (instancedOp)
+            {
+                if (cmd.drawItemIndex >= stream.instanceBatches.size())
+                    continue;
+                const GDXRecordedInstanceBatch& batch = stream.instanceBatches[cmd.drawItemIndex];
+                if (batch.drawItemIndex >= stream.drawItems.size())
+                    continue;
+                itemPtr = &stream.drawItems[batch.drawItemIndex];
+            }
+            else
+            {
+                itemPtr = &stream.drawItems[cmd.drawItemIndex];
+            }
+
+            const GDXRecordedDrawItem& item = *itemPtr;
+
+            switch (cmd.type)
+            {
         case GDXRecordedOpType::SetPipeline:
             if (!bindShaderState(item))
             {
@@ -928,18 +1099,13 @@ void GDXDX11RenderExecutor::ExecuteRecordedStream(
             if (currentItem == &item && currentShader)
             {
                 ApplyBindingsForGroup(GetCachedPipelineLayout(item.shader, *currentShader), item, item.drawBindings, matStore, texStore, gpuRegistry, ResourceBindingScope::Draw, !shadowPass);
+                const GDXMeshInstanceData instanceData = BuildMeshInstanceData(item.worldMatrix, shadowPass);
+                if (UploadMeshInstanceData(&instanceData, 1u))
+                    BindMeshInstanceStream();
 
                 Dx11EntityConstants ec = {};
                 std::memcpy(ec.worldMatrix, &item.worldMatrix, 64);
-
-                DirectX::XMMATRIX w = GDXMathHelpers::LoadMatrix4(item.worldMatrix);
-                DirectX::XMMATRIX wIT = shadowPass
-                    ? DirectX::XMMatrixIdentity()
-                    : DirectX::XMMatrixTranspose(DirectX::XMMatrixInverse(nullptr, w));
-                Matrix4 witF;
-                GDXMathHelpers::StoreMatrix4(witF, wIT);
-                std::memcpy(ec.worldInverseTranspose, &witF, 64);
-
+                std::memcpy(ec.worldInverseTranspose, &instanceData.worldInverseTranspose, 64);
                 D3D11_MAPPED_SUBRESOURCE mapped = {};
                 if (SUCCEEDED(m_context->Map(m_entityCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
                 {
@@ -966,6 +1132,34 @@ void GDXDX11RenderExecutor::ExecuteRecordedStream(
             }
             ++m_drawCalls;
             break;
+
+        case GDXRecordedOpType::DrawMeshInstanced:
+            if (cmd.drawItemIndex >= stream.instanceBatches.size() || !currentShader || !currentMeshGpu)
+                break;
+            {
+                const GDXRecordedInstanceBatch& batch = stream.instanceBatches[cmd.drawItemIndex];
+                if (batch.instanceCount == 0u || (batch.instanceDataOffset + batch.instanceCount) > stream.instanceData.size())
+                    break;
+                if (!UploadMeshInstanceData(stream.instanceData.data() + batch.instanceDataOffset, batch.instanceCount))
+                    break;
+                if (!BindVertexStreams(*currentMeshGpu, currentShader->vertexFlags))
+                    break;
+                if (currentMeshGpu->indexBuffer)
+                {
+                    m_context->IASetIndexBuffer(currentMeshGpu->indexBuffer, DXGI_FORMAT_R32_UINT, 0u);
+                    m_context->DrawIndexedInstanced(currentMeshGpu->indexCount, batch.instanceCount, 0u, 0, 0);
+                }
+                else
+                {
+                    m_context->DrawInstanced(currentMeshGpu->vertexCount, batch.instanceCount, 0u, 0u);
+                }
+                ++m_drawCalls;
+            }
+            break;
+
+            default:
+                break;
+            }
         }
     }
 

@@ -16,6 +16,14 @@ cbuffer FrameConstants : register(b1)
 struct VS_INPUT
 {
     float3 position : POSITION;
+    float4 instanceWorld0  : TEXCOORD8;
+    float4 instanceWorld1  : TEXCOORD9;
+    float4 instanceWorld2  : TEXCOORD10;
+    float4 instanceWorld3  : TEXCOORD11;
+    float4 instanceWorldIT0 : TEXCOORD12;
+    float4 instanceWorldIT1 : TEXCOORD13;
+    float4 instanceWorldIT2 : TEXCOORD14;
+    float4 instanceWorldIT3 : TEXCOORD15;
 };
 
 struct VS_OUTPUT
@@ -27,10 +35,9 @@ struct VS_OUTPUT
 VS_OUTPUT main(VS_INPUT input)
 {
     VS_OUTPUT o;
-
-    float4 worldPos = mul(float4(input.position, 1.0f), gWorld);
+    row_major float4x4 instanceWorld = float4x4(input.instanceWorld0, input.instanceWorld1, input.instanceWorld2, input.instanceWorld3);
+    float4 worldPos = mul(float4(input.position, 1.0f), instanceWorld);
     o.worldPosition = worldPos.xyz;
     o.position = mul(worldPos, gViewProj);
-
     return o;
 }

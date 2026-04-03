@@ -1,7 +1,9 @@
 #include "KROMEngine.h"
 #include "Core/Debug.h"
 #include "GDXInput.h"
-#include "GDXECSRenderer.h"
+#include "GDXEventQueue.h"
+#include "IGDXWindow.h"
+#include "IGDXRenderer.h"
 
 #include <variant>
 #include <string>
@@ -23,6 +25,8 @@ KROMEngine::KROMEngine(std::unique_ptr<IGDXWindow>   window,
         m_baseWindowTitle = m_window->GetTitle();
 }
 
+
+KROMEngine::~KROMEngine() = default;
 bool KROMEngine::Initialize()
 {
     if (!m_window || !m_renderer)
@@ -74,16 +78,11 @@ bool KROMEngine::Step()
     m_renderer->Tick(m_deltaTime);
     m_renderer->EndFrame();
 
-    if (auto* ecsRenderer = dynamic_cast<GDXECSRenderer*>(m_renderer.get()))
+    const std::string debugTitle = m_renderer ? m_renderer->GetWindowDebugTitle() : std::string{};
+    if (!debugTitle.empty())
     {
-        const auto& stats = ecsRenderer->GetFrameStats();
         std::ostringstream oss;
-        oss << m_baseWindowTitle
-            << " | Main total: " << stats.mainCulling.totalCandidates
-            << " visible: " << stats.mainCulling.visibleCandidates
-            << " | Shadow visible: " << stats.shadowCulling.visibleCandidates
-            << " | RTT views: " << stats.rttViewCount
-            << " | Draws: " << stats.drawCalls;
+        oss << m_baseWindowTitle << " | " << debugTitle;
         m_window->SetTitle(oss.str().c_str());
     }
 

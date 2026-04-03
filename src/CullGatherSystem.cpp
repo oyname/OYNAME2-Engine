@@ -1,3 +1,4 @@
+#include "ParticleCommandList.h"
 #include "CullGatherSystem.h"
 #include <algorithm>
 namespace CullGather
@@ -62,20 +63,45 @@ void GatherShadow(const Context& ctx, RFG::ViewPassData& view, JobSystem* js)
 
 void FinalizeQueues(const Context& ctx, RFG::ViewPassData& view)
 {
+    // Partikel werden bereits vor der Queue-Finalisierung als eigene ICommandList vorbereitet.
+    // Diese Queue darf hier nicht verlorengehen, sonst bleibt der
+    // Partikel-Pass später trotz aktiver Partikel leer.
+    const ParticleCommandList preservedParticleQueue = view.renderQueues.particleQueue;
+
+    view.renderQueues.Clear();
+    view.renderQueues.particleQueue = preservedParticleQueue;
+
+    // Haupt-Gather liefert jetzt bereits fachlich getrennte Listen.
     ctx.gather->MergeVisibleSetChunks(
-        view.graphicsGatherChunks, view.opaqueQueue, view.transparentQueue);
-    RenderGatherSystem::SortRenderQueue(view.opaqueQueue);
-    RenderGatherSystem::SortRenderQueue(view.transparentQueue);
+        view.graphicsGatherChunks,
+        view.renderQueues.depthQueue,
+        view.renderQueues.opaqueQueue,
+        view.renderQueues.transparentQueue,
+        view.renderQueues.distortionQueue,
+        view.renderQueues.motionVectorQueue);
+
+    RenderGatherSystem::SortRenderQueue(view.renderQueues.depthQueue);
+    RenderGatherSystem::SortRenderQueue(view.renderQueues.opaqueQueue);
+    RenderGatherSystem::SortRenderQueue(view.renderQueues.transparentQueue);
+    RenderGatherSystem::SortRenderQueue(view.renderQueues.distortionQueue);
+    RenderGatherSystem::SortRenderQueue(view.renderQueues.motionVectorQueue);
 
     if (view.prepared.shadowEnabled)
     {
-        ctx.gather->MergeShadowVisibleSetChunks(view.shadowGatherChunks, view.shadowQueue);
-        RenderGatherSystem::SortRenderQueue(view.shadowQueue);
+        ctx.gather->MergeShadowVisibleSetChunks(
+            view.shadowGatherChunks,
+            view.renderQueues.shadowDepthQueue);
+        RenderGatherSystem::SortRenderQueue(view.renderQueues.shadowDepthQueue);
     }
     else
     {
-        view.shadowQueue.Clear();
+        view.renderQueues.shadowDepthQueue.Clear();
     }
+
+    // Legacy-Spiegelung für bestehende Aufrufer.
+    view.opaqueQueue = view.renderQueues.opaqueQueue;
+    view.transparentQueue = view.renderQueues.transparentQueue;
+    view.shadowQueue = view.renderQueues.shadowDepthQueue;
 }
 
 // ---------------------------------------------------------------------------

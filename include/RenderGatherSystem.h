@@ -8,6 +8,8 @@
 #include "MeshAssetResource.h"
 #include "MaterialResource.h"
 #include "MaterialParams.h"
+#include "RenderPassMask.h"
+#include "RenderSortKey.h"
 #include "GDXShaderResource.h"
 #include "CameraSystem.h"
 #include "RenderViewData.h"
@@ -45,6 +47,11 @@ public:
         GDXPipelineStateDesc pipelineState{};
         GDXPipelineStateKey pipelineStateKey{};
         bool transparent = false;
+        bool distortion = false;
+        DrawPassMask drawPassMask = DrawPassBits::None;
+        uint8_t renderPriority = 128u;
+        uint8_t transparencySortPriority = 128u;
+        uint8_t transparencyClass = 0u;
         uint32_t materialSortID = 0u;
         uint32_t renderStateVersion = 0u;
         bool visible = true;
@@ -60,8 +67,11 @@ public:
 
     struct GatherChunkResult
     {
+        std::vector<RenderCommand> depth;
         std::vector<RenderCommand> opaque;
         std::vector<RenderCommand> transparent;
+        std::vector<RenderCommand> distortion;
+        std::vector<RenderCommand> motionVectors;
         std::vector<RenderCommand> shadow;
         std::unordered_map<EntityID, CachedCommandState> mainCache;
         std::unordered_map<EntityID, CachedCommandState> shadowCache;
@@ -92,8 +102,11 @@ public:
 
     void MergeVisibleSetChunks(
         const std::vector<GatherChunkResult>& chunkResults,
+        RenderQueue& outDepthQueue,
         RenderQueue& outOpaqueQueue,
-        RenderQueue& outTransparentQueue) const;
+        RenderQueue& outTransparentQueue,
+        RenderQueue& outDistortionQueue,
+        RenderQueue& outMotionVectorQueue) const;
 
     void MergeShadowVisibleSetChunks(
         const std::vector<GatherChunkResult>& chunkResults,
@@ -108,8 +121,11 @@ public:
         ResourceStore<MaterialResource, MaterialTag>& matStore,
         ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
         const ShaderResolver& resolveShader,
+        RenderQueue& outDepthQueue,
         RenderQueue& outOpaqueQueue,
         RenderQueue& outTransparentQueue,
+        RenderQueue& outDistortionQueue,
+        RenderQueue& outMotionVectorQueue,
         const RenderGatherOptions* options,
         JobSystem* jobSystem = nullptr) const;
 

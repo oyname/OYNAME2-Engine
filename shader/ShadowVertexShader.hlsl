@@ -43,6 +43,14 @@ struct VS_INPUT
     uint4  boneIndices : BLENDINDICES0;
     float4 boneWeights : BLENDWEIGHT0;
 #endif
+    float4 instanceWorld0  : TEXCOORD8;
+    float4 instanceWorld1  : TEXCOORD9;
+    float4 instanceWorld2  : TEXCOORD10;
+    float4 instanceWorld3  : TEXCOORD11;
+    float4 instanceWorldIT0 : TEXCOORD12;
+    float4 instanceWorldIT1 : TEXCOORD13;
+    float4 instanceWorldIT2 : TEXCOORD14;
+    float4 instanceWorldIT3 : TEXCOORD15;
 };
 
 struct VS_OUTPUT
@@ -67,12 +75,13 @@ row_major float4x4 BuildSkinMatrix(uint4 idx, float4 w)
 VS_OUTPUT main(VS_INPUT input)
 {
     VS_OUTPUT o;
+    row_major float4x4 instanceWorld = float4x4(input.instanceWorld0, input.instanceWorld1, input.instanceWorld2, input.instanceWorld3);
 
 #ifdef HAS_SKINNING
     float4 localPos = mul(float4(input.position, 1.0f), BuildSkinMatrix(input.boneIndices, input.boneWeights));
-    float4 worldPos = mul(localPos, gWorld);
+    float4 worldPos = mul(localPos, instanceWorld);
 #else
-    float4 worldPos = mul(float4(input.position, 1.0f), gWorld);
+    float4 worldPos = mul(float4(input.position, 1.0f), instanceWorld);
 #endif
 
     o.position = mul(worldPos, gCascadeViewProj[gCurrentCascade]);

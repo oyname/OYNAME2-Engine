@@ -21,9 +21,13 @@ inline float BasisLength(float x, float y, float z)
 
 inline float ComputeMaxWorldScale(const Matrix4& m)
 {
-    const float sx = BasisLength(m._11, m._12, m._13);
-    const float sy = BasisLength(m._21, m._22, m._23);
-    const float sz = BasisLength(m._31, m._32, m._33);
+    // Die Engine verwendet die Matrix mit Achsen in den Spalten:
+    // TransformPoint(): x = p.x*m._11 + p.y*m._21 + p.z*m._31 + m._41
+    // Entsprechend muessen fuer den konservativen Sphere-Radius die
+    // Spaltenlaengen der 3x3-Basis gemessen werden, nicht die Zeilen.
+    const float sx = BasisLength(m._11, m._21, m._31);
+    const float sy = BasisLength(m._12, m._22, m._32);
+    const float sz = BasisLength(m._13, m._23, m._33);
     return (std::max)({ sx, sy, sz, 1e-6f });
 }
 
@@ -83,20 +87,44 @@ inline void TransformAABB(const Float3& lMin, const Float3& lMax,
                            const Matrix4& m,
                            Float3& outMin, Float3& outMax)
 {
-    outMin = outMax = { m._41, m._42, m._43 };
-    for (int i = 0; i < 3; ++i)
-    {
-        const float* row = (i == 0) ? &m._11 : (i == 1) ? &m._21 : &m._31;
-        float* oMn = &outMin.x + i;
-        float* oMx = &outMax.x + i;
-        for (int j = 0; j < 3; ++j)
-        {
-            const float a = row[j] * (&lMin.x)[j];
-            const float b = row[j] * (&lMax.x)[j];
-            if (a < b) { *oMn += a; *oMx += b; }
-            else        { *oMn += b; *oMx += a; }
-        }
-    }
+    const Float3 localCenter = {
+        (lMin.x + lMax.x) * 0.5f,
+        (lMin.y + lMax.y) * 0.5f,
+        (lMin.z + lMax.z) * 0.5f,
+    };
+    const Float3 localExtents = {
+        (lMax.x - lMin.x) * 0.5f,
+        (lMax.y - lMin.y) * 0.5f,
+        (lMax.z - lMin.z) * 0.5f,
+    };
+
+    const Float3 worldCenter = {
+        localCenter.x * m._11 + localCenter.y * m._21 + localCenter.z * m._31 + m._41,
+        localCenter.x * m._12 + localCenter.y * m._22 + localCenter.z * m._32 + m._42,
+        localCenter.x * m._13 + localCenter.y * m._23 + localCenter.z * m._33 + m._43,
+    };
+
+    Float3 worldExtents = {
+        std::abs(m._11) * localExtents.x + std::abs(m._21) * localExtents.y + std::abs(m._31) * localExtents.z,
+        std::abs(m._12) * localExtents.x + std::abs(m._22) * localExtents.y + std::abs(m._32) * localExtents.z,
+        std::abs(m._13) * localExtents.x + std::abs(m._23) * localExtents.y + std::abs(m._33) * localExtents.z,
+    };
+
+    constexpr float kCullAabbEpsilon = 1.0e-3f;
+    worldExtents.x = (std::max)(worldExtents.x, kCullAabbEpsilon);
+    worldExtents.y = (std::max)(worldExtents.y, kCullAabbEpsilon);
+    worldExtents.z = (std::max)(worldExtents.z, kCullAabbEpsilon);
+
+    outMin = {
+        worldCenter.x - worldExtents.x,
+        worldCenter.y - worldExtents.y,
+        worldCenter.z - worldExtents.z,
+    };
+    outMax = {
+        worldCenter.x + worldExtents.x,
+        worldCenter.y + worldExtents.y,
+        worldCenter.z + worldExtents.z,
+    };
 }
 
 } // namespace FrustumUtils

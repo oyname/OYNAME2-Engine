@@ -118,10 +118,7 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\samples\Point Light\Point_Lights.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
-    </ClCompile>
+    <ClCompile Include="..\samples\Point Light\Point_Lights.cpp" />
     <ClCompile Include="..\src\CameraSystem.cpp" />
     <ClCompile Include="..\src\CollisionIntersect.cpp" />
     <ClCompile Include="..\src\CollisionSystem.cpp" />
@@ -138,6 +135,7 @@
     <ClCompile Include="..\src\GDXDX11TileLightCuller.cpp" />
     <ClCompile Include="..\src\GDXIBLBaker.cpp" />
     <ClCompile Include="..\src\GDXInput.cpp" />
+    <ClCompile Include="..\src\GDXMainRenderPasses.cpp" />
     <ClCompile Include="..\src\GDXMathOps.cpp" />
     <ClCompile Include="..\src\GDXRenderFrameGraph.cpp" />
     <ClCompile Include="..\src\GDXSamplerCache.cpp" />
@@ -147,9 +145,11 @@
     <ClCompile Include="..\src\HierarchySystem.cpp" />
     <ClCompile Include="..\src\JobSystem.cpp" />
     <ClCompile Include="..\src\KROMEngine.cpp" />
+    <ClCompile Include="..\src\ParticleCommandList.cpp" />
     <ClCompile Include="..\src\Particles\GDXDX11ParticleRenderer.cpp" />
     <ClCompile Include="..\src\Particles\GDXParticleSystem.cpp" />
     <ClCompile Include="..\src\RenderPassBuilder.cpp" />
+    <ClCompile Include="..\src\RenderSortKeyDebug.cpp" />
     <ClCompile Include="..\src\RenderViewPrep.cpp" />
     <ClCompile Include="..\src\TransformSystem.cpp" />
     <ClCompile Include="..\src\RenderGatherSystem.cpp" />
@@ -196,6 +196,7 @@
     <ClInclude Include="..\include\GDXDX11TileLightCuller.h" />
     <ClInclude Include="..\include\GDXECSRenderer.h" />
     <ClInclude Include="..\include\GDXIBLBaker.h" />
+    <ClInclude Include="..\include\GDXMainRenderPasses.h" />
     <ClInclude Include="..\include\GDXMathHelpers.h" />
     <ClInclude Include="..\include\GDXRenderFrameGraph.h" />
     <ClInclude Include="..\include\GDXShaderVariantCache.h" />
@@ -236,6 +237,7 @@
     <ClInclude Include="..\include\MeshAssetResource.h" />
     <ClInclude Include="..\include\MeshBoundsUtil.h" />
     <ClInclude Include="..\include\MeshUtilities.h" />
+    <ClInclude Include="..\include\ParticleCommandList.h" />
     <ClInclude Include="..\include\Particles\GDXDX11ParticleRenderer.h" />
     <ClInclude Include="..\include\Particles\GDXParticleEmitterSystem.h" />
     <ClInclude Include="..\include\Particles\GDXParticleSystem.h" />
@@ -243,12 +245,17 @@
     <ClInclude Include="..\include\Particles\IGDXParticleRenderer.h" />
     <ClInclude Include="..\include\PostProcessResource.h" />
     <ClInclude Include="..\include\RenderCommand.h" />
+    <ClInclude Include="..\include\RenderFeatureModules.h" />
     <ClInclude Include="..\include\RenderFramePipeline.h" />
     <ClInclude Include="..\include\RenderGatherSystem.h" />
     <ClInclude Include="..\include\RenderPassBuilder.h" />
     <ClInclude Include="..\include\RenderPassClearDesc.h" />
+    <ClInclude Include="..\include\RenderPassMask.h" />
     <ClInclude Include="..\include\RenderPassTargetDesc.h" />
+    <ClInclude Include="..\include\RenderPassTypes.h" />
     <ClInclude Include="..\include\RenderQueue.h" />
+    <ClInclude Include="..\include\RenderSortKey.h" />
+    <ClInclude Include="..\include\RenderSortKeyDebug.h" />
     <ClInclude Include="..\include\RenderViewData.h" />
     <ClInclude Include="..\include\RenderViewPrep.h" />
     <ClInclude Include="..\include\ResourceStore.h" />
@@ -398,6 +405,36 @@
     <ClInclude Include="..\include\PostProcessBindingResolver.h" />
     <ClInclude Include="..\include\RenderComponents.h" />
     <ClInclude Include="..\include\ShaderSourceType.h" />
+    <ClInclude Include="..\include\GDXDX11ParticleRenderer.h" />
+    <ClInclude Include="..\include\GDXParticleEmitterSystem.h" />
+    <ClInclude Include="..\include\GDXParticleSystem.h" />
+    <ClInclude Include="..\include\GDXPassExecutionModel.h" />
+    <ClInclude Include="..\include\GDXResourceStatePlanner.h" />
+    <ClInclude Include="..\include\IGDXParticleRenderer.h" />
+    <ClInclude Include="..\include\IRenderDevice.h" />
+    <ClInclude Include="..\include\IRenderSceneExecutor.h" />
+    <ClInclude Include="..\include\RenderBackendSceneContext.h" />
+    <ClInclude Include="..\include\gdx_backend_dx11.h" />
+    <ClInclude Include="..\include\gdx_core.h" />
+    <ClInclude Include="..\include\gdx_engine.h" />
+    <ClInclude Include="..\include\gdx_platform_win32.h" />
+    <ClInclude Include="..\include\gdx_render.h" />
+    <ClInclude Include="..\include\platform\win32\GDXWin32DX11ContextFactory.h" />
+    <ClInclude Include="..\include\platform\win32\GDXWin32Platform.h" />
+    <ClInclude Include="..\include\platform\win32\GDXWin32Window.h" />
+    <ClInclude Include="..\include\render\backend\IGDXRenderBackend.h" />
+    <ClInclude Include="..\include\render\backend\IRenderDevice.h" />
+    <ClInclude Include="..\include\render\backend\IRenderSceneExecutor.h" />
+    <ClInclude Include="..\include\render\backend\RenderBackendSceneContext.h" />
+    <ClInclude Include="..\include\render\frontend\GDXECSRenderer.h" />
+    <ClInclude Include="..\include\render\frontend\GDXRenderFrameGraph.h" />
+    <ClInclude Include="..\include\render\frontend\RenderPassBuilder.h" />
+    <ClInclude Include="..\include\render\frontend\RenderQueue.h" />
+    <ClInclude Include="..\include\render\resources\GDXRenderTargetResource.h" />
+    <ClInclude Include="..\include\render\resources\GDXShaderResource.h" />
+    <ClInclude Include="..\include\render\resources\GDXTextureResource.h" />
+    <ClInclude Include="..\include\render\resources\MaterialResource.h" />
+    <ClInclude Include="..\include\render\resources\MeshAssetResource.h" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="..\shader\OcclusionQueryVS.hlsl" />

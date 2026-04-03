@@ -21,6 +21,14 @@ struct VS_INPUT
     uint4  boneIndices : BLENDINDICES0;
     float4 boneWeights : BLENDWEIGHT0;
 #endif
+    float4 instanceWorld0  : TEXCOORD8;
+    float4 instanceWorld1  : TEXCOORD9;
+    float4 instanceWorld2  : TEXCOORD10;
+    float4 instanceWorld3  : TEXCOORD11;
+    float4 instanceWorldIT0 : TEXCOORD12;
+    float4 instanceWorldIT1 : TEXCOORD13;
+    float4 instanceWorldIT2 : TEXCOORD14;
+    float4 instanceWorldIT3 : TEXCOORD15;
 };
 
 struct VS_OUTPUT
@@ -38,15 +46,26 @@ VS_OUTPUT main(VS_INPUT input)
 {
     VS_OUTPUT o;
 
+    row_major float4x4 instanceWorld = float4x4(
+        input.instanceWorld0,
+        input.instanceWorld1,
+        input.instanceWorld2,
+        input.instanceWorld3);
+    row_major float4x4 instanceWorldIT = float4x4(
+        input.instanceWorldIT0,
+        input.instanceWorldIT1,
+        input.instanceWorldIT2,
+        input.instanceWorldIT3);
+
 #ifdef HAS_SKINNING
     float4x4 skin    = BuildSkinMatrix(input.boneIndices, input.boneWeights);
     float4 localPos  = mul(float4(input.position, 1.0f), skin);
-    float4 worldPos  = mul(localPos, gWorld);
-    float3x3 skinN   = (float3x3)mul(skin, gWorldInverseTranspose);
+    float4 worldPos  = mul(localPos, instanceWorld);
+    float3x3 skinN   = (float3x3)mul(skin, instanceWorldIT);
     o.normal         = normalize(mul(input.normal, skinN));
 #else
-    float4 worldPos  = mul(float4(input.position, 1.0f), gWorld);
-    o.normal         = normalize(mul(float4(input.normal, 0.0f), gWorldInverseTranspose).xyz);
+    float4 worldPos  = mul(float4(input.position, 1.0f), instanceWorld);
+    o.normal         = normalize(mul(float4(input.normal, 0.0f), instanceWorldIT).xyz);
 #endif
 
     o.worldPosition  = worldPos.xyz;

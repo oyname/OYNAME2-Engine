@@ -26,6 +26,14 @@ struct VS_INPUT
     float2 texCoord    : TEXCOORD0;
     uint4  boneIndices : BLENDINDICES0;
     float4 boneWeights : BLENDWEIGHT0;
+    float4 instanceWorld0  : TEXCOORD8;
+    float4 instanceWorld1  : TEXCOORD9;
+    float4 instanceWorld2  : TEXCOORD10;
+    float4 instanceWorld3  : TEXCOORD11;
+    float4 instanceWorldIT0 : TEXCOORD12;
+    float4 instanceWorldIT1 : TEXCOORD13;
+    float4 instanceWorldIT2 : TEXCOORD14;
+    float4 instanceWorldIT3 : TEXCOORD15;
 };
 
 struct VS_OUTPUT
@@ -52,12 +60,14 @@ VS_OUTPUT main(VS_INPUT input)
 {
     VS_OUTPUT o;
     row_major float4x4 skin = BuildSkinMatrix(input.boneIndices, input.boneWeights);
+    row_major float4x4 instanceWorld = float4x4(input.instanceWorld0, input.instanceWorld1, input.instanceWorld2, input.instanceWorld3);
+    row_major float4x4 instanceWorldIT = float4x4(input.instanceWorldIT0, input.instanceWorldIT1, input.instanceWorldIT2, input.instanceWorldIT3);
     float4 skinnedPos = mul(float4(input.position, 1.0f), skin);
     float3 skinnedN   = normalize(mul(input.normal, (float3x3)skin));
-    float4 worldPos   = mul(skinnedPos, gWorld);
+    float4 worldPos   = mul(skinnedPos, instanceWorld);
     o.worldPosition   = worldPos.xyz;
     o.position        = mul(worldPos, gViewProj);
-    o.normal          = normalize(mul(skinnedN, (float3x3)gWorldInverseTranspose));
+    o.normal          = normalize(mul(skinnedN, (float3x3)instanceWorldIT));
     o.texCoord        = input.texCoord;
     o.texCoord1       = input.texCoord;
     o.viewDirection   = normalize(gCameraPos.xyz - worldPos.xyz);

@@ -40,6 +40,8 @@ struct GDXPassBeginDesc
     RenderTargetHandle renderTarget = RenderTargetHandle::Invalid();
     uint32_t shadowCascade = 0u;
     bool bindNormalsTarget = false;
+    bool bindMotionVectorsTarget = false;
+    bool bindDepthOnlyTarget = false;
     RenderPassClearDesc clear{};
     GDXPassViewportDesc viewport{};
     GDXPassScissorDesc scissor{};

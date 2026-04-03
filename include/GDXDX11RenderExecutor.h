@@ -163,6 +163,10 @@ private:
     void ApplyPipelineState(const GDXRecordedDrawItem& item);
     void ApplyPrimitiveTopology(const GDXRecordedDrawItem& item);
     bool BindVertexStreams(const DX11MeshGpu& gpu, uint32_t vertexFlags);
+    void EnsureMeshInstanceBufferCapacity(uint32_t instanceCount);
+    bool UploadMeshInstanceData(const GDXMeshInstanceData* data, uint32_t instanceCount);
+    void BindMeshInstanceStream();
+    static GDXMeshInstanceData BuildMeshInstanceData(const Matrix4& worldMatrix, bool shadowPass);
     void BindSkinningPalette(Registry& registry, const GDXRecordedDrawItem& item, const GDXShaderResource& shader);
     void BindFrameConstantsForShader(const GDXShaderResource& shader);
     void BindEntityConstantsForShader(const GDXShaderResource& shader);
@@ -250,6 +254,7 @@ private:
 
     ID3D11Buffer* m_entityCB  = nullptr;
     ID3D11Buffer* m_frameCB   = nullptr;
+    ID3D11Buffer* m_meshInstanceBuffer = nullptr;
     ID3D11Buffer* m_skinCB          = nullptr;
     ID3D11Buffer* m_cascadeCB       = nullptr;
     ID3D11Buffer* m_shadowPassInfoCB = nullptr;
@@ -272,6 +277,7 @@ private:
     uint32_t m_drawCalls       = 0u;
     std::unordered_map<TextureHandle, ResourceState> m_textureStates;
     DX11MeshGpu* m_boundMeshGpu = nullptr;
+    uint32_t m_meshInstanceBufferCapacity = 0u;
     ShaderHandle m_boundShaderHandle = ShaderHandle::Invalid();
 
 public:

@@ -49,6 +49,9 @@ struct DX11RenderTargetGpu
     ID3D11Texture2D*          normalTexture = nullptr;
     ID3D11RenderTargetView*   normalRtv     = nullptr;
     ID3D11ShaderResourceView* normalSrv     = nullptr;
+    ID3D11Texture2D*          motionTexture = nullptr;
+    ID3D11RenderTargetView*   motionRtv     = nullptr;
+    ID3D11ShaderResourceView* motionSrv     = nullptr;
 
     void Release()
     {
@@ -61,6 +64,9 @@ struct DX11RenderTargetGpu
         if (normalSrv)     { normalSrv->Release();     normalSrv     = nullptr; }
         if (normalRtv)     { normalRtv->Release();     normalRtv     = nullptr; }
         if (normalTexture) { normalTexture->Release(); normalTexture = nullptr; }
+        if (motionSrv)     { motionSrv->Release();     motionSrv     = nullptr; }
+        if (motionRtv)     { motionRtv->Release();     motionRtv     = nullptr; }
+        if (motionTexture) { motionTexture->Release(); motionTexture = nullptr; }
     }
 };
 

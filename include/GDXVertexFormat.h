@@ -20,6 +20,14 @@ enum class GDXVertexSemantic : uint8_t
     Tangent,
     BoneIndices,
     BoneWeights,
+    InstanceWorld0,
+    InstanceWorld1,
+    InstanceWorld2,
+    InstanceWorld3,
+    InstanceWorldIT0,
+    InstanceWorldIT1,
+    InstanceWorldIT2,
+    InstanceWorldIT3,
 };
 
 enum class GDXVertexElementFormat : uint8_t
@@ -44,7 +52,7 @@ struct GDXVertexElementDesc
 struct GDXVertexFormatDesc
 {
     uint32_t flags = GDX_VERTEX_NONE;
-    std::array<GDXVertexElementDesc, 8> elements{};
+    std::array<GDXVertexElementDesc, 16> elements{};
     uint32_t elementCount = 0u;
 
     bool Has(GDXVertexSemantic semantic, uint8_t semanticIndex = 0u) const noexcept
@@ -66,7 +74,8 @@ namespace GDXVertexFormat
                            uint8_t componentCount,
                            uint8_t componentSizeBytes,
                            uint32_t requiredFlags,
-                           GDXVertexElementFormat format) noexcept
+                           GDXVertexElementFormat format,
+                           uint8_t streamIndex = 0xFFu) noexcept
     {
         if (desc.elementCount >= desc.elements.size())
             return;
@@ -74,7 +83,7 @@ namespace GDXVertexFormat
         auto& e = desc.elements[desc.elementCount];
         e.semantic = semantic;
         e.semanticIndex = semanticIndex;
-        e.streamIndex = static_cast<uint8_t>(desc.elementCount);
+        e.streamIndex = (streamIndex == 0xFFu) ? static_cast<uint8_t>(desc.elementCount) : streamIndex;
         e.componentCount = componentCount;
         e.componentSizeBytes = componentSizeBytes;
         e.requiredFlags = requiredFlags;
@@ -95,6 +104,16 @@ namespace GDXVertexFormat
         if (flags & GDX_VERTEX_TANGENT)      AddElement(desc, GDXVertexSemantic::Tangent, 0, 4, 4, GDX_VERTEX_TANGENT, GDXVertexElementFormat::Float4);
         if (flags & GDX_VERTEX_BONE_INDICES) AddElement(desc, GDXVertexSemantic::BoneIndices, 0, 4, 4, GDX_VERTEX_BONE_INDICES, GDXVertexElementFormat::UInt4);
         if (flags & GDX_VERTEX_BONE_WEIGHTS) AddElement(desc, GDXVertexSemantic::BoneWeights, 0, 4, 4, GDX_VERTEX_BONE_WEIGHTS, GDXVertexElementFormat::Float4);
+
+        constexpr uint8_t kInstanceStream = 8u;
+        AddElement(desc, GDXVertexSemantic::InstanceWorld0,   8, 4, 4, 0u, GDXVertexElementFormat::Float4, kInstanceStream);
+        AddElement(desc, GDXVertexSemantic::InstanceWorld1,   9, 4, 4, 0u, GDXVertexElementFormat::Float4, kInstanceStream);
+        AddElement(desc, GDXVertexSemantic::InstanceWorld2,  10, 4, 4, 0u, GDXVertexElementFormat::Float4, kInstanceStream);
+        AddElement(desc, GDXVertexSemantic::InstanceWorld3,  11, 4, 4, 0u, GDXVertexElementFormat::Float4, kInstanceStream);
+        AddElement(desc, GDXVertexSemantic::InstanceWorldIT0, 12, 4, 4, 0u, GDXVertexElementFormat::Float4, kInstanceStream);
+        AddElement(desc, GDXVertexSemantic::InstanceWorldIT1, 13, 4, 4, 0u, GDXVertexElementFormat::Float4, kInstanceStream);
+        AddElement(desc, GDXVertexSemantic::InstanceWorldIT2, 14, 4, 4, 0u, GDXVertexElementFormat::Float4, kInstanceStream);
+        AddElement(desc, GDXVertexSemantic::InstanceWorldIT3, 15, 4, 4, 0u, GDXVertexElementFormat::Float4, kInstanceStream);
         return desc;
     }
 }

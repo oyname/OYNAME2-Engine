@@ -24,6 +24,7 @@ struct GDXShaderResource
     ShaderPassType   passType          = ShaderPassType::Main;
     uint32_t         variantFeatures   = SVF_NONE;
     bool             supportsSkinning  = false;
+    bool             supportsInstancing = false;
     bool             usesVertexColor   = false;
     bool             ready             = false;
     std::wstring     debugName;

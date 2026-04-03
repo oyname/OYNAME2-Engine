@@ -67,6 +67,8 @@ struct GDXRecordedDrawItem
     uint64_t               materialBindingsKey = 0ull;
     uint64_t               drawBindingsKey = 0ull;
     bool                   receiveShadows = true;
+    bool                   instancingEligible = false;
+    uint64_t               instancingKey = 0ull;
 
     Float3                 worldBoundsCenter = {};
     float                  worldBoundsRadius = 0.0f;
@@ -89,6 +91,8 @@ struct GDXRecordedDrawItem
         out.materialBindingsKey = cmd.materialBindingsKey;
         out.drawBindingsKey = cmd.drawBindingsKey;
         out.receiveShadows = cmd.receiveShadows;
+        out.instancingEligible = cmd.instancingEligible;
+        out.instancingKey = cmd.instancingKey;
         out.worldBoundsCenter = cmd.worldBoundsCenter;
         out.worldBoundsRadius = cmd.worldBoundsRadius;
         out.hasBounds = cmd.hasBounds;
@@ -115,6 +119,34 @@ struct GDXRecordedDrawItem
     }
 };
 
+struct GDXMeshInstanceData
+{
+    Matrix4 worldMatrix = {};
+    Matrix4 worldInverseTranspose = {};
+};
+
+struct GDXRecordedInstanceBatch
+{
+    uint32_t drawItemIndex = 0u;
+    uint32_t instanceDataOffset = 0u;
+    uint32_t instanceCount = 0u;
+};
+
+struct GDXRecordedBatchPacket
+{
+    RenderBatchRange batchRange{};
+    uint32_t firstOp = 0u;
+    uint32_t opCount = 0u;
+    uint32_t drawItemStart = 0u;
+    uint32_t drawItemCount = 0u;
+    uint32_t instanceBatchIndex = UINT32_MAX;
+
+    bool IsInstanced() const noexcept
+    {
+        return batchRange.executionKind == RenderBatchExecutionKind::Instanced;
+    }
+};
+
 enum class GDXRecordedOpType : uint8_t
 {
     Transition = 0,
@@ -123,6 +155,7 @@ enum class GDXRecordedOpType : uint8_t
     BindMaterialResources,
     BindDrawResources,
     DrawMesh,
+    DrawMeshInstanced,
 };
 
 struct GDXRecordedCommand
@@ -151,14 +184,20 @@ struct GDXRecordedCommand
 struct GDXRecordedCommandStream
 {
     std::vector<GDXRecordedDrawItem> drawItems;
+    std::vector<GDXMeshInstanceData> instanceData;
+    std::vector<GDXRecordedInstanceBatch> instanceBatches;
     std::vector<GDXRecordedCommand> commands;
+    std::vector<GDXRecordedBatchPacket> batchPackets;
     std::vector<GDXRecordedResourceTransition> preTransitions;
     std::vector<GDXRecordedResourceTransition> postTransitions;
 
     void Clear()
     {
         drawItems.clear();
+        instanceData.clear();
+        instanceBatches.clear();
         commands.clear();
+        batchPackets.clear();
         preTransitions.clear();
         postTransitions.clear();
     }
@@ -167,6 +206,24 @@ struct GDXRecordedCommandStream
     {
         drawItems.push_back(item);
         return static_cast<uint32_t>(drawItems.size() - 1u);
+    }
+
+    uint32_t AddInstanceData(const GDXMeshInstanceData& data)
+    {
+        instanceData.push_back(data);
+        return static_cast<uint32_t>(instanceData.size() - 1u);
+    }
+
+    uint32_t AddInstanceBatch(const GDXRecordedInstanceBatch& batch)
+    {
+        instanceBatches.push_back(batch);
+        return static_cast<uint32_t>(instanceBatches.size() - 1u);
+    }
+
+    uint32_t AddBatchPacket(const GDXRecordedBatchPacket& packet)
+    {
+        batchPackets.push_back(packet);
+        return static_cast<uint32_t>(batchPackets.size() - 1u);
     }
 
     void AddTransition(const GDXRecordedResourceTransition& t)

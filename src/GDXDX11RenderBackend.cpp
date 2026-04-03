@@ -10,6 +10,7 @@
 #include "GDXDX11MaterialSerializer.h"
 #include "Core/Debug.h"
 #include "GDXResourceState.h"
+#include "ParticleCommandList.h"
 #include "GDXResourceStatePlanner.h"
 #include "RenderQueue.h"
 #include "PostProcessBindingResolver.h"
@@ -22,6 +23,7 @@
 #include <d3dcompiler.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <array>
 #include <cstring>
 #include <string>
@@ -35,6 +37,7 @@ namespace
         {
         case GDXTextureFormat::RGBA8_UNORM_SRGB:  return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
         case GDXTextureFormat::RGBA16_FLOAT:      return DXGI_FORMAT_R16G16B16A16_FLOAT;
+        case GDXTextureFormat::RG16_FLOAT:        return DXGI_FORMAT_R16G16_FLOAT;
         case GDXTextureFormat::D24_UNORM_S8_UINT: return DXGI_FORMAT_D24_UNORM_S8_UINT;
         case GDXTextureFormat::D32_FLOAT:         return DXGI_FORMAT_D32_FLOAT;
         case GDXTextureFormat::RGBA8_UNORM:
@@ -47,6 +50,7 @@ namespace
         switch (format)
         {
         case GDXTextureFormat::RGBA16_FLOAT: return GDXTextureFormat::RGBA16_FLOAT;
+        case GDXTextureFormat::RG16_FLOAT: return GDXTextureFormat::RG16_FLOAT;
         case GDXTextureFormat::RGBA8_UNORM_SRGB: return GDXTextureFormat::RGBA8_UNORM;
         case GDXTextureFormat::RGBA8_UNORM:
         default: return GDXTextureFormat::RGBA8_UNORM;
@@ -135,7 +139,16 @@ namespace
             if (!texture.IsValid())
                 continue;
 
-            executor.TransitionTexture(texture, entry.before, entry.after, debugReason);
+            char reasonBuffer[256] = {};
+            const char* reason = debugReason ? debugReason : "";
+            const char* name = (entry.debugName && entry.debugName[0] != '\0') ? entry.debugName : nullptr;
+            if (name)
+            {
+                std::snprintf(reasonBuffer, sizeof(reasonBuffer), "%s: %s", reason, name);
+                reason = reasonBuffer;
+            }
+
+            executor.TransitionTexture(texture, entry.before, entry.after, reason);
         }
     }
 }
@@ -231,6 +244,14 @@ namespace
         case GDXVertexSemantic::Tangent:     return "TANGENT";
         case GDXVertexSemantic::BoneIndices: return "BLENDINDICES";
         case GDXVertexSemantic::BoneWeights: return "BLENDWEIGHT";
+        case GDXVertexSemantic::InstanceWorld0:
+        case GDXVertexSemantic::InstanceWorld1:
+        case GDXVertexSemantic::InstanceWorld2:
+        case GDXVertexSemantic::InstanceWorld3:
+        case GDXVertexSemantic::InstanceWorldIT0:
+        case GDXVertexSemantic::InstanceWorldIT1:
+        case GDXVertexSemantic::InstanceWorldIT2:
+        case GDXVertexSemantic::InstanceWorldIT3:
         default:                             return "TEXCOORD";
         }
     }
@@ -265,9 +286,14 @@ namespace
             desc.SemanticIndex = element.semanticIndex;
             desc.Format = dxgiFormat;
             desc.InputSlot = element.streamIndex;
-            desc.AlignedByteOffset = 0u;
-            desc.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
-            desc.InstanceDataStepRate = 0u;
+            desc.AlignedByteOffset = (element.streamIndex == 8u)
+                ? D3D11_APPEND_ALIGNED_ELEMENT
+                : 0u;
+            const bool perInstance = (element.streamIndex == 8u);
+            desc.InputSlotClass = perInstance
+                ? D3D11_INPUT_PER_INSTANCE_DATA
+                : D3D11_INPUT_PER_VERTEX_DATA;
+            desc.InstanceDataStepRate = perInstance ? 1u : 0u;
             elems.push_back(desc);
         }
 
@@ -706,6 +732,8 @@ void GDXDX11RenderBackend::BuildGraphicsPassCommands(const BackendRenderPassDesc
         : GDXPassTargetKind::RenderTarget;
     begin.renderTarget = passDesc.target.renderTarget;
     begin.bindNormalsTarget = begin.targetKind == GDXPassTargetKind::RenderTarget && passDesc.bindNormalsTarget;
+    begin.bindMotionVectorsTarget = begin.targetKind == GDXPassTargetKind::RenderTarget && passDesc.bindMotionVectorsTarget;
+    begin.bindDepthOnlyTarget = begin.targetKind == GDXPassTargetKind::RenderTarget && passDesc.pass == RenderPass::Depth;
     begin.clear = passDesc.target.clear;
     begin.viewport.width = passDesc.target.viewportWidth;
     begin.viewport.height = passDesc.target.viewportHeight;
@@ -768,6 +796,7 @@ void GDXDX11RenderBackend::ExecutePassCommandList(
 
     ID3D11RenderTargetView* currentRTV = nullptr;
     ID3D11RenderTargetView* currentNormalRTV = nullptr;
+    ID3D11RenderTargetView* currentMotionRTV = nullptr;
     ID3D11DepthStencilView* currentDSV = nullptr;
     GDXPassBeginDesc currentBegin{};
     bool hasActivePass = false;
@@ -782,6 +811,7 @@ void GDXDX11RenderBackend::ExecutePassCommandList(
             hasActivePass = true;
             currentRTV = nullptr;
             currentNormalRTV = nullptr;
+            currentMotionRTV = nullptr;
             currentDSV = nullptr;
 
             ID3D11ShaderResourceView* nullSrvs[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
@@ -804,17 +834,43 @@ void GDXDX11RenderBackend::ExecutePassCommandList(
                 if (!rt || !rt->ready || !rtGpu || !rtGpu->rtv || !rtGpu->dsv)
                     break;
 
-                currentRTV = rtGpu->rtv;
-                currentNormalRTV = currentBegin.bindNormalsTarget ? rtGpu->normalRtv : nullptr;
                 currentDSV = rtGpu->dsv;
-                if (currentNormalRTV)
+                if (currentBegin.bindDepthOnlyTarget)
                 {
-                    ID3D11RenderTargetView* rtvs[2] = { currentRTV, currentNormalRTV };
-                    m_ctx->OMSetRenderTargets(2, rtvs, currentDSV);
+                    currentRTV = nullptr;
+                    currentNormalRTV = nullptr;
+                    currentMotionRTV = nullptr;
+                    m_ctx->OMSetRenderTargets(0, nullptr, currentDSV);
+                }
+                else if (currentBegin.bindMotionVectorsTarget && !currentBegin.bindNormalsTarget)
+                {
+                    currentRTV = rtGpu->motionRtv;
+                    m_ctx->OMSetRenderTargets(1, &currentRTV, currentDSV);
                 }
                 else
                 {
-                    m_ctx->OMSetRenderTargets(1, &currentRTV, currentDSV);
+                    currentRTV = rtGpu->rtv;
+                    currentNormalRTV = currentBegin.bindNormalsTarget ? rtGpu->normalRtv : nullptr;
+                    currentMotionRTV = currentBegin.bindMotionVectorsTarget ? rtGpu->motionRtv : nullptr;
+                    if (currentNormalRTV && currentMotionRTV)
+                    {
+                        ID3D11RenderTargetView* rtvs[3] = { currentRTV, currentNormalRTV, currentMotionRTV };
+                        m_ctx->OMSetRenderTargets(3, rtvs, currentDSV);
+                    }
+                    else if (currentNormalRTV)
+                    {
+                        ID3D11RenderTargetView* rtvs[2] = { currentRTV, currentNormalRTV };
+                        m_ctx->OMSetRenderTargets(2, rtvs, currentDSV);
+                    }
+                    else if (currentMotionRTV)
+                    {
+                        ID3D11RenderTargetView* rtvs[2] = { currentRTV, currentMotionRTV };
+                        m_ctx->OMSetRenderTargets(2, rtvs, currentDSV);
+                    }
+                    else
+                    {
+                        m_ctx->OMSetRenderTargets(1, &currentRTV, currentDSV);
+                    }
                 }
             }
             else if (currentBegin.targetKind == GDXPassTargetKind::ShadowMapCascade)
@@ -854,6 +910,11 @@ void GDXDX11RenderBackend::ExecutePassCommandList(
             {
                 const float normalClear[4] = { 0.5f, 0.5f, 1.0f, 1.0f };
                 m_ctx->ClearRenderTargetView(currentNormalRTV, normalClear);
+            }
+            if (currentMotionRTV)
+            {
+                const float motionClear[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+                m_ctx->ClearRenderTargetView(currentMotionRTV, motionClear);
             }
             break;
         case GDXPassCommandType::ClearDepth:
@@ -943,7 +1004,18 @@ void GDXDX11RenderBackend::ExecuteRenderPass(
 
         switch (passDesc.pass)
         {
+        case RenderPass::Depth:
+            m_ctx->OMSetDepthStencilState(m_depthStencilState, 0u);
+            m_ctx->OMSetBlendState(nullptr, blendFactor, 0xFFFFFFFFu);
+            if (!opaqueRef.Empty())
+                m_executor.ExecuteQueue(registry, opaqueRef, meshStore, matStore, shaderStore, texStore, m_gpuRegistry, shadowSrv);
+            break;
+
         case RenderPass::Opaque:
+            if (passDesc.readOnlyDepth)
+                m_ctx->OMSetDepthStencilState(m_depthStateNoWrite, 0u);
+            else
+                m_ctx->OMSetDepthStencilState(m_depthStencilState, 0u);
             if (!opaqueRef.Empty())
                 m_executor.ExecuteQueue(registry, opaqueRef, meshStore, matStore, shaderStore, texStore, m_gpuRegistry, shadowSrv);
             break;
@@ -957,10 +1029,27 @@ void GDXDX11RenderBackend::ExecuteRenderPass(
             break;
         }
 
-        case RenderPass::ParticlesTransparent:
+        case RenderPass::MotionVectors:
             m_ctx->OMSetDepthStencilState(m_depthStateNoWrite, 0u);
-            if (m_particlesReady && passDesc.particleSubmission && !passDesc.particleSubmission->Empty())
-                m_particleRenderer.Render(*passDesc.particleSubmission);
+            m_ctx->OMSetBlendState(m_blendState, blendFactor, 0xFFFFFFFFu);
+            if (!opaqueRef.Empty())
+                m_executor.ExecuteQueue(registry, opaqueRef, meshStore, matStore, shaderStore, texStore, m_gpuRegistry, shadowSrv);
+            break;
+
+        case RenderPass::ParticlesTransparent:
+        {
+            m_ctx->OMSetDepthStencilState(m_depthStateNoWrite, 0u);
+            const ParticleCommandList* particleCommands = alphaRef.AsParticleCommandList();
+            if (m_particlesReady && particleCommands && !particleCommands->Empty())
+                m_particleRenderer.Render(particleCommands->GetSubmission());
+            break;
+        }
+
+        case RenderPass::Distortion:
+            m_ctx->OMSetDepthStencilState(m_depthStateNoWrite, 0u);
+            m_ctx->OMSetBlendState(m_blendStateAlpha, blendFactor, 0xFFFFFFFFu);
+            if (!alphaRef.Empty())
+                m_executor.ExecuteQueue(registry, alphaRef, meshStore, matStore, shaderStore, texStore, m_gpuRegistry, shadowSrv);
             break;
 
         default:
@@ -992,8 +1081,6 @@ void GDXDX11RenderBackend::ExecuteRenderPass(
 
     auto* rtv = rtGpu->rtv;
     auto* dsv = rtGpu->dsv;
-    auto* normalRtv = rtGpu->normalRtv;
-
     ID3D11ShaderResourceView* nullSrvs[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
     m_ctx->PSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, nullSrvs);
 
@@ -1268,7 +1355,10 @@ bool GDXDX11RenderBackend::EnsureOcclusionResources()
     D3D11_DEPTH_STENCIL_DESC dssDesc{};
     dssDesc.DepthEnable    = TRUE;
     dssDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;  // kein Depth-Write!
-    dssDesc.DepthFunc      = D3D11_COMPARISON_LESS;
+    // Occlusion queries run against the already-populated scene depth.
+    // LESS would incorrectly reject samples at exactly the same depth and
+    // produce false negatives for visible surfaces like platforms/floors.
+    dssDesc.DepthFunc      = D3D11_COMPARISON_LESS_EQUAL;
     dssDesc.StencilEnable  = FALSE;
     if (FAILED(m_device->CreateDepthStencilState(&dssDesc, &m_occlusionDSS)))
     {
@@ -1311,7 +1401,8 @@ void GDXDX11RenderBackend::ReleaseOcclusionResources()
 void GDXDX11RenderBackend::SubmitOcclusionQueries(
     const std::vector<VisibleRenderCandidate>& candidates,
     ResourceStore<MeshAssetResource, MeshTag>& meshStore,
-    const FrameData& frame)
+    const FrameData& frame,
+    RenderTargetHandle depthSourceTarget)
 {
     (void)meshStore;
     if (!m_device || !m_ctx || candidates.empty()) return;
@@ -1324,8 +1415,19 @@ void GDXDX11RenderBackend::SubmitOcclusionQueries(
     m_occlusionPending.clear();
     m_occlusionPending.reserve(candidates.size());
 
-    // Depth Buffer read-only binden — Queries brauchen den aktuellen Depth
-    auto* dsv = static_cast<ID3D11DepthStencilView*>(m_context->GetDepthStencil());
+    // Depth Buffer read-only binden — Queries brauchen den tatsächlichen Main-Scene-Depth.
+    // Der Context-Depth ist bei offscreen/framegraph-basiertem Main-Pass oft nicht derselbe.
+    ID3D11DepthStencilView* dsv = nullptr;
+    if (depthSourceTarget.IsValid())
+    {
+        if (DX11RenderTargetGpu* depthGpu = m_gpuRegistry.GetRenderTarget(depthSourceTarget))
+            dsv = depthGpu->dsv;
+    }
+    if (!dsv)
+        dsv = static_cast<ID3D11DepthStencilView*>(m_context->GetDepthStencil());
+    if (!dsv)
+        return;
+
     m_ctx->OMSetRenderTargets(0, nullptr, dsv);  // kein Color-Target, nur Depth lesen
 
     // Pipeline für AABB-Draw setzen
@@ -1389,7 +1491,8 @@ void GDXDX11RenderBackend::SubmitOcclusionQueries(
 }
 
 void GDXDX11RenderBackend::CollectOcclusionResults(
-    std::unordered_set<EntityID>& outVisible)
+    std::unordered_set<EntityID>& outVisible,
+    std::unordered_set<EntityID>* outTested)
 {
     if (!m_ctx) return;
 
@@ -1399,6 +1502,8 @@ void GDXDX11RenderBackend::CollectOcclusionResults(
 
         BOOL visible = TRUE;
         const HRESULT hr = m_ctx->GetData(e.query, &visible, sizeof(BOOL), 0u);
+        if (outTested && SUCCEEDED(hr))
+            outTested->insert(e.entity);
         if (FAILED(hr) || visible)
             outVisible.insert(e.entity);
 
@@ -1437,6 +1542,7 @@ bool GDXDX11RenderBackend::SupportsTextureFormat(GDXTextureFormat format) const
     case GDXTextureFormat::RGBA8_UNORM:
     case GDXTextureFormat::RGBA8_UNORM_SRGB:
     case GDXTextureFormat::RGBA16_FLOAT:
+    case GDXTextureFormat::RG16_FLOAT:
         return (support & D3D11_FORMAT_SUPPORT_RENDER_TARGET) != 0 &&
                (support & D3D11_FORMAT_SUPPORT_SHADER_SAMPLE) != 0;
 
@@ -2306,6 +2412,68 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
         return RenderTargetHandle::Invalid();
     }
 
+    // --- Motion-Vector-Textur ---
+    D3D11_TEXTURE2D_DESC motionDesc = {};
+    motionDesc.Width = width;
+    motionDesc.Height = height;
+    motionDesc.MipLevels = 1;
+    motionDesc.ArraySize = 1;
+    motionDesc.Format = DXGI_FORMAT_R16G16_FLOAT;
+    motionDesc.SampleDesc.Count = 1;
+    motionDesc.Usage = D3D11_USAGE_DEFAULT;
+    motionDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+
+    ID3D11Texture2D* motionTex = nullptr;
+    hr = m_device->CreateTexture2D(&motionDesc, nullptr, &motionTex);
+    if (FAILED(hr))
+    {
+        normalSrv->Release();
+        normalRtv->Release();
+        normalTex->Release();
+        depthSrv->Release();
+        dsv->Release();
+        depthTex->Release();
+        srv->Release();
+        rtv->Release();
+        colorTex->Release();
+        return RenderTargetHandle::Invalid();
+    }
+
+    ID3D11RenderTargetView* motionRtv = nullptr;
+    hr = m_device->CreateRenderTargetView(motionTex, nullptr, &motionRtv);
+    if (FAILED(hr))
+    {
+        motionTex->Release();
+        normalSrv->Release();
+        normalRtv->Release();
+        normalTex->Release();
+        depthSrv->Release();
+        dsv->Release();
+        depthTex->Release();
+        srv->Release();
+        rtv->Release();
+        colorTex->Release();
+        return RenderTargetHandle::Invalid();
+    }
+
+    ID3D11ShaderResourceView* motionSrv = nullptr;
+    hr = m_device->CreateShaderResourceView(motionTex, nullptr, &motionSrv);
+    if (FAILED(hr))
+    {
+        motionRtv->Release();
+        motionTex->Release();
+        normalSrv->Release();
+        normalRtv->Release();
+        normalTex->Release();
+        depthSrv->Release();
+        dsv->Release();
+        depthTex->Release();
+        srv->Release();
+        rtv->Release();
+        colorTex->Release();
+        return RenderTargetHandle::Invalid();
+    }
+
     // --- SRVs als Engine-Texturen registrieren ---
     GDXTextureResource texRes;
     texRes.width    = width;
@@ -2317,8 +2485,8 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
     texRes.usageDesc.usage = GDXResourceUsage::RenderTarget | GDXResourceUsage::ShaderResource;
     texRes.usageDesc.lifetime = GDXResourceLifetime::Transient;
     texRes.usageDesc.temporalScope = GDXResourceTemporalScope::PerFrame;
-    texRes.usageDesc.initialState = ResourceState::ShaderRead;
-    texRes.usageDesc.defaultState = ResourceState::ShaderRead;
+    texRes.usageDesc.initialState = ResourceState::Common;
+    texRes.usageDesc.defaultState = ResourceState::Common;
     texRes.debugName = debugName + L"_Tex";
     TextureHandle exposedTex = texStore.Add(std::move(texRes));
     if (exposedTex.IsValid())
@@ -2327,7 +2495,7 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
         DX11TextureGpu texGpu{};
         texGpu.srv = srv;
         m_gpuRegistry.SetTexture(exposedTex, texGpu);
-        m_executor.TransitionTexture(exposedTex, ResourceState::Unknown, ResourceState::ShaderRead, "CreateRenderTarget initial state");
+        m_executor.TransitionTexture(exposedTex, ResourceState::Unknown, ResourceState::Common, "CreateRenderTarget initial state");
     }
 
     GDXTextureResource depthTexRes;
@@ -2340,8 +2508,8 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
     depthTexRes.usageDesc.usage = GDXResourceUsage::DepthStencil | GDXResourceUsage::ShaderResource;
     depthTexRes.usageDesc.lifetime = GDXResourceLifetime::Transient;
     depthTexRes.usageDesc.temporalScope = GDXResourceTemporalScope::PerFrame;
-    depthTexRes.usageDesc.initialState = ResourceState::ShaderRead;
-    depthTexRes.usageDesc.defaultState = ResourceState::ShaderRead;
+    depthTexRes.usageDesc.initialState = ResourceState::Common;
+    depthTexRes.usageDesc.defaultState = ResourceState::Common;
     depthTexRes.debugName = debugName + L"_Depth";
     TextureHandle exposedDepthTex = texStore.Add(std::move(depthTexRes));
     if (exposedDepthTex.IsValid())
@@ -2350,7 +2518,7 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
         DX11TextureGpu depthGpu{};
         depthGpu.srv = depthSrv;
         m_gpuRegistry.SetTexture(exposedDepthTex, depthGpu);
-        m_executor.TransitionTexture(exposedDepthTex, ResourceState::Unknown, ResourceState::ShaderRead, "CreateRenderTarget depth initial state");
+        m_executor.TransitionTexture(exposedDepthTex, ResourceState::Unknown, ResourceState::Common, "CreateRenderTarget depth initial state");
     }
 
     GDXTextureResource normalsTexRes;
@@ -2363,8 +2531,8 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
     normalsTexRes.usageDesc.usage = GDXResourceUsage::RenderTarget | GDXResourceUsage::ShaderResource;
     normalsTexRes.usageDesc.lifetime = GDXResourceLifetime::Transient;
     normalsTexRes.usageDesc.temporalScope = GDXResourceTemporalScope::PerFrame;
-    normalsTexRes.usageDesc.initialState = ResourceState::ShaderRead;
-    normalsTexRes.usageDesc.defaultState = ResourceState::ShaderRead;
+    normalsTexRes.usageDesc.initialState = ResourceState::Common;
+    normalsTexRes.usageDesc.defaultState = ResourceState::Common;
     normalsTexRes.debugName = debugName + L"_Normals";
     TextureHandle exposedNormalsTex = texStore.Add(std::move(normalsTexRes));
     if (exposedNormalsTex.IsValid())
@@ -2373,10 +2541,33 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
         DX11TextureGpu normalsGpu{};
         normalsGpu.srv = normalSrv;
         m_gpuRegistry.SetTexture(exposedNormalsTex, normalsGpu);
-        m_executor.TransitionTexture(exposedNormalsTex, ResourceState::Unknown, ResourceState::ShaderRead, "CreateRenderTarget normals initial state");
+        m_executor.TransitionTexture(exposedNormalsTex, ResourceState::Unknown, ResourceState::Common, "CreateRenderTarget normals initial state");
     }
 
     // --- RenderTargetResource anlegen ---
+    GDXTextureResource motionTexRes;
+    motionTexRes.width    = width;
+    motionTexRes.height   = height;
+    motionTexRes.ready    = true;
+    motionTexRes.isSRGB   = false;
+    motionTexRes.format   = GDXTextureFormat::RG16_FLOAT;
+    motionTexRes.semantic = GDXTextureSemantic::RenderTarget;
+    motionTexRes.usageDesc.usage = GDXResourceUsage::RenderTarget | GDXResourceUsage::ShaderResource;
+    motionTexRes.usageDesc.lifetime = GDXResourceLifetime::Transient;
+    motionTexRes.usageDesc.temporalScope = GDXResourceTemporalScope::PerFrame;
+    motionTexRes.usageDesc.initialState = ResourceState::Common;
+    motionTexRes.usageDesc.defaultState = ResourceState::Common;
+    motionTexRes.debugName = debugName + L"_MotionVectors";
+    TextureHandle exposedMotionVectorsTex = texStore.Add(std::move(motionTexRes));
+    if (exposedMotionVectorsTex.IsValid())
+    {
+        motionSrv->AddRef();
+        DX11TextureGpu motionGpu{};
+        motionGpu.srv = motionSrv;
+        m_gpuRegistry.SetTexture(exposedMotionVectorsTex, motionGpu);
+        m_executor.TransitionTexture(exposedMotionVectorsTex, ResourceState::Unknown, ResourceState::Common, "CreateRenderTarget motion initial state");
+    }
+
     GDXRenderTargetResource rt;
     rt.width = width;
     rt.height = height;
@@ -2385,11 +2576,12 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
     rt.usageDesc.usage = GDXResourceUsage::RenderTarget | GDXResourceUsage::DepthStencil | GDXResourceUsage::ShaderResource;
     rt.usageDesc.lifetime = GDXResourceLifetime::Transient;
     rt.usageDesc.temporalScope = GDXResourceTemporalScope::PerFrame;
-    rt.usageDesc.initialState = ResourceState::ShaderRead;
-    rt.usageDesc.defaultState = ResourceState::ShaderRead;
+    rt.usageDesc.initialState = ResourceState::Common;
+    rt.usageDesc.defaultState = ResourceState::Common;
     rt.exposedTexture = exposedTex;
     rt.exposedDepthTexture = exposedDepthTex;
     rt.exposedNormalsTexture = exposedNormalsTex;
+    rt.exposedMotionVectorsTexture = exposedMotionVectorsTex;
     rt.debugName = debugName;
 
     const RenderTargetHandle handle = rtStore.Add(std::move(rt));
@@ -2405,6 +2597,9 @@ RenderTargetHandle GDXDX11RenderBackend::CreateRenderTarget(
         rtGpu.normalTexture = normalTex;
         rtGpu.normalRtv = normalRtv;
         rtGpu.normalSrv = normalSrv;
+        rtGpu.motionTexture = motionTex;
+        rtGpu.motionRtv = motionRtv;
+        rtGpu.motionSrv = motionSrv;
         m_gpuRegistry.SetRenderTarget(handle, rtGpu);
 
         //static uint64_t s_rtCreateCount = 0;
@@ -2470,6 +2665,12 @@ void GDXDX11RenderBackend::DestroyRenderTarget(
             m_executor.ForgetTextureState(rt->exposedNormalsTexture);
             m_gpuRegistry.ReleaseTexture(rt->exposedNormalsTexture);
             texStore.Remove(rt->exposedNormalsTexture);
+        }
+        if (rt->exposedMotionVectorsTexture.IsValid())
+        {
+            m_executor.ForgetTextureState(rt->exposedMotionVectorsTexture);
+            m_gpuRegistry.ReleaseTexture(rt->exposedMotionVectorsTexture);
+            texStore.Remove(rt->exposedMotionVectorsTexture);
         }
     }
     rtStore.Remove(handle);

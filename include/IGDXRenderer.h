@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 class IGDXRenderer
 {
 public:
@@ -11,4 +13,6 @@ public:
     virtual void EndFrame() = 0;
     virtual void Resize(int w, int h) = 0;
     virtual void Shutdown() = 0;
+
+    virtual std::string GetWindowDebugTitle() const { return {}; }
 };

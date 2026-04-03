@@ -18,6 +18,8 @@ namespace
         uint32_t layerMask = 0x00000001u;
         bool castShadows = true;
         bool receiveShadows = true;
+        DrawPassMask drawPassMask = DrawPassBits::None;
+        uint8_t renderPriority = 128u;
         uint32_t stateVersion = 0u;
     };
 
@@ -105,6 +107,8 @@ namespace
         resolved.layerMask = candidate.layerMask;
         resolved.castShadows = candidate.castShadows;
         resolved.receiveShadows = candidate.receiveShadows;
+        resolved.drawPassMask = candidate.drawPassMask;
+        resolved.renderPriority = candidate.renderPriority;
         return resolved;
     }
 
@@ -122,10 +126,132 @@ namespace
             && cache.layerMask == renderable.layerMask
             && cache.castShadows == renderable.castShadows
             && cache.receiveShadows == renderable.receiveShadows
+            && cache.drawPassMask == renderable.drawPassMask
+            && cache.renderPriority == renderable.renderPriority
             && cache.materialStateVersion == material.GetStateVersion();
     }
 
+    bool SupportsCombinedPass(const ResolvedRenderable& renderable,
+                              const MaterialResource& material,
+                              const RenderViewData* view,
+                              DrawPassType pass) noexcept
+    {
+        const DrawPassMask viewMask = view ? view->viewPassMask : DrawPassBits::AllGraphics;
+        return HasDrawPass(renderable.drawPassMask, pass)
+            && material.SupportsPass(pass)
+            && HasDrawPass(viewMask, pass);
+    }
+
+    bool IsDepthEligible(const ResolvedRenderable& renderable,
+                         const MaterialResource& material,
+                         const RenderViewData* view,
+                         bool transparent) noexcept
+    {
+        return SupportsCombinedPass(renderable, material, view, DrawPassType::Depth)
+            && (!transparent || material.IsAlphaTest());
+    }
+
+    bool IsMotionVectorEligible(const ResolvedRenderable& renderable,
+                                const MaterialResource& material,
+                                const RenderViewData* view) noexcept
+    {
+        return SupportsCombinedPass(renderable, material, view, DrawPassType::MotionVectors);
+    }
+
+    bool IsDistortionEligible(const ResolvedRenderable& renderable,
+                              const MaterialResource& material,
+                              const RenderViewData* view) noexcept
+    {
+        return material.IsTransparent()
+            && material.IsDistortion()
+            && SupportsCombinedPass(renderable, material, view, DrawPassType::Distortion);
+    }
+
+    uint16_t BuildGeometrySortKey(const MeshHandle mesh, uint32_t submeshIndex) noexcept
+    {
+        const uint32_t packed = ((mesh.value & 0x03FFu) << 6) ^ (submeshIndex & 0x003Fu);
+        return static_cast<uint16_t>(packed & 0xFFFFu);
+    }
+
+    RenderQueueClass ResolveQueueClass(bool transparent, bool distortion, DrawPassType drawPass) noexcept
+    {
+        switch (drawPass)
+        {
+        case DrawPassType::Depth:         return RenderQueueClass::Depth;
+        case DrawPassType::MotionVectors: return RenderQueueClass::MotionVectors;
+        case DrawPassType::ShadowDepth:   return RenderQueueClass::ShadowDepth;
+        case DrawPassType::Distortion:    return RenderQueueClass::Distortion;
+        case DrawPassType::Transparent:   return RenderQueueClass::Transparent;
+        case DrawPassType::Opaque:
+        default:
+            return distortion ? RenderQueueClass::Distortion
+                              : (transparent ? RenderQueueClass::Transparent : RenderQueueClass::Opaque);
+        }
+    }
+
+
+
+    bool IsDrawBindingInstancingCompatible(const ResourceBindingSet& bindings) noexcept
+    {
+        for (uint32_t i = 0; i < bindings.textureCount; ++i)
+        {
+            if (bindings.textures[i].scope == ResourceBindingScope::Draw && bindings.textures[i].enabled)
+                return false;
+        }
+
+        for (uint32_t i = 0; i < bindings.constantBufferCount; ++i)
+        {
+            const auto& cb = bindings.constantBuffers[i];
+            if (cb.scope != ResourceBindingScope::Draw || !cb.enabled)
+                continue;
+            if (cb.semantic != GDXShaderConstantBufferSlot::Entity)
+                return false;
+        }
+
+        return true;
+    }
+
+    uint64_t BuildInstancingKey(const RenderCommand& cmd) noexcept
+    {
+        uint64_t key = 1469598103934665603ull;
+        auto mix = [&](uint64_t value)
+        {
+            key ^= value;
+            key *= 1099511628211ull;
+        };
+
+        mix(static_cast<uint64_t>(cmd.pass));
+        mix(static_cast<uint64_t>(cmd.mesh.value));
+        mix(static_cast<uint64_t>(cmd.submeshIndex));
+        mix(static_cast<uint64_t>(cmd.material.value));
+        mix(static_cast<uint64_t>(cmd.shader.value));
+        mix(static_cast<uint64_t>(cmd.pipelineStateKey.value));
+        mix(cmd.passBindingsKey);
+        mix(cmd.materialBindingsKey);
+        mix(static_cast<uint64_t>(cmd.receiveShadows ? 1u : 0u));
+        return key;
+    }
+
+    void AssignPackedSortKey(RenderCommand& cmd,
+                             const RenderGatherSystem::CachedCommandState& cache,
+                             DrawPassType drawPass,
+                             float depth)
+    {
+        RenderSortKeyParams params{};
+        params.queueClass = ResolveQueueClass(cache.transparent, cache.distortion, drawPass);
+        params.renderPriority = cmd.renderPriority;
+        params.transparencyClass = cache.transparencyClass;
+        params.transparencySortPriority = cache.transparencySortPriority;
+        params.shaderKey = static_cast<uint16_t>(cache.shader.Index() & 0x0FFFu);
+        params.pipelineKey = static_cast<uint16_t>(GDXPipelineStateKey::FromDesc(cache.pipelineState).value & 0x1FFFu);
+        params.materialKey = static_cast<uint16_t>(cache.materialSortID & 0x0FFFu);
+        params.geometryKey = BuildGeometrySortKey(cache.mesh, cache.submeshIndex);
+        params.depth = depth;
+        cmd.SetSortKey(params);
+    }
+
     bool BuildMainRenderCommand(const VisibleRenderCandidate& candidate,
+                                const RenderViewData* view,
                                 const FrameData& frame,
                                 ResourceStore<MeshAssetResource, MeshTag>& meshStore,
                                 ResourceStore<MaterialResource, MaterialTag>& matStore,
@@ -134,7 +260,10 @@ namespace
                                 const RenderGatherOptions* options,
                                 RenderGatherSystem::CachedCommandState& cache,
                                 RenderCommand& outCmd,
-                                bool& outTransparent)
+                                bool& outTransparent,
+                                bool& outDistortion,
+                                ResolvedRenderable& outRenderable,
+                                const MaterialResource*& outMaterial)
     {
         const ResolvedRenderable renderable = ResolveRenderable(candidate);
         if (!renderable.active || !renderable.visible) return false;
@@ -150,15 +279,22 @@ namespace
         if (renderable.submeshIndex >= mesh->submeshes.size()) return false;
         if (!mesh->IsGpuReadyAt(renderable.submeshIndex)) return false;
 
-        const SubmeshData& submesh = mesh->submeshes[renderable.submeshIndex];
         outTransparent = mat->IsTransparent();
-        const RenderPass pass = outTransparent ? RenderPass::Transparent : RenderPass::Opaque;
+        outDistortion = mat->IsDistortion();
+
+        const DrawPassType primaryPass = outTransparent ? (outDistortion ? DrawPassType::Distortion : DrawPassType::Transparent)
+                                                        : DrawPassType::Opaque;
+        if (!SupportsCombinedPass(renderable, *mat, view, primaryPass))
+            return false;
 
         if (options)
         {
             if (outTransparent && !options->gatherTransparent) return false;
             if (!outTransparent && !options->gatherOpaque) return false;
         }
+
+        const SubmeshData& submesh = mesh->submeshes[renderable.submeshIndex];
+        const RenderPass pass = outTransparent ? RenderPass::Transparent : RenderPass::Opaque;
 
         if (!ShouldUseCachedState(cache, renderable, *mat) || cache.pass != pass)
         {
@@ -175,8 +311,12 @@ namespace
             cache.pass = pass;
             cache.pipelineState = BuildPipelineStateDesc(pass, *mat);
             cache.bindings = BuildResourceBindingSet(*mat, renderable.material, *shaderRes);
-            // Authored material data lives in MaterialResource; commands carry only handles.
             cache.transparent = outTransparent;
+            cache.distortion = outDistortion;
+            cache.drawPassMask = renderable.drawPassMask;
+            cache.renderPriority = renderable.renderPriority;
+            cache.transparencySortPriority = mat->GetTransparencySortPriority();
+            cache.transparencyClass = static_cast<uint8_t>(mat->GetTransparencyClass());
             cache.materialSortID = mat->GetSortID();
             cache.renderStateVersion = renderable.stateVersion;
             cache.visible = renderable.visible;
@@ -190,6 +330,7 @@ namespace
         else
         {
             outTransparent = cache.transparent;
+            outDistortion = cache.distortion;
         }
 
         if (options && options->skipSelfReferentialDraws &&
@@ -200,13 +341,13 @@ namespace
         }
 
         const float ndcDepth = CameraSystem::ComputeNDCDepth(candidate.worldMatrix, frame.viewProjMatrix);
-        const float depth = outTransparent ? (1.0f - ndcDepth) : ndcDepth;
         outCmd.mesh = cache.mesh;
         outCmd.material = cache.material;
         outCmd.shader = cache.shader;
         outCmd.submeshIndex = cache.submeshIndex;
         outCmd.ownerEntity = candidate.entity;
         outCmd.pass = cache.pass;
+        outCmd.renderPriority = cache.renderPriority;
         outCmd.worldMatrix = candidate.worldMatrix;
         outCmd.SetBindings(
             cache.bindings,
@@ -215,18 +356,25 @@ namespace
             BuildResourceBindingScopeKey(cache.bindings, ResourceBindingScope::Draw, candidate.entity.value));
         outCmd.SetPipelineState(cache.pipelineState);
         outCmd.receiveShadows = renderable.receiveShadows;
+        outCmd.instancingEligible = !outTransparent
+            && !outDistortion
+            && shaderStore.Get(cache.shader)
+            && shaderStore.Get(cache.shader)->supportsInstancing
+            && !shaderStore.Get(cache.shader)->supportsSkinning
+            && IsDrawBindingInstancingCompatible(cache.bindings);
+        outCmd.instancingKey = outCmd.instancingEligible ? BuildInstancingKey(outCmd) : 0ull;
         outCmd.hasBounds         = candidate.hasBounds;
         outCmd.worldBoundsCenter = candidate.worldBoundsCenter;
         outCmd.worldBoundsRadius = candidate.worldBoundsRadius;
-        outCmd.SetSortKey(cache.pass,
-                          cache.shader.Index() & 0x0FFFu,
-                          GDXPipelineStateKey::FromDesc(cache.pipelineState).value & 0x00FFu,
-                          cache.materialSortID & 0x03FFu,
-                          depth);
+        AssignPackedSortKey(outCmd, cache, primaryPass, ndcDepth);
+
+        outRenderable = renderable;
+        outMaterial = mat;
         return true;
     }
 
     bool BuildShadowRenderCommand(const VisibleRenderCandidate& candidate,
+                                  const RenderViewData* view,
                                   const FrameData& frame,
                                   ResourceStore<MeshAssetResource, MeshTag>& meshStore,
                                   ResourceStore<MaterialResource, MaterialTag>& matStore,
@@ -249,6 +397,7 @@ namespace
         if (!mesh || !mat) return false;
         if (renderable.submeshIndex >= mesh->submeshes.size()) return false;
         if (!mesh->IsGpuReadyAt(renderable.submeshIndex)) return false;
+        if (!SupportsCombinedPass(renderable, *mat, view, DrawPassType::ShadowDepth)) return false;
 
         const SubmeshData& submesh = mesh->submeshes[renderable.submeshIndex];
         if (!ShouldUseCachedState(cache, renderable, *mat) || cache.pass != RenderPass::Shadow)
@@ -266,8 +415,12 @@ namespace
             cache.pass = RenderPass::Shadow;
             cache.pipelineState = BuildPipelineStateDesc(RenderPass::Shadow, *mat);
             cache.bindings = BuildResourceBindingSet(*mat, renderable.material, *shaderRes);
-            // Authored material data lives in MaterialResource; commands carry only handles.
             cache.transparent = false;
+            cache.distortion = false;
+            cache.drawPassMask = renderable.drawPassMask;
+            cache.renderPriority = renderable.renderPriority;
+            cache.transparencySortPriority = mat->GetTransparencySortPriority();
+            cache.transparencyClass = static_cast<uint8_t>(mat->GetTransparencyClass());
             cache.materialSortID = mat->GetSortID();
             cache.renderStateVersion = renderable.stateVersion;
             cache.visible = renderable.visible;
@@ -286,12 +439,14 @@ namespace
             return false;
         }
 
+        const float depth = CameraSystem::ComputeNDCDepth(candidate.worldMatrix, frame.shadowViewProjMatrix);
         outCmd.mesh = cache.mesh;
         outCmd.material = cache.material;
         outCmd.shader = cache.shader;
         outCmd.submeshIndex = cache.submeshIndex;
         outCmd.ownerEntity = candidate.entity;
         outCmd.pass = RenderPass::Shadow;
+        outCmd.renderPriority = cache.renderPriority;
         outCmd.worldMatrix = candidate.worldMatrix;
         outCmd.SetBindings(
             cache.bindings,
@@ -300,14 +455,15 @@ namespace
             BuildResourceBindingScopeKey(cache.bindings, ResourceBindingScope::Draw, candidate.entity.value));
         outCmd.SetPipelineState(cache.pipelineState);
         outCmd.receiveShadows = true;
+        outCmd.instancingEligible = shaderStore.Get(cache.shader)
+            && shaderStore.Get(cache.shader)->supportsInstancing
+            && !shaderStore.Get(cache.shader)->supportsSkinning
+            && IsDrawBindingInstancingCompatible(cache.bindings);
+        outCmd.instancingKey = outCmd.instancingEligible ? BuildInstancingKey(outCmd) : 0ull;
         outCmd.hasBounds         = candidate.hasBounds;
         outCmd.worldBoundsCenter = candidate.worldBoundsCenter;
         outCmd.worldBoundsRadius = candidate.worldBoundsRadius;
-        outCmd.SetSortKey(RenderPass::Shadow,
-                          cache.shader.Index() & 0x0FFFu,
-                          GDXPipelineStateKey::FromDesc(cache.pipelineState).value & 0x00FFu,
-                          0u,
-                          0.0f);
+        AssignPackedSortKey(outCmd, cache, DrawPassType::ShadowDepth, depth);
         return true;
     }
 
@@ -357,25 +513,59 @@ void RenderGatherSystem::GatherVisibleSetChunks(const VisibleSet& visibleSet,
             const size_t begin = chunkIndex * batchSize;
             const size_t end = (std::min)(begin + batchSize, total);
             auto& result = outChunkResults[chunkIndex];
+            result.depth.reserve(end - begin);
             result.opaque.reserve(end - begin);
             result.transparent.reserve(end - begin);
+            result.distortion.reserve(end - begin);
+            result.motionVectors.reserve(end - begin);
 
             for (size_t i = begin; i < end; ++i)
             {
                 const auto& candidate = visibleSet.candidates[i];
                 RenderCommand cmd;
                 bool transparent = false;
+                bool distortion = false;
+                ResolvedRenderable renderable{};
+                const MaterialResource* material = nullptr;
                 auto& cache = result.mainCache[candidate.entity];
-                if (!BuildMainRenderCommand(candidate, frame, meshStore, matStore, shaderStore,
-                                            resolveShader, options, cache, cmd, transparent))
+                if (!BuildMainRenderCommand(candidate, nullptr, frame, meshStore, matStore, shaderStore,
+                                            resolveShader, options, cache, cmd, transparent, distortion, renderable, material))
                 {
                     continue;
                 }
 
+                if (!material)
+                    continue;
+
+                if (IsDepthEligible(renderable, *material, nullptr, transparent))
+                {
+                    RenderCommand depthCmd = cmd;
+                    AssignPackedSortKey(depthCmd, cache, DrawPassType::Depth, CameraSystem::ComputeNDCDepth(candidate.worldMatrix, frame.viewProjMatrix));
+                    result.depth.push_back(std::move(depthCmd));
+                }
+                if (IsMotionVectorEligible(renderable, *material, nullptr))
+                {
+                    RenderCommand motionCmd = cmd;
+                    AssignPackedSortKey(motionCmd, cache, DrawPassType::MotionVectors, CameraSystem::ComputeNDCDepth(candidate.worldMatrix, frame.viewProjMatrix));
+                    result.motionVectors.push_back(std::move(motionCmd));
+                }
+                if (IsDistortionEligible(renderable, *material, nullptr))
+                {
+                    RenderCommand distortionCmd = cmd;
+                    distortionCmd.pass = RenderPass::Distortion;
+                    AssignPackedSortKey(distortionCmd, cache, DrawPassType::Distortion, CameraSystem::ComputeNDCDepth(candidate.worldMatrix, frame.viewProjMatrix));
+                    result.distortion.push_back(std::move(distortionCmd));
+                }
+
                 if (transparent)
-                    result.transparent.push_back(std::move(cmd));
+                {
+                    if (!distortion)
+                        result.transparent.push_back(std::move(cmd));
+                }
                 else
+                {
                     result.opaque.push_back(std::move(cmd));
+                }
             }
         }
     };
@@ -422,7 +612,7 @@ void RenderGatherSystem::GatherShadowVisibleSetChunks(const VisibleSet& visibleS
                 const auto& candidate = visibleSet.candidates[i];
                 RenderCommand cmd;
                 auto& cache = result.shadowCache[candidate.entity];
-                if (!BuildShadowRenderCommand(candidate, frame, meshStore, matStore, shaderStore,
+                if (!BuildShadowRenderCommand(candidate, nullptr, frame, meshStore, matStore, shaderStore,
                                               resolveShader, options, cache, cmd))
                 {
                     continue;
@@ -439,13 +629,22 @@ void RenderGatherSystem::GatherShadowVisibleSetChunks(const VisibleSet& visibleS
 }
 
 void RenderGatherSystem::MergeVisibleSetChunks(const std::vector<GatherChunkResult>& chunkResults,
+                                              RenderQueue& outDepthQueue,
                                               RenderQueue& outOpaqueQueue,
-                                              RenderQueue& outTransparentQueue) const
+                                              RenderQueue& outTransparentQueue,
+                                              RenderQueue& outDistortionQueue,
+                                              RenderQueue& outMotionVectorQueue) const
 {
+    outDepthQueue.Clear();
     outOpaqueQueue.Clear();
     outTransparentQueue.Clear();
+    outDistortionQueue.Clear();
+    outMotionVectorQueue.Clear();
+    MergeCommandVectors(chunkResults, [](const GatherChunkResult& c) -> const std::vector<RenderCommand>& { return c.depth; }, outDepthQueue);
     MergeCommandVectors(chunkResults, [](const GatherChunkResult& c) -> const std::vector<RenderCommand>& { return c.opaque; }, outOpaqueQueue);
     MergeCommandVectors(chunkResults, [](const GatherChunkResult& c) -> const std::vector<RenderCommand>& { return c.transparent; }, outTransparentQueue);
+    MergeCommandVectors(chunkResults, [](const GatherChunkResult& c) -> const std::vector<RenderCommand>& { return c.distortion; }, outDistortionQueue);
+    MergeCommandVectors(chunkResults, [](const GatherChunkResult& c) -> const std::vector<RenderCommand>& { return c.motionVectors; }, outMotionVectorQueue);
 }
 
 void RenderGatherSystem::MergeShadowVisibleSetChunks(const std::vector<GatherChunkResult>& chunkResults,
@@ -466,16 +665,22 @@ void RenderGatherSystem::GatherVisibleSet(const VisibleSet& visibleSet,
                                           ResourceStore<MaterialResource, MaterialTag>& matStore,
                                           ResourceStore<GDXShaderResource, ShaderTag>& shaderStore,
                                           const ShaderResolver& resolveShader,
+                                          RenderQueue& outDepthQueue,
                                           RenderQueue& outOpaqueQueue,
                                           RenderQueue& outTransparentQueue,
+                                          RenderQueue& outDistortionQueue,
+                                          RenderQueue& outMotionVectorQueue,
                                           const RenderGatherOptions* options,
                                           JobSystem* jobSystem) const
 {
     std::vector<GatherChunkResult> chunkResults;
     GatherVisibleSetChunks(visibleSet, frame, meshStore, matStore, shaderStore, resolveShader, chunkResults, options, jobSystem);
-    MergeVisibleSetChunks(chunkResults, outOpaqueQueue, outTransparentQueue);
+    MergeVisibleSetChunks(chunkResults, outDepthQueue, outOpaqueQueue, outTransparentQueue, outDistortionQueue, outMotionVectorQueue);
+    SortRenderQueue(outDepthQueue);
     SortRenderQueue(outOpaqueQueue);
     SortRenderQueue(outTransparentQueue);
+    SortRenderQueue(outDistortionQueue);
+    SortRenderQueue(outMotionVectorQueue);
 }
 
 void RenderGatherSystem::GatherShadowVisibleSet(const VisibleSet& visibleSet,

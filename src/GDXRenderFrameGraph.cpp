@@ -217,6 +217,7 @@ const char* FGResourceFormatToString(GDXTextureFormat format)
     case GDXTextureFormat::RGBA8_UNORM:         return "RGBA8_UNORM";
     case GDXTextureFormat::RGBA8_UNORM_SRGB:    return "RGBA8_UNORM_SRGB";
     case GDXTextureFormat::RGBA16_FLOAT:        return "RGBA16_FLOAT";
+    case GDXTextureFormat::RG16_FLOAT:          return "RG16_FLOAT";
     case GDXTextureFormat::D24_UNORM_S8_UINT:   return "D24_UNORM_S8_UINT";
     case GDXTextureFormat::D32_FLOAT:           return "D32_FLOAT";
     default:                                    return "InvalidFormat";
@@ -357,17 +358,15 @@ MakeShadowExecFn(const RFG::ExecuteData* exec)
 static std::function<void(const RFG::ExecContext&, RFG::ViewStats*)>
 MakeGraphicsExecFn(const RFG::PassExec* passExec,
                    const ICommandList* opaqueList,
-                   const ICommandList* alphaList,
-                   const ParticleRenderSubmission* particleSubmission = nullptr)
+                   const ICommandList* alphaList)
 {
-    return [passExec, opaqueList, alphaList, particleSubmission](const RFG::ExecContext& c, RFG::ViewStats* s)
+    return [passExec, opaqueList, alphaList](const RFG::ExecContext& c, RFG::ViewStats* s)
     {
         if (c.backend && passExec && passExec->enabled)
         {
             BackendRenderPassDesc desc = passExec->desc;
             desc.opaqueList = opaqueList;
             desc.alphaList  = alphaList;
-            desc.particleSubmission = particleSubmission;
 
             static const RenderQueue kEmptyQueue{};
             const ICommandList& opaqueRef = opaqueList ? *opaqueList : static_cast<const ICommandList&>(kEmptyQueue);
@@ -525,11 +524,20 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
             mainSceneWidth, mainSceneHeight, GDXTextureFormat::RGBA8_UNORM)
         : FG_INVALID_RESOURCE;
 
+    const FGResourceID mainSceneMotionVectorsID =
+        (hasPostProcess && mainSceneRt && mainSceneRt->ready && mainSceneRt->exposedMotionVectorsTexture.IsValid())
+        ? pipeline.frameGraph.RegisterGraphOwnedResource(
+            mainSceneRt->exposedMotionVectorsTexture,
+            RenderTargetHandle::Invalid(), "MainSceneMotionVectors", FGResourceKind::RenderTarget,
+            mainSceneWidth, mainSceneHeight, GDXTextureFormat::RG16_FLOAT)
+        : FG_INVALID_RESOURCE;
+
     const uint32_t rttCount = static_cast<uint32_t>(pipeline.rttViews.size());
     std::vector<FGResourceID> rttColorIDs(rttCount, FG_INVALID_RESOURCE);
     std::vector<FGResourceID> rttSceneIDs(rttCount, FG_INVALID_RESOURCE);
     std::vector<FGResourceID> rttSceneDepthIDs(rttCount, FG_INVALID_RESOURCE);
     std::vector<FGResourceID> rttSceneNormalsIDs(rttCount, FG_INVALID_RESOURCE);
+    std::vector<FGResourceID> rttSceneMotionVectorsIDs(rttCount, FG_INVALID_RESOURCE);
     std::vector<FGResourceID> rttShadowIDs(rttCount, FG_INVALID_RESOURCE);
     std::vector<bool>         rttReadsGlobalMainShadow(rttCount, false);
     for (uint32_t i = 0u; i < rttCount; ++i)
@@ -606,6 +614,14 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
                     RenderTargetHandle::Invalid(), "RTTSceneNormals", FGResourceKind::RenderTarget,
                     rttWidth, rttHeight, GDXTextureFormat::RGBA8_UNORM);
             }
+
+            if (rt->exposedMotionVectorsTexture.IsValid())
+            {
+                rttSceneMotionVectorsIDs[i] = pipeline.frameGraph.RegisterGraphOwnedResource(
+                    rt->exposedMotionVectorsTexture,
+                    RenderTargetHandle::Invalid(), "RTTSceneMotionVectors", FGResourceKind::RenderTarget,
+                    rttWidth, rttHeight, GDXTextureFormat::RG16_FLOAT);
+            }
         }
     }
 
@@ -633,6 +649,23 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
             pipeline.frameGraph.nodes.push_back(std::move(node));
         }
 
+        if (view.execute.depthPass.enabled && !view.execute.depthQueue.Empty() &&
+            rttSceneDepthIDs[i] != FG_INVALID_RESOURCE)
+        {
+            RFG::Node node{};
+            node.passType   = RFG::PassType::Graphics;
+            node.debugName  = "DepthPrepass.RTT";
+            node.executeInput = &view.execute;
+            node.statsOutput  = &view.stats;
+            node.viewIndex  = i;
+            node.enabled    = true;
+            node.countedAsRenderTargetView = true;
+            node.shadowResourcePolicy = view.shadowResourcePolicy;
+            node.AddDepthWrite(rttSceneDepthIDs[i]);
+            node.executeFn  = MakeGraphicsExecFn(&view.execute.depthPass, &view.execute.depthQueue, nullptr);
+            pipeline.frameGraph.nodes.push_back(std::move(node));
+        }
+
         if (view.execute.opaquePass.enabled)
         {
             RFG::Node node{};
@@ -652,7 +685,12 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
             {
                 node.AddRenderTarget(rttSceneIDs[i]);
                 if (rttSceneDepthIDs[i] != FG_INVALID_RESOURCE)
-                    node.AddDepthWrite(rttSceneDepthIDs[i]);
+                {
+                    if (view.execute.depthPass.enabled && !view.execute.depthQueue.Empty())
+                        node.AddDepthRead(rttSceneDepthIDs[i]);
+                    else
+                        node.AddDepthWrite(rttSceneDepthIDs[i]);
+                }
                 if (rttSceneNormalsIDs[i] != FG_INVALID_RESOURCE)
                     node.AddRenderTarget(rttSceneNormalsIDs[i]);
             }
@@ -662,7 +700,26 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
             pipeline.frameGraph.nodes.push_back(std::move(node));
         }
 
-        if (view.execute.particlePass.enabled && !view.execute.particleSubmission.Empty())
+
+        if (view.execute.motionVectorsPass.enabled && !view.execute.motionVectorsQueue.Empty() &&
+            rttSceneMotionVectorsIDs[i] != FG_INVALID_RESOURCE && rttSceneDepthIDs[i] != FG_INVALID_RESOURCE)
+        {
+            RFG::Node node{};
+            node.passType   = RFG::PassType::Graphics;
+            node.debugName  = "MotionVectors.RTT";
+            node.executeInput = &view.execute;
+            node.statsOutput  = &view.stats;
+            node.viewIndex  = i;
+            node.enabled    = true;
+            node.countedAsRenderTargetView = true;
+            node.shadowResourcePolicy = view.shadowResourcePolicy;
+            node.AddRenderTarget(rttSceneMotionVectorsIDs[i]);
+            node.AddDepthRead(rttSceneDepthIDs[i]);
+            node.executeFn  = MakeGraphicsExecFn(&view.execute.motionVectorsPass, &view.execute.motionVectorsQueue, nullptr);
+            pipeline.frameGraph.nodes.push_back(std::move(node));
+        }
+
+        if (view.execute.particlePass.enabled && !view.execute.particleQueue.Empty())
         {
             RFG::Node node{};
             node.passType   = RFG::PassType::Graphics;
@@ -685,7 +742,7 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
             }
             else if (rttColorIDs[i] != FG_INVALID_RESOURCE)
                 node.AddRenderTarget(rttColorIDs[i]);
-            node.executeFn  = MakeGraphicsExecFn(&view.execute.particlePass, nullptr, nullptr, &view.execute.particleSubmission);
+            node.executeFn  = MakeGraphicsExecFn(&view.execute.particlePass, nullptr, &view.execute.particleQueue);
             pipeline.frameGraph.nodes.push_back(std::move(node));
         }
 
@@ -713,6 +770,33 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
             else if (rttColorIDs[i] != FG_INVALID_RESOURCE)
                 node.AddRenderTarget(rttColorIDs[i]);
             node.executeFn  = MakeGraphicsExecFn(&view.execute.transparentPass, nullptr, &view.execute.alphaQueue);
+            pipeline.frameGraph.nodes.push_back(std::move(node));
+        }
+
+        if (view.execute.distortionPass.enabled && !view.execute.distortionQueue.Empty())
+        {
+            RFG::Node node{};
+            node.passType   = RFG::PassType::Graphics;
+            node.debugName  = "Distortion.RTT";
+            node.executeInput = &view.execute;
+            node.statsOutput  = &view.stats;
+            node.viewIndex  = i;
+            node.enabled    = true;
+            node.countedAsRenderTargetView = true;
+            node.shadowResourcePolicy = view.shadowResourcePolicy;
+            if (view.execute.shadowPass.enabled && rttShadowIDs[i] != FG_INVALID_RESOURCE)
+                node.AddSRV(rttShadowIDs[i]);
+            else if (rttReadsGlobalMainShadow[i] && mainShadowMapID != FG_INVALID_RESOURCE)
+                node.AddSRV(mainShadowMapID);
+            if (view.execute.presentation.postProcess.enabled && rttSceneIDs[i] != FG_INVALID_RESOURCE)
+            {
+                node.AddRenderTarget(rttSceneIDs[i]);
+                if (rttSceneDepthIDs[i] != FG_INVALID_RESOURCE)
+                    node.AddDepthRead(rttSceneDepthIDs[i]);
+            }
+            else if (rttColorIDs[i] != FG_INVALID_RESOURCE)
+                node.AddRenderTarget(rttColorIDs[i]);
+            node.executeFn  = MakeGraphicsExecFn(&view.execute.distortionPass, nullptr, &view.execute.distortionQueue);
             pipeline.frameGraph.nodes.push_back(std::move(node));
         }
 
@@ -775,6 +859,21 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
         pipeline.frameGraph.nodes.push_back(std::move(node));
     }
 
+    if (pipeline.mainView.execute.depthPass.enabled && !pipeline.mainView.execute.depthQueue.Empty() &&
+        hasPostProcess && mainSceneDepthID != FG_INVALID_RESOURCE)
+    {
+        RFG::Node node{};
+        node.passType   = RFG::PassType::Graphics;
+        node.debugName  = "DepthPrepass.Main";
+        node.executeInput = &pipeline.mainView.execute;
+        node.statsOutput  = &pipeline.mainView.stats;
+        node.enabled    = true;
+        node.shadowResourcePolicy = FGShadowResourcePolicy::LocalPerView;
+        node.AddDepthWrite(mainSceneDepthID);
+        node.executeFn  = MakeGraphicsExecFn(&pipeline.mainView.execute.depthPass, &pipeline.mainView.execute.depthQueue, nullptr);
+        pipeline.frameGraph.nodes.push_back(std::move(node));
+    }
+
     if (pipeline.mainView.execute.opaquePass.enabled)
     {
         RFG::Node node{};
@@ -793,7 +892,12 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
         if (hasPostProcess)
         {
             if (mainSceneDepthID != FG_INVALID_RESOURCE)
-                node.AddDepthWrite(mainSceneDepthID);
+            {
+                if (pipeline.mainView.execute.depthPass.enabled && !pipeline.mainView.execute.depthQueue.Empty())
+                    node.AddDepthRead(mainSceneDepthID);
+                else
+                    node.AddDepthWrite(mainSceneDepthID);
+            }
             if (mainSceneNormalsID != FG_INVALID_RESOURCE)
                 node.AddRenderTarget(mainSceneNormalsID);
         }
@@ -801,7 +905,24 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
         pipeline.frameGraph.nodes.push_back(std::move(node));
     }
 
-    if (pipeline.mainView.execute.particlePass.enabled && !pipeline.mainView.execute.particleSubmission.Empty())
+
+    if (pipeline.mainView.execute.motionVectorsPass.enabled && !pipeline.mainView.execute.motionVectorsQueue.Empty() &&
+        hasPostProcess && mainSceneMotionVectorsID != FG_INVALID_RESOURCE && mainSceneDepthID != FG_INVALID_RESOURCE)
+    {
+        RFG::Node node{};
+        node.passType   = RFG::PassType::Graphics;
+        node.debugName  = "MotionVectors.Main";
+        node.executeInput = &pipeline.mainView.execute;
+        node.statsOutput  = &pipeline.mainView.stats;
+        node.enabled    = true;
+        node.shadowResourcePolicy = FGShadowResourcePolicy::LocalPerView;
+        node.AddRenderTarget(mainSceneMotionVectorsID);
+        node.AddDepthRead(mainSceneDepthID);
+        node.executeFn  = MakeGraphicsExecFn(&pipeline.mainView.execute.motionVectorsPass, &pipeline.mainView.execute.motionVectorsQueue, nullptr);
+        pipeline.frameGraph.nodes.push_back(std::move(node));
+    }
+
+    if (pipeline.mainView.execute.particlePass.enabled && !pipeline.mainView.execute.particleQueue.Empty())
     {
         RFG::Node node{};
         node.passType   = RFG::PassType::Graphics;
@@ -815,7 +936,7 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
         node.AddRenderTarget(hasPostProcess ? mainSceneID : backbufferID);
         if (hasPostProcess && mainSceneDepthID != FG_INVALID_RESOURCE)
             node.AddDepthRead(mainSceneDepthID);
-        node.executeFn = MakeGraphicsExecFn(&pipeline.mainView.execute.particlePass, nullptr, nullptr, &pipeline.mainView.execute.particleSubmission);
+        node.executeFn = MakeGraphicsExecFn(&pipeline.mainView.execute.particlePass, nullptr, &pipeline.mainView.execute.particleQueue);
         pipeline.frameGraph.nodes.push_back(std::move(node));
     }
 
@@ -837,6 +958,27 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
         if (hasPostProcess && mainSceneDepthID != FG_INVALID_RESOURCE)
             node.AddDepthRead(mainSceneDepthID);
         node.executeFn  = MakeGraphicsExecFn(&pipeline.mainView.execute.transparentPass, nullptr, &pipeline.mainView.execute.alphaQueue);
+        pipeline.frameGraph.nodes.push_back(std::move(node));
+    }
+
+    if (pipeline.mainView.execute.distortionPass.enabled && !pipeline.mainView.execute.distortionQueue.Empty())
+    {
+        RFG::Node node{};
+        node.passType   = RFG::PassType::Graphics;
+        node.debugName  = "Distortion.Main";
+        node.executeInput = &pipeline.mainView.execute;
+        node.statsOutput  = &pipeline.mainView.stats;
+        node.enabled    = true;
+        node.shadowResourcePolicy = FGShadowResourcePolicy::LocalPerView;
+        if (pipeline.mainView.execute.shadowPass.enabled && mainShadowMapID != FG_INVALID_RESOURCE)
+            node.AddSRV(mainShadowMapID);
+        for (uint32_t i = 0u; i < rttCount; ++i)
+            if (rttColorIDs[i] != FG_INVALID_RESOURCE)
+                node.AddSRV(rttColorIDs[i]);
+        node.AddRenderTarget(hasPostProcess ? mainSceneID : backbufferID);
+        if (hasPostProcess && mainSceneDepthID != FG_INVALID_RESOURCE)
+            node.AddDepthRead(mainSceneDepthID);
+        node.executeFn  = MakeGraphicsExecFn(&pipeline.mainView.execute.distortionPass, nullptr, &pipeline.mainView.execute.distortionQueue);
         pipeline.frameGraph.nodes.push_back(std::move(node));
     }
 
@@ -914,16 +1056,23 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
     // Damit sind alle strukturellen Unterschiede erfasst: Node-Anzahl, NodeKind,
     // reads/writes, RT-Bereitschaft, sceneTexture-Validity, graphicsPass.enabled.
     // Ein false-Cache-Hit ist damit ausgeschlossen.
+    std::vector<uint8_t> liveNodes;
+    std::vector<uint8_t> liveResources;
+    BuildDependencies(pipeline.frameGraph);
+    ComputeReachabilityFromSinks(pipeline.frameGraph, liveNodes, liveResources);
+    CompactToLiveSubgraph(pipeline.frameGraph, liveNodes, liveResources);
+    BuildDependencies(pipeline.frameGraph);
+
     const uint64_t newKey = ComputeGraphStructureKey(pipeline.frameGraph);
     if (newKey == m_cachedTopologyKey && !m_cachedExecutionOrder.empty())
     {
         // Topology-Struktur identisch — Execution-Order wiederverwenden.
         //
-        // WICHTIG: Dependencies MÜSSEN trotzdem neu gebaut werden.
-        // Nodes werden jeden Frame als leere Objekte neu erstellt;
-        // ohne BuildDependencies() sind node.dependencies leer, und
-        // Execute() sieht einen strukturell unvollständigen Graph.
-        BuildDependencies(pipeline.frameGraph);
+        // WICHTIG: Der Key muss auf dem bereits auf Live-Nodes reduzierten
+        // Graphen basieren. Der gecachte Execution-Order stammt ebenfalls aus
+        // genau diesem kompaktierten Graph. Ohne Reachability+Compaction im
+        // Cache-Hit-Pfad kann executionOrder.size() < fg.nodes.size() werden,
+        // obwohl gar kein echter Zyklus existiert.
         pipeline.frameGraph.executionOrder = m_cachedExecutionOrder;
 
         // Lifetime-Metadaten hängen an der finalen Execution-Order und müssen
@@ -938,7 +1087,10 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
     }
     else
     {
-        Finalize(pipeline.frameGraph);
+        BuildExecutionOrder(pipeline.frameGraph);
+        ComputeResourceLifetimes(pipeline.frameGraph);
+        PlanResourceStates(pipeline.frameGraph);
+        Validate(pipeline.frameGraph);
         if (pipeline.frameGraph.validation.valid)
         {
             m_cachedTopologyKey    = newKey;
@@ -947,6 +1099,7 @@ void GDXRenderFrameGraph::Build(RFG::PipelineData& pipeline, const BuildContext&
         else
         {
             m_cachedTopologyKey = UINT64_MAX;
+            m_cachedExecutionOrder.clear();
         }
     }
 }
@@ -1673,7 +1826,22 @@ bool GDXRenderFrameGraph::Validate(RFG::FrameGraph& fg) const
 
     // --- Execution-Order vollständig ---
     if (fg.executionOrder.size() != static_cast<size_t>(nodeCount))
-    { addError("FrameGraph dependency cycle detected"); return fg.validation.valid; }
+    
+    {
+        std::string detail = "FrameGraph dependency cycle detected. Nodes:";
+        for (uint32_t i = 0u; i < nodeCount; ++i)
+        {
+            detail += " [" + std::to_string(i) + ":" + fg.nodes[i].debugName + " deps=";
+            for (uint32_t d = 0u; d < static_cast<uint32_t>(fg.nodes[i].dependencies.size()); ++d)
+            {
+                if (d > 0u) detail += ",";
+                detail += std::to_string(fg.nodes[i].dependencies[d]);
+            }
+            detail += "]";
+        }
+        addError(detail);
+        return fg.validation.valid;
+    }
 
     // --- Execution-Order: keine OOB, keine Duplikate, alle enthalten ---
     std::vector<int32_t> pos(nodeCount, -1);
@@ -1717,6 +1885,7 @@ bool GDXRenderFrameGraph::Validate(RFG::FrameGraph& fg) const
 
             const bool suspiciousImportedWriteStart =
                 desc.IsImported() &&
+                !desc.HasProducer() &&
                 desc.plannedInitialStateSource == FGResourceStateSource::ImportedFirstUse &&
                 (desc.plannedInitialState == ResourceState::RenderTarget ||
                  desc.plannedInitialState == ResourceState::DepthWrite ||

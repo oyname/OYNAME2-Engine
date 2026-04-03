@@ -792,26 +792,41 @@ bool GDXParticleSystem::SpawnTrail(const GDXParticle& parent, int typeID, int no
 // ============================================================
 bool GDXParticleSystem::IsVisibleInView(const GDXParticle& p,
     const ParticleRenderContext& ctx,
-    float size) const
+    float size,
+    float& outProjectedPixelRadius) const
 {
+    outProjectedPixelRadius = 0.0f;
+
     const Float4 clip = GDX::TransformFloat4({ p.pos.x, p.pos.y, p.pos.z, 1.0f }, ctx.viewProj);
     if (clip.w <= 0.0001f)
         return false;
 
-    const float margin = (std::max)(size, 0.25f) * 2.0f;
+    const float radius = (std::max)(size, 0.25f);
+    const float margin = radius * 2.0f;
     const float xBound = std::fabs(clip.w) + margin;
     const float yBound = std::fabs(clip.w) + margin;
     const float zMin = -margin;
     const float zMax = clip.w + margin;
 
-    return clip.x >= -xBound && clip.x <= xBound &&
-           clip.y >= -yBound && clip.y <= yBound &&
-           clip.z >= zMin    && clip.z <= zMax;
+    if (!(clip.x >= -xBound && clip.x <= xBound &&
+          clip.y >= -yBound && clip.y <= yBound &&
+          clip.z >= zMin    && clip.z <= zMax))
+    {
+        return false;
+    }
+
+    const float invW = 1.0f / (std::max)(std::fabs(clip.w), 0.0001f);
+    const float ndcRadiusX = std::fabs(ctx.projMatrix._11) * radius * invW;
+    const float ndcRadiusY = std::fabs(ctx.projMatrix._22) * radius * invW;
+    const float pixelRadiusX = ndcRadiusX * ctx.viewportWidth * 0.5f;
+    const float pixelRadiusY = ndcRadiusY * ctx.viewportHeight * 0.5f;
+    outProjectedPixelRadius = (std::max)(pixelRadiusX, pixelRadiusY);
+    return true;
 }
 
 bool GDXParticleSystem::BuildInstance(const GDXParticle& p,
     const ParticleRenderContext& ctx,
-    int /*blendMode*/,
+    int blendMode,
     int nowMs,
     ParticleInstance& outInstance) const
 {
@@ -823,9 +838,17 @@ bool GDXParticleSystem::BuildInstance(const GDXParticle& p,
         const float pulse = std::sinf((nowMs * 0.001f) + p.pulsePhase);
         sz += pulse * t.pls * p.emitterScale;
     }
-    if (sz <= 0.0f)
+    if (sz <= 0.0f || p.alpha <= (1.0f / 255.0f))
         return false;
-    if (!IsVisibleInView(p, ctx, sz))
+
+    float projectedPixelRadius = 0.0f;
+    if (!IsVisibleInView(p, ctx, sz, projectedPixelRadius))
+        return false;
+
+    const float effectiveAlpha = (std::max)(0.0f, p.alpha);
+    const float pixelCullThreshold = (blendMode != 0) ? 0.30f : 0.35f;
+    const float alphaCullThreshold = (blendMode != 0) ? 0.015f : 0.02f;
+    if (projectedPixelRadius < pixelCullThreshold && effectiveAlpha <= alphaCullThreshold)
         return false;
 
     ParticleInstance inst = {};
@@ -864,23 +887,17 @@ bool GDXParticleSystem::BuildInstance(const GDXParticle& p,
 }
 
 void GDXParticleSystem::BuildRenderSubmission(const ParticleRenderContext& ctx,
-    ParticleRenderSubmission& outSubmission) const
+    ParticleCommandList& outCommandList) const
 {
-    outSubmission.Clear();
-    outSubmission.context = ctx;
+    outCommandList.Clear();
+    outCommandList.SetContext(ctx);
 
     if (m_particles.empty())
         return;
 
-    struct SortEntry
-    {
-        float sortKey = 0.0f;
-        ParticleInstance instance{};
-    };
-
-    std::vector<SortEntry> alphaEntries;
+    std::vector<AlphaSortEntry> alphaEntries;
     alphaEntries.reserve(m_particles.size());
-    outSubmission.additiveInstances.reserve(m_particles.size() / 2u + 16u);
+    outCommandList.Reserve(m_particles.size(), m_particles.size() / 2u + 16u);
 
     const int nowMs = NowMs();
     for (const GDXParticle& p : m_particles)
@@ -893,24 +910,28 @@ void GDXParticleSystem::BuildRenderSubmission(const ParticleRenderContext& ctx,
         if (!BuildInstance(p, ctx, type.msh, nowMs, inst))
             continue;
 
+        if (type.msh != 0)
+        {
+            outCommandList.SubmitAdditive(inst);
+            continue;
+        }
+
         const Float3 toParticle = GDX::Subtract(p.pos, ctx.cameraPosition);
         const float sortKey = GDX::Dot3(toParticle, ctx.cameraForward);
-
-        if (type.msh != 0)
-            outSubmission.additiveInstances.push_back(inst);
-        else
-            alphaEntries.push_back({ sortKey, inst });
+        alphaEntries.push_back({ sortKey, inst });
     }
 
-    std::sort(alphaEntries.begin(), alphaEntries.end(),
-        [](const SortEntry& a, const SortEntry& b)
-        {
-            return a.sortKey > b.sortKey;
-        });
+    if (alphaEntries.size() > 1u)
+    {
+        std::sort(alphaEntries.begin(), alphaEntries.end(),
+            [](const AlphaSortEntry& a, const AlphaSortEntry& b)
+            {
+                return a.sortKey > b.sortKey;
+            });
+    }
 
-    outSubmission.alphaInstances.reserve(alphaEntries.size());
-    for (const SortEntry& entry : alphaEntries)
-        outSubmission.alphaInstances.push_back(entry.instance);
+    for (const AlphaSortEntry& entry : alphaEntries)
+        outCommandList.SubmitAlpha(entry.instance);
 }
 
 uint32_t GDXParticleSystem::PackRGBA8(float r255, float g255, float b255, float a01)

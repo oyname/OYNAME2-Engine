@@ -3,19 +3,42 @@
 #include "ECS/ECSTypes.h"
 #include "GDXResourceBinding.h"
 #include "GDXPipelineState.h"
+#include "RenderPassTypes.h"
+#include "RenderSortKey.h"
 // Material params are authored data and live in MaterialResource.
 // Render commands only carry handles and binding/pipeline keys.
 
 #include <cstdint>
 #include "Core/GDXMath.h"
 
-enum class RenderPass : uint8_t
+enum class RenderBatchExecutionKind : uint8_t
 {
-    Shadow      = 0,
-    Opaque      = 1,
-    Transparent = 2,
-    ParticlesTransparent = 3,
+    SingleDraw = 0,
+    SharedStateDrawSequence,
+    Instanced,
 };
+
+struct RenderBatchRange
+{
+    uint32_t firstCommand = 0u;
+    uint32_t commandCount = 0u;
+    uint32_t representativeCommand = 0u;
+    RenderBatchExecutionKind executionKind = RenderBatchExecutionKind::SingleDraw;
+
+    RenderPass            pass = RenderPass::Opaque;
+    MeshHandle            mesh;
+    MaterialHandle        material;
+    ShaderHandle          shader;
+    uint32_t              submeshIndex = 0u;
+    GDXPipelineStateKey   pipelineStateKey{};
+    uint64_t              passBindingsKey = 0ull;
+    uint64_t              materialBindingsKey = 0ull;
+    uint64_t              instancingKey = 0ull;
+
+    bool IsValid() const noexcept { return commandCount != 0u; }
+    bool IsInstanced() const noexcept { return executionKind == RenderBatchExecutionKind::Instanced; }
+};
+
 
 struct RenderCommand
 {
@@ -34,7 +57,10 @@ struct RenderCommand
     uint64_t             materialBindingsKey = 0ull;
     uint64_t             drawBindingsKey = 0ull;
     uint64_t sortKey = 0ull;
+    uint8_t  renderPriority = 128u;
     bool     receiveShadows = true;
+    bool     instancingEligible = false;
+    uint64_t instancingKey = 0ull;
 
     // Weltraum-Bounds — von VisibleRenderCandidate übertragen.
     // Werden im Backend für per-Kaskaden-Culling genutzt.
@@ -43,27 +69,27 @@ struct RenderCommand
     float    worldBoundsRadius = 0.0f;
     bool     hasBounds         = false;
 
-    static uint64_t MakeSortKey(RenderPass pass,
-                                 uint32_t shaderSortID,
-                                 uint32_t pipelineSortID,
-                                 uint32_t materialSortID,
-                                 float    depth)
+    static uint64_t MakeSortKey(const RenderSortKeyParams& params)
     {
-        const uint32_t depthBits = *reinterpret_cast<const uint32_t*>(&depth);
-        return  (static_cast<uint64_t>(static_cast<uint8_t>(pass)) << 62)
-              | (static_cast<uint64_t>(shaderSortID    & 0x0FFFu) << 50)
-              | (static_cast<uint64_t>(pipelineSortID  & 0x00FFu) << 42)
-              | (static_cast<uint64_t>(materialSortID  & 0x03FFu) << 32)
-              | static_cast<uint64_t>(depthBits);
+        return RenderSortKey::BuildPackedKey(params);
     }
 
+    void SetSortKey(const RenderSortKeyParams& params)
+    {
+        sortKey = MakeSortKey(params);
+    }
+
+    // Legacy-Fallback fuer aeltere Call-Sites. Neue Queue-/Gather-Logik soll
+    // stattdessen RenderSortKeyParams explizit befuellen und SetSortKey(params)
+    // verwenden.
     void SetSortKey(RenderPass pass,
                     uint32_t shaderSortID,
                     uint32_t pipelineSortID,
                     uint32_t materialSortID,
                     float depth = 0.0f)
     {
-        sortKey = MakeSortKey(pass, shaderSortID, pipelineSortID, materialSortID, depth);
+        sortKey = RenderSortKey::BuildLegacyFallbackKeyFromPass(
+            pass, renderPriority, shaderSortID, pipelineSortID, materialSortID, depth);
     }
 
     const ResourceBindingSet& GetEffectiveBindings() const noexcept

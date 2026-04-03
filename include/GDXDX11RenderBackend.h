@@ -121,8 +121,10 @@ public:
     void SubmitOcclusionQueries(
         const std::vector<VisibleRenderCandidate>& candidates,
         ResourceStore<MeshAssetResource, MeshTag>& meshStore,
-        const FrameData& frame) override;
-    void CollectOcclusionResults(std::unordered_set<EntityID>& outVisible) override;
+        const FrameData& frame,
+        RenderTargetHandle depthSourceTarget = RenderTargetHandle::Invalid()) override;
+    void CollectOcclusionResults(std::unordered_set<EntityID>& outVisible,
+                                 std::unordered_set<EntityID>* outTested = nullptr) override;
     bool SupportsTextureFormat(GDXTextureFormat format) const override;
     const DefaultTextureSet& GetDefaultTextures() const override;
 

@@ -204,6 +204,17 @@ void GDXECSRenderer::AppendDebugVisibleSet(RenderQueue& queue, const VisibleSet&
     m_debugCulling.AppendVisibleSet(queue, set, view, ctx, viewStats);
 }
 
+
+std::string GDXECSRenderer::GetWindowDebugTitle() const
+{
+    std::ostringstream oss;
+    oss << "Main total: " << m_stats.mainCulling.totalCandidates
+        << " visible: " << m_stats.mainCulling.visibleCandidates
+        << " | Shadow visible: " << m_stats.shadowCulling.visibleCandidates
+        << " | RTT views: " << m_stats.rttViewCount
+        << " | Draws: " << m_stats.drawCalls;
+    return oss.str();
+}
 void GDXECSRenderer::LogDebugCullingStats() const
 {
     m_debugCulling.LogStats(m_renderPipeline.mainView.stats,
@@ -1435,7 +1446,17 @@ void GDXECSRenderer::BeginFrame()
     if (m_occlusionCullingEnabled && m_backend)
     {
         m_occlusionVisible.clear();
-        m_backend->CollectOcclusionResults(m_occlusionVisible);
+        m_occlusionTested.clear();
+        m_backend->CollectOcclusionResults(m_occlusionVisible, &m_occlusionTested);
+
+        // Reset miss counters for entities confirmed visible by the latest query results.
+        for (const EntityID visibleEntity : m_occlusionVisible)
+            m_occlusionMissCounts.erase(visibleEntity);
+    }
+    else
+    {
+        m_occlusionTested.clear();
+        m_occlusionMissCounts.clear();
     }
 
     m_framePhase = RenderFramePhase::UpdateWrite;
@@ -1473,6 +1494,11 @@ void GDXECSRenderer::Tick(float dt)
 
 void GDXECSRenderer::EndFrame()
 {
+    const auto canPrepareParticlesForView = [](const RFG::ViewPassData& view) noexcept
+    {
+        return HasDrawPass(view.prepared.graphicsView.viewPassMask, DrawPassType::Particles);
+    };
+
     // Shader-Resolver bleibt lokal — er captured nur this, kein Stack-Speicher.
     // FrameDispatch speichert eine Kopie davon (std::function), deshalb ist
     // die Lifetime von resolveShader nicht kritisch für die Task-Lambdas.
@@ -1535,43 +1561,55 @@ void GDXECSRenderer::EndFrame()
 
     m_systemScheduler.AddTask({ "Prepare Main Particles",
         SR_MAIN_VIEW | SR_PARTICLES, SR_MAIN_VIEW,
-        [this]()
+        [this, canPrepareParticlesForView]()
         {
-            m_renderPipeline.mainView.execute.particleSubmission.Clear();
-            if (!m_particlesRenderReady || !m_particleSystemPtr)
+            m_renderPipeline.mainView.renderQueues.particleQueue.Clear();
+            if (!m_particlesRenderReady || !m_particleSystemPtr || !canPrepareParticlesForView(m_renderPipeline.mainView))
                 return;
 
             ParticleRenderContext ctx{};
             ctx.viewMatrix = m_renderPipeline.mainView.prepared.frame.viewMatrix;
+            ctx.projMatrix = m_renderPipeline.mainView.prepared.frame.projMatrix;
             ctx.viewProj = m_renderPipeline.mainView.prepared.frame.viewProjMatrix;
             ctx.cameraPosition = m_renderPipeline.mainView.prepared.frame.cameraPos;
             ctx.cameraForward = m_renderPipeline.mainView.prepared.frame.cameraForward;
+            ctx.cameraNearPlane = m_renderPipeline.mainView.prepared.frame.cameraNearPlane;
+            ctx.viewportWidth = m_renderPipeline.mainView.prepared.frame.viewportWidth;
+            ctx.viewportHeight = m_renderPipeline.mainView.prepared.frame.viewportHeight;
             ctx.camRight = GDX::Normalize3({ ctx.viewMatrix._11, ctx.viewMatrix._21, ctx.viewMatrix._31 });
             ctx.camUp = GDX::Normalize3({ ctx.viewMatrix._12, ctx.viewMatrix._22, ctx.viewMatrix._32 });
-            m_particleSystemPtr->BuildRenderSubmission(ctx, m_renderPipeline.mainView.execute.particleSubmission);
+            m_particleSystemPtr->BuildRenderSubmission(ctx, m_renderPipeline.mainView.renderQueues.particleQueue);
         } });
 
     m_systemScheduler.AddTask({ "Prepare RTT Particles",
         SR_RTT_VIEWS | SR_PARTICLES, SR_RTT_VIEWS,
-        [this]()
+        [this, canPrepareParticlesForView]()
         {
             if (!m_particlesRenderReady || !m_particleSystemPtr)
             {
                 for (auto& view : m_renderPipeline.rttViews)
-                    view.execute.particleSubmission.Clear();
+                    view.renderQueues.particleQueue.Clear();
                 return;
             }
 
             for (auto& view : m_renderPipeline.rttViews)
             {
+                view.renderQueues.particleQueue.Clear();
+                if (!canPrepareParticlesForView(view))
+                    continue;
+
                 ParticleRenderContext ctx{};
                 ctx.viewMatrix = view.prepared.frame.viewMatrix;
+                ctx.projMatrix = view.prepared.frame.projMatrix;
                 ctx.viewProj = view.prepared.frame.viewProjMatrix;
                 ctx.cameraPosition = view.prepared.frame.cameraPos;
                 ctx.cameraForward = view.prepared.frame.cameraForward;
+                ctx.cameraNearPlane = view.prepared.frame.cameraNearPlane;
+                ctx.viewportWidth = view.prepared.frame.viewportWidth;
+                ctx.viewportHeight = view.prepared.frame.viewportHeight;
                 ctx.camRight = GDX::Normalize3({ ctx.viewMatrix._11, ctx.viewMatrix._21, ctx.viewMatrix._31 });
                 ctx.camUp = GDX::Normalize3({ ctx.viewMatrix._12, ctx.viewMatrix._22, ctx.viewMatrix._32 });
-                m_particleSystemPtr->BuildRenderSubmission(ctx, view.execute.particleSubmission);
+                m_particleSystemPtr->BuildRenderSubmission(ctx, view.renderQueues.particleQueue);
             }
         } });
 
@@ -1594,6 +1632,11 @@ void GDXECSRenderer::EndFrame()
                 m_frameDispatch.cullGather,
                 m_renderPipeline.mainView);
 
+            if (m_occlusionCullingEnabled)
+                m_occlusionQueryCandidates = m_renderPipeline.mainView.graphicsVisibleSet.candidates;
+            else
+                m_occlusionQueryCandidates.clear();
+
             // Occlusion-Ergebnisse vom letzten Frame anwenden:
             // Entities die letzten Frame verdeckt waren aus dem VisibleSet entfernen.
             // Erster Frame: m_occlusionVisible ist leer → alle bleiben drin (konservativ).
@@ -1605,8 +1648,24 @@ void GDXECSRenderer::EndFrame()
                     std::remove_if(candidates.begin(), candidates.end(),
                         [this](const VisibleRenderCandidate& c)
                         {
-                            return c.hasBounds &&
-                                   m_occlusionVisible.find(c.entity) == m_occlusionVisible.end();
+                            if (!c.hasBounds)
+                                return false;
+
+                            if (m_occlusionVisible.find(c.entity) != m_occlusionVisible.end())
+                            {
+                                m_occlusionMissCounts.erase(c.entity);
+                                return false;
+                            }
+
+                            if (m_occlusionTested.find(c.entity) == m_occlusionTested.end())
+                                return false;
+
+                            const uint8_t nextMissCount = static_cast<uint8_t>(
+                                (std::min)(
+                                    static_cast<unsigned int>(kOcclusionMissFramesBeforeCull),
+                                    static_cast<unsigned int>(m_occlusionMissCounts[c.entity]) + 1u));
+                            m_occlusionMissCounts[c.entity] = nextMissCount;
+                            return nextMissCount >= kOcclusionMissFramesBeforeCull;
                         }),
                     candidates.end());
                 const size_t culled = before - candidates.size();
@@ -1635,7 +1694,7 @@ void GDXECSRenderer::EndFrame()
                 m_rtStore,
                 m_frameDispatch.postProc,
                 m_frameDispatch.debugAppend,
-                m_particlesRenderReady && m_particleSystemPtr && !m_renderPipeline.mainView.execute.particleSubmission.Empty());
+                m_particlesRenderReady && m_particleSystemPtr && !m_renderPipeline.mainView.renderQueues.particleQueue.Empty());
         } });
 
     // ---- Framegraph Build ----
@@ -1670,11 +1729,12 @@ void GDXECSRenderer::EndFrame()
                 m_renderPipeline.mainView.execute.frame.lightCount;
 
             // Occlusion Queries für nächsten Frame abschicken
-            if (m_occlusionCullingEnabled && m_backend)
+            if (m_occlusionCullingEnabled && m_backend && !m_occlusionQueryCandidates.empty())
                 m_backend->SubmitOcclusionQueries(
-                    m_renderPipeline.mainView.graphicsVisibleSet.candidates,
+                    m_occlusionQueryCandidates,
                     m_meshStore,
-                    m_renderPipeline.mainView.execute.frame);
+                    m_renderPipeline.mainView.execute.frame,
+                    m_mainScenePostProcessTarget);
 
             UpdatePreparedMainViewFrameTransient(m_renderPipeline.mainView);
             AggregatePreparedFrameStats(m_renderPipeline.mainView, m_renderPipeline.rttViews);

@@ -5,7 +5,6 @@
 #include "RenderCommand.h"
 #include "GDXResourceState.h"
 #include "GDXPassExecutionModel.h"
-#include "Particles/IGDXParticleRenderer.h"
 
 class ICommandList;
 
@@ -30,12 +29,13 @@ struct BackendRenderPassDesc
     RenderPass pass = RenderPass::Opaque;
     RenderPassTargetDesc target{};
     bool bindNormalsTarget = false;
+    bool bindMotionVectorsTarget = false;
+    bool readOnlyDepth = false;
     const FrameData* frame = nullptr;
     GDXPassExecutionInfo execution{};
 
     const ICommandList* opaqueList = nullptr;
     const ICommandList* alphaList = nullptr;
-    const ParticleRenderSubmission* particleSubmission = nullptr;
 
     static BackendRenderPassDesc Shadow(const FrameData& inFrame)
     {
@@ -51,13 +51,17 @@ struct BackendRenderPassDesc
     static BackendRenderPassDesc Graphics(const RenderPassTargetDesc& inTarget,
                                           const FrameData* inFrame = nullptr,
                                           RenderPass inPass = RenderPass::Opaque,
-                                          bool inBindNormalsTarget = false)
+                                          bool inBindNormalsTarget = false,
+                                          bool inBindMotionVectorsTarget = false,
+                                          bool inReadOnlyDepth = false)
     {
         BackendRenderPassDesc d{};
         d.kind = Kind::Graphics;
         d.pass = inPass;
         d.target = inTarget;
         d.bindNormalsTarget = inBindNormalsTarget;
+        d.bindMotionVectorsTarget = inBindMotionVectorsTarget;
+        d.readOnlyDepth = inReadOnlyDepth;
         d.frame = inFrame;
         d.execution.executionClass = GDXPassExecutionClass::Graphics;
         d.execution.commandEncoding = GDXCommandEncoding::DrawQueue;

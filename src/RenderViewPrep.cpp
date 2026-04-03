@@ -54,6 +54,7 @@ void PrepareMainView(
     outView.prepared.graphicsView.skipSelfReferentialDraws = false;
     outView.prepared.graphicsView.visibilityLayerMask     = outView.prepared.frame.cullMask;
     outView.prepared.graphicsView.shadowCasterLayerMask   = outView.prepared.frame.shadowCasterMask;
+    outView.prepared.graphicsView.viewPassMask            = DrawPassBits::AllGraphics;
 
     outView.prepared.gatherOptions = {};
     outView.prepared.gatherOptions.gatherOpaque              = true;
@@ -85,6 +86,7 @@ void PrepareMainView(
         outView.prepared.shadowView.gatherOpaque      = false;
         outView.prepared.shadowView.gatherTransparent = false;
         outView.prepared.shadowView.gatherShadows     = true;
+        outView.prepared.shadowView.viewPassMask        = DrawPassBits::ShadowDepth;
 
         // Culle gegen die äußerste Kaskade (shadowViewProjMatrix).
         // Per-Kaskaden-Culling übernimmt ExecuteShadowPass im Backend.
@@ -143,6 +145,7 @@ void PrepareRTTViews(
             preparedView.prepared.graphicsView.skipSelfReferentialDraws = rtCam.skipSelfReferentialDraws;
             preparedView.prepared.graphicsView.visibilityLayerMask      = preparedView.prepared.frame.cullMask;
             preparedView.prepared.graphicsView.shadowCasterLayerMask    = preparedView.prepared.frame.shadowCasterMask;
+            preparedView.prepared.graphicsView.viewPassMask             = rtCam.viewPassMask;
 
             preparedView.prepared.gatherOptions = {};
             preparedView.prepared.gatherOptions.gatherOpaque              = rtCam.renderOpaque;
@@ -174,6 +177,7 @@ void PrepareRTTViews(
                 preparedView.prepared.shadowView.gatherOpaque       = false;
                 preparedView.prepared.shadowView.gatherTransparent  = false;
                 preparedView.prepared.shadowView.gatherShadows      = true;
+                preparedView.prepared.shadowView.viewPassMask         = DrawPassBits::ShadowDepth;
                 // RTT-Kaskaden werden von ExtractLightData für das RTT-Frustum gebaut —
                 // shadowViewProjMatrix ist die äußerste RTT-Kaskade, also korrekt zum Cullen.
                 preparedView.prepared.shadowView.enableFrustumCulling  = false;

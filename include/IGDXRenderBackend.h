@@ -206,16 +206,19 @@ public:
     virtual void SubmitOcclusionQueries(
         const std::vector<VisibleRenderCandidate>& candidates,
         ResourceStore<MeshAssetResource, MeshTag>& meshStore,
-        const FrameData& frame)
+        const FrameData& frame,
+        RenderTargetHandle depthSourceTarget = RenderTargetHandle::Invalid())
     {
-        (void)candidates; (void)meshStore; (void)frame;
+        (void)candidates; (void)meshStore; (void)frame; (void)depthSourceTarget;
     }
 
     // Liest Ergebnisse vom letzten Frame. Gibt Menge der sichtbaren EntityIDs zurück.
     // Aufruf am Anfang des nächsten Frames vor BuildVisibleSet.
-    virtual void CollectOcclusionResults(std::unordered_set<EntityID>& outVisible)
+    virtual void CollectOcclusionResults(std::unordered_set<EntityID>& outVisible,
+                                         std::unordered_set<EntityID>* outTested = nullptr)
     {
         (void)outVisible;
+        (void)outTested;
     }
 
     virtual uint32_t GetDrawCallCount() const = 0;

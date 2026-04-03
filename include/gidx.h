@@ -21,22 +21,15 @@
 //
 // ---------------------------------------------------------------------------
 
-#include "GDXECSRenderer.h"
+#include "gdx_render.h"
 #include "Core/GDXMathOps.h"
-#include "KROMEngine.h"
-#include "GDXInput.h"
-#include "GDXEventQueue.h"
-#include "GDXWin32Window.h"
-#include "GDXWin32DX11ContextFactory.h"
-#include "GDXDX11RenderBackend.h"
-#include "Components.h"
+#include "gdx_engine.h"
+#include "gdx_platform_win32.h"
+#include "gdx_backend_dx11.h"
 #include "SubmeshData.h"
-#include "MaterialResource.h"
-#include "MeshAssetResource.h"
 #include "SubmeshBuilder.h"
 #include "MeshUtilities.h"
 #include "WindowDesc.h"
-#include "Events.h"
 #include "Core/Debug.h"
 #include "Particles/GDXParticleTypes.h"
 

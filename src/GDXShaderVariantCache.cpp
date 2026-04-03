@@ -141,6 +141,7 @@ ShaderHandle GDXShaderVariantCache::CreateVariant(const ShaderVariantKey& rawKey
         res->passType         = key.pass;
         res->variantFeatures  = key.features;
         res->supportsSkinning = skinned;
+        res->supportsInstancing = true;
         res->usesVertexColor  = vertexColor;
     }
 

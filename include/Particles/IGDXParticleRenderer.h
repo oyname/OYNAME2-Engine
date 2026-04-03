@@ -10,11 +10,15 @@
 struct ParticleRenderContext
 {
     Matrix4 viewMatrix = Matrix4::Identity();
+    Matrix4 projMatrix = Matrix4::Identity();
     Matrix4 viewProj = Matrix4::Identity();
     Float3  cameraPosition = { 0.0f, 0.0f, 0.0f };
     Float3  cameraForward = { 0.0f, 0.0f, 1.0f };
     Float3  camRight = { 1.0f, 0.0f, 0.0f };
     Float3  camUp = { 0.0f, 1.0f, 0.0f };
+    float   cameraNearPlane = 0.1f;
+    float   viewportWidth = 1280.0f;
+    float   viewportHeight = 720.0f;
 };
 
 struct ParticleRenderSubmission

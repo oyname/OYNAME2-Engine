@@ -15,12 +15,28 @@
 #include "ECS/Registry.h"
 #include "GDXTextureResource.h"
 #include "Particles/IGDXParticleRenderer.h"
+#include "ParticleCommandList.h"
 
 #include <vector>
 #include <string>
 #include <functional>
 #include <cstdint>
 #include <cstdint>
+
+
+struct RenderFeatureViewPlan
+{
+    bool enableShadowPass = false;
+    bool enableOpaquePass = false;
+    bool enableTransparentPass = false;
+    bool enableDistortionPass = false;
+    bool enableParticlePass = false;
+    bool enableDepthPass = false;
+    bool enableMotionVectorsPass = false;
+    bool hasDistortionQueue = false;
+    bool hasMotionVectorQueue = false;
+    bool hasDepthQueue = false;
+};
 
 // ---------------------------------------------------------------------------
 // Frame Graph Resource Model
@@ -278,11 +294,15 @@ struct ExecuteData
     FrameData frame{};
 
     PassExec    shadowPass{};
+    PassExec    depthPass{};
     PassExec    opaquePass{};
+    PassExec    motionVectorsPass{};
     PassExec    particlePass{};
-    ParticleRenderSubmission particleSubmission{};
+    ParticleCommandList particleQueue{};
     PassExec    transparentPass{};
+    PassExec    distortionPass{};
     RenderQueue shadowQueue{};
+    RenderQueue depthQueue{};
 
     // Pre-split by the planning layer (BuildPreparedExecutionQueues).
     // opaqueQueue  — RenderPass::Opaque commands (depth write on).
@@ -290,6 +310,8 @@ struct ExecuteData
     // The backend consumes these directly; it must not re-split or re-sort.
     RenderQueue opaqueQueue{};
     RenderQueue alphaQueue{};
+    RenderQueue distortionQueue{};
+    RenderQueue motionVectorsQueue{};
 
     PresentExec presentation{};
 
@@ -297,13 +319,41 @@ struct ExecuteData
     {
         frame = {};
         shadowPass.Reset();
+        depthPass.Reset();
         opaquePass.Reset();
+        motionVectorsPass.Reset();
         particlePass.Reset();
-        particleSubmission = {};
+        particleQueue.Clear();
         transparentPass.Reset();
+        distortionPass.Reset();
         shadowQueue.Clear();
-        opaqueQueue.Clear(); alphaQueue.Clear();
+        depthQueue.Clear();
+        opaqueQueue.Clear(); alphaQueue.Clear(); distortionQueue.Clear(); motionVectorsQueue.Clear();
         presentation.Reset();
+    }
+};
+
+struct RenderViewQueues
+{
+    // Gather-/RenderList-Stufe zwischen Scene/ECS und Execute.
+    // Diese Queues sind pass-taugliche, bereits klassifizierte Listen.
+    RenderQueue depthQueue{};
+    RenderQueue opaqueQueue{};
+    RenderQueue transparentQueue{};
+    RenderQueue distortionQueue{};
+    RenderQueue motionVectorQueue{};
+    RenderQueue shadowDepthQueue{};
+    ParticleCommandList particleQueue{};
+
+    void Clear()
+    {
+        depthQueue.Clear();
+        opaqueQueue.Clear();
+        transparentQueue.Clear();
+        distortionQueue.Clear();
+        motionVectorQueue.Clear();
+        shadowDepthQueue.Clear();
+        particleQueue.Clear();
     }
 };
 
@@ -317,9 +367,15 @@ struct ViewPassData
     VisibleSet  shadowVisibleSet{};
     std::vector<RenderGatherSystem::GatherChunkResult> graphicsGatherChunks{};
     std::vector<RenderGatherSystem::GatherChunkResult> shadowGatherChunks{};
+    RenderViewQueues renderQueues{};
+
+    // Legacy-Kompatibilität: bestehende Codepfade können noch direkt auf diese
+    // Queues zugreifen, die FinalizeQueues aus renderQueues gespiegelt werden.
     RenderQueue opaqueQueue{};
     RenderQueue transparentQueue{};
     RenderQueue shadowQueue{};
+    RenderQueue depthQueue{};
+    RenderFeatureViewPlan featurePlan{};
 
     // Echte Kamera-FrameData — unverändert von CaptureFrameSnapshot.
     // Wird von AppendDebugVisibleSet für das Frustum genutzt wenn
@@ -332,12 +388,14 @@ struct ViewPassData
         shadowResourcePolicy = FGShadowResourcePolicy::LocalPerView;
         graphicsVisibleSet = {}; shadowVisibleSet = {};
         graphicsGatherChunks.clear(); shadowGatherChunks.clear();
+        renderQueues.Clear();
         opaqueQueue.Clear(); transparentQueue.Clear(); shadowQueue.Clear();
+        featurePlan = {};
         realCameraFrame = {};
     }
 
     // opaqueQueue and transparentQueue are kept separate intentionally.
-    // BuildPreparedExecutionQueues() in GDXECSRenderer copies them directly into
+    // BuildExecutionQueues() copies the gathered lists directly into
     // execute.opaqueQueue / execute.alphaQueue — no merge needed.
 };
 
@@ -506,8 +564,7 @@ struct FrameGraph
         GDXTextureFormat format = GDXTextureFormat::Unknown,
         bool externalOutput = false)
     {
-        const FGResourceID id = RegisterTransientResource(tex, rt, name, kind, width, height, format);
-        resources[id].externalOutput = externalOutput;
+        const FGResourceID id = RegisterImportedResource(tex, rt, name, kind, width, height, format, externalOutput);
         return id;
     }
 

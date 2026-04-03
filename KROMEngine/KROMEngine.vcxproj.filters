@@ -270,11 +270,20 @@
     <ClCompile Include="..\src\Particles\GDXParticleSystem.cpp">
       <Filter>Particle</Filter>
     </ClCompile>
-    <ClCompile Include="..\samples\Point Light\Point_Lights.cpp">
-      <Filter>Samples\Point Light</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\GDXWin32Window.cpp">
       <Filter>Platform\Win32</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\RenderSortKeyDebug.cpp">
+      <Filter>RHI\Common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\GDXMainRenderPasses.cpp">
+      <Filter>RHI\Common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ParticleCommandList.cpp">
+      <Filter>RHI\Common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\samples\Point Light\Point_Lights.cpp">
+      <Filter>Samples\Point Light</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -563,6 +572,27 @@
     <ClInclude Include="..\include\IGDXOpenGLContext.h">
       <Filter>Platform\Window</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\RenderFeatureModules.h">
+      <Filter>RHI\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\RenderPassMask.h">
+      <Filter>RHI\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\RenderPassTypes.h">
+      <Filter>RHI\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\RenderSortKey.h">
+      <Filter>RHI\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\RenderSortKeyDebug.h">
+      <Filter>RHI\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXMainRenderPasses.h">
+      <Filter>RHI\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\ParticleCommandList.h">
+      <Filter>RHI\Common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Text Include="..\shader\PostProcessBloomBlurPS.hlsl">
@@ -707,6 +737,96 @@
     </ClInclude>
     <ClInclude Include="..\include\ShaderSourceType.h">
       <Filter>Assets\Shader</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXDX11ParticleRenderer.h">
+      <Filter>Particle</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXParticleEmitterSystem.h">
+      <Filter>Particle</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXParticleSystem.h">
+      <Filter>Particle</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXPassExecutionModel.h">
+      <Filter>Renderer\Frame</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\GDXResourceStatePlanner.h">
+      <Filter>Renderer\Frame</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IGDXParticleRenderer.h">
+      <Filter>Particle</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IRenderDevice.h">
+      <Filter>RHI\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\IRenderSceneExecutor.h">
+      <Filter>RHI\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\RenderBackendSceneContext.h">
+      <Filter>RHI\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\gdx_backend_dx11.h">
+      <Filter>Core\Base</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\gdx_core.h">
+      <Filter>Core\Base</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\gdx_engine.h">
+      <Filter>Core\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\gdx_platform_win32.h">
+      <Filter>Platform\Win32</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\gdx_render.h">
+      <Filter>Renderer\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\platform\win32\GDXWin32DX11ContextFactory.h">
+      <Filter>Platform\Win32</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\platform\win32\GDXWin32Platform.h">
+      <Filter>Platform\Win32</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\platform\win32\GDXWin32Window.h">
+      <Filter>Platform\Win32</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\render\backend\IGDXRenderBackend.h">
+      <Filter>RHI\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\render\backend\IRenderDevice.h">
+      <Filter>RHI\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\render\backend\IRenderSceneExecutor.h">
+      <Filter>RHI\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\render\backend\RenderBackendSceneContext.h">
+      <Filter>RHI\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\render\frontend\GDXECSRenderer.h">
+      <Filter>Renderer\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\render\frontend\GDXRenderFrameGraph.h">
+      <Filter>Renderer\Frame</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\render\frontend\RenderPassBuilder.h">
+      <Filter>Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\render\frontend\RenderQueue.h">
+      <Filter>Renderer\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\render\resources\GDXRenderTargetResource.h">
+      <Filter>Assets\RenderTarget</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\render\resources\GDXShaderResource.h">
+      <Filter>Assets\Shader</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\render\resources\GDXTextureResource.h">
+      <Filter>Assets\Texture</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\render\resources\MaterialResource.h">
+      <Filter>Assets\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\render\resources\MeshAssetResource.h">
+      <Filter>Assets\Mesh</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -52,33 +52,7 @@ namespace RenderPassBuilder
         std::unordered_map<RenderTargetHandle, RenderTargetHandle>*      rttSceneTargets   = nullptr; // source RT per RTT view
     };
 
-    // --- Einzelne Build-Schritte (werden intern von den Frame-Level-Funktionen gerufen) ---
-
-    // Friert execute.frame ein, setzt presentAfterExecute.
-    void ConfigureCommonExecuteInputs(RFG::ViewPassData& view, bool presentAfterExecute);
-
-    // Baut execute.shadowPass.desc aus view.prepared.
-    void BuildShadowPassExecuteInput(RFG::ViewPassData& view);
-
-    // Baut execute.opaquePass / execute.particlePass / execute.transparentPass.
-    void BuildGraphicsPassExecuteInputs(
-        RFG::ViewPassData&          view,
-        const RenderPassTargetDesc& targetDesc,
-        bool                        appendGraphicsVisibleSet,
-        bool                        appendShadowVisibleSet,
-        bool                        enableParticles);
-
-    // Befüllt execute.opaqueQueue / execute.alphaQueue / execute.shadowQueue.
-    // Ruft debugFn für Debug-Overlays auf wenn entsprechend konfiguriert.
-    void BuildExecutionQueues(RFG::ViewPassData& view, const DebugAppendFn& debugFn);
-
     // --- Frame-Level-Einstiegspunkte ---
-
-    // Prüft ob Post-Process aktiv ist, erzeugt/recycelt Intermediate-RT,
-    // leitet Graphics-Pass auf Intermediate um.
-    // Gibt true zurück wenn Post-Process aktiv — in diesem Fall ist graphicsPass
-    // bereits auf das Intermediate-Target gesetzt.
-    bool PrepareMainViewPostProcess(RFG::ViewPassData& view, const PostProcContext& ppCtx);
 
     // Baut alle Execute-Inputs für den Haupt-View (inkl. PostProcess-Check).
     void BuildMainViewExecuteInputs(

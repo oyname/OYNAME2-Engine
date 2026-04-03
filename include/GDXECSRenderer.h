@@ -216,6 +216,7 @@ public:
     };
 
     const FrameStats& GetFrameStats() const { return m_stats; }
+    std::string GetWindowDebugTitle() const override;
     void SetClearColor(float r, float g, float b, float a = 1.0f);
 
     using DebugCullingOptions = GDXDebugCullingRenderer::Options;
@@ -306,6 +307,10 @@ private:
     bool       m_shadowResourcesAvailable = false;
     bool       m_occlusionCullingEnabled = false;
     std::unordered_set<EntityID> m_occlusionVisible;
+    std::unordered_set<EntityID> m_occlusionTested;
+    std::unordered_map<EntityID, uint8_t> m_occlusionMissCounts;
+    std::vector<VisibleRenderCandidate> m_occlusionQueryCandidates;
+    static constexpr uint8_t kOcclusionMissFramesBeforeCull = 2u;
 
     FrameContextRing m_frameContexts{};
     std::array<FrameTransientResources, GDXMaxFramesInFlight> m_frameTransients{};

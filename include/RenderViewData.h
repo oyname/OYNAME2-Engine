@@ -6,6 +6,7 @@
 #include "Components.h"
 #include "RenderComponents.h"
 #include "Math/Geometry/Frustum.h"
+#include "RenderPassMask.h"
 
 #include <vector>
 #include <cstdint>
@@ -33,6 +34,7 @@ struct RenderViewData
 
     uint32_t visibilityLayerMask = 0xFFFFFFFFu;
     uint32_t shadowCasterLayerMask = 0xFFFFFFFFu;
+    DrawPassMask viewPassMask = DrawPassBits::AllGraphics;
     FrustumData frustum = {};
 };
 
@@ -53,6 +55,8 @@ struct VisibleRenderCandidate
     bool receiveShadows = true;
     uint32_t renderableStateVersion = 0u;
     uint32_t visibilityStateVersion = 0u;
+    DrawPassMask drawPassMask = DrawPassBits::None;
+    uint8_t renderPriority = 128u;
 
     bool hasBounds = false;
     Float3 worldBoundsCenter = { 0.0f, 0.0f, 0.0f };
